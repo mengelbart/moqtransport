@@ -11,8 +11,20 @@ type QUICConn struct {
 	conn quic.Connection
 }
 
+func (c *QUICConn) OpenStream() (Stream, error) {
+	return c.conn.OpenStream()
+}
+
 func (c *QUICConn) OpenStreamSync(ctx context.Context) (Stream, error) {
 	return c.conn.OpenStreamSync(ctx)
+}
+
+func (c *QUICConn) OpenUniStream() (SendStream, error) {
+	return c.conn.OpenUniStream()
+}
+
+func (c *QUICConn) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
+	return c.conn.OpenUniStreamSync(ctx)
 }
 
 func (c *QUICConn) AcceptStream(ctx context.Context) (Stream, error) {

@@ -994,9 +994,9 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 			),
 			len: 30,
 			expect: &AnnounceErrorMessage{
-				TrackNamspace: "tracknamespace",
-				ErrorCode:     1,
-				ReasonPhrase:  "reason phrase",
+				TrackNamespace: "tracknamespace",
+				ErrorCode:      1,
+				ReasonPhrase:   "reason phrase",
 			},
 			err: nil,
 		},

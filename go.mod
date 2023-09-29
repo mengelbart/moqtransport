@@ -1,6 +1,6 @@
 module gitlab.lrz.de/cm/moqtransport
 
-go 1.21
+go 1.21.1
 
 require (
 	github.com/stretchr/testify v1.8.4

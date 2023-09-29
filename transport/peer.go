@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"time"
 
 	"gitlab.lrz.de/cm/moqtransport/varint"
 	"golang.org/x/exp/slices"
@@ -13,8 +14,13 @@ import (
 
 var (
 	errUnexpectedMessage = errors.New("got unexpected message")
+	errClosed            = errors.New("connection was closed")
 )
 
+// TODO: Streams must be wrapped properly for quic and webtransport The
+// interfaces need to add CancelRead and CancelWrite for STOP_SENDING and
+// RESET_STREAM purposes. The interface should allow implementations for quic
+// and webtransport.
 type Stream interface {
 	ReadStream
 	SendStream
@@ -25,28 +31,29 @@ type ReadStream interface {
 }
 
 type SendStream interface {
-	io.ReadWriteCloser
+	io.WriteCloser
 }
 
 type Connection interface {
+	OpenStream() (Stream, error)
 	OpenStreamSync(context.Context) (Stream, error)
+	OpenUniStream() (SendStream, error)
+	OpenUniStreamSync(context.Context) (SendStream, error)
 	AcceptStream(context.Context) (Stream, error)
 	AcceptUniStream(context.Context) (ReadStream, error)
 	ReceiveMessage(context.Context) ([]byte, error)
 }
 
-type msgContext struct {
-	msg            Message
-	stream         io.Reader
-	responseWriter io.WriteCloser
-}
-
 type Peer struct {
-	conn          Connection
-	inMsgCh       chan *msgContext
-	outMsgCh      chan *msgContext
-	role          role
-	receiveTracks map[uint64]*ReceiveTrack
+	conn                Connection
+	inMsgCh             chan Message
+	ctrlMessageCh       chan keyedResponseHandler
+	role                role
+	receiveTracks       map[uint64]*ReceiveTrack
+	sendTracks          map[string]*SendTrack
+	subscribeHandler    func(*SendTrack)
+	announcementHandler func()
+	closeCh             chan struct{}
 }
 
 func NewServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
@@ -85,13 +92,16 @@ func NewServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, err
 	}
 	p := &Peer{
-		conn:     conn,
-		inMsgCh:  make(chan *msgContext),
-		outMsgCh: make(chan *msgContext),
-		role:     serverRole,
+		conn:          conn,
+		inMsgCh:       make(chan Message),
+		ctrlMessageCh: make(chan keyedResponseHandler),
+		role:          serverRole,
 	}
 	go p.controlStreamLoop(ctx, stream)
-	go p.handle(ctx)
+	go p.acceptBidirectionalStreams(ctx)
+	go p.acceptUnidirectionalStreams(ctx)
+	// TODO: Configure if datagrams enabled?
+	go p.acceptDatagrams(ctx)
 	return p, nil
 }
 
@@ -112,10 +122,10 @@ func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, err
 	}
 	p := &Peer{
-		conn:     conn,
-		inMsgCh:  make(chan *msgContext),
-		outMsgCh: make(chan *msgContext),
-		role:     clientRole,
+		conn:          conn,
+		inMsgCh:       make(chan Message),
+		ctrlMessageCh: make(chan keyedResponseHandler),
+		role:          clientRole,
 	}
 	m, err := ReadNext(varint.NewReader(stream), clientRole)
 	if err != nil {
@@ -126,16 +136,15 @@ func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, errUnexpectedMessage
 	}
 
-	go p.handle(ctx)
-	go p.readMessages(varint.NewReader(stream), stream)
+	go p.controlStreamLoop(ctx, stream)
+	go p.acceptBidirectionalStreams(ctx)
+	go p.acceptUnidirectionalStreams(ctx)
+	// TODO: Configure if datagrams enabled?
+	go p.acceptDatagrams(ctx)
 	return p, nil
 }
 
 func (p *Peer) readMessages(r MessageReader, stream io.Reader) {
-	var rw io.WriteCloser
-	if s, ok := stream.(io.WriteCloser); ok {
-		rw = s
-	}
 	for {
 		log.Println("reading message")
 		msg, err := ReadNext(r, p.role)
@@ -145,38 +154,96 @@ func (p *Peer) readMessages(r MessageReader, stream io.Reader) {
 			return
 		}
 		log.Printf("read message: %v\n", msg)
-		p.inMsgCh <- &msgContext{
-			msg:            msg,
-			stream:         stream,
-			responseWriter: rw,
+		object, ok := msg.(*ObjectMessage)
+		if !ok {
+			// TODO: ERROR: We only expect object messages here. All other
+			// messages should be sent on the control stream.
 		}
+		p.handleObjectMessage(object)
 	}
 }
 
+type messageKey struct {
+	mt MessageType
+	id string
+}
+
+type keyer interface {
+	key() messageKey
+}
+
+type keyedMessage interface {
+	Message
+	keyer
+}
+
+type responseHandler interface {
+	handle(Message)
+}
+
+type keyedResponseHandler interface {
+	keyedMessage
+	responseHandler
+}
+
 func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
-	inCh := make(chan *msgContext)
+	inCh := make(chan Message)
 	errCh := make(chan error)
-	go func(s Stream, ch chan<- *msgContext, errCh chan<- error) {
+	transactions := make(map[messageKey]keyedMessage)
+
+	go func(s Stream, ch chan<- Message, errCh chan<- error) {
 		for {
 			msg, err := ReadNext(varint.NewReader(s), p.role)
 			if err != nil {
 				errCh <- err
 				return
 			}
-			ch <- &msgContext{
-				msg:            msg,
-				stream:         s,
-				responseWriter: nil,
-			}
+			ch <- msg
 		}
 	}(s, inCh, errCh)
+	// control stream interactions are tricky.
+	// We need to:
+	// 1. Make sure we always accept any control message (the peer might want to
+	// start a transaction)
+	// 2. Send out messages passed to us on the outMsgCh
+	// 3. Wait for responses to messages we sent and match them to the correct
+	// oneoutMsgCh
+	// 4. (Maybe optional?) Be able to send out multiple messages without doing
+	// lock-steps?
+	// How can we map a message to the corresponding transaction?
 	for {
 		select {
 		case m := <-inCh:
-			p.inMsgCh <- m
-		case m := <-p.outMsgCh:
+			switch v := m.(type) {
+			case *SubscribeRequestMessage, *AnnounceMessage, *GoAwayMessage:
+				// TODO: Handle
+			case keyedMessage:
+				t, ok := transactions[v.key()]
+				if !ok {
+					// TODO: Error: This an error, because all keyed messages
+					// that occur without responding to a transaction started by
+					// us should be handled by the case above. I.e., if we get
+					// an Ok or Error for Announce or subscribe, that should
+					// only happen when we also stored an associated transaction
+					// earlier.
+					panic("TODO")
+				}
+				rh, ok := t.(responseHandler)
+				if !ok {
+					// TODO: Error: This is also an error, because we shouldn't
+					// have started a transaction if we cannot handle the
+					// response
+					panic("TODO")
+				}
+				rh.handle(t)
+			default:
+				// error unexpected message, close conn?
+				panic("TODO")
+			}
+		case m := <-p.ctrlMessageCh:
+			transactions[m.key()] = m
 			buf := make([]byte, 0, 1500)
-			buf = m.msg.Append(buf)
+			buf = m.Append(buf)
 			_, err := s.Write(buf)
 			if err != nil {
 				// TODO
@@ -185,6 +252,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 		case err := <-errCh:
 			// TODO
 			log.Println(err)
+			panic(err)
 		}
 	}
 }
@@ -228,86 +296,117 @@ func (p *Peer) acceptDatagrams(ctx context.Context) {
 	}
 }
 
-func (p *Peer) handle(ctx context.Context) error {
-	errCh := make(chan error)
-
-	go p.acceptBidirectionalStreams(ctx)
-	go p.acceptUnidirectionalStreams(ctx)
-	// TODO: Configure if datagrams enabled?
-	go p.acceptDatagrams(ctx)
-
-	for {
-		select {
-		case err := <-errCh:
-			// TODO: Handle errors
-			log.Println(err)
-
-		case m := <-p.outMsgCh:
-			log.Printf("TODO: send message: %v\n", m.msg)
-
-		case m := <-p.inMsgCh:
-			log.Printf("received message: %v\n", m.msg)
-			switch v := m.msg.(type) {
-			case *ObjectMessage:
-				p.handleObjectMessage(v)
-
-			case *ClientSetupMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *ServerSetupMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *SubscribeRequestMessage:
-				p.handleSubscribeRequest()
-
-			case *SubscribeOkMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *SubscribeErrorMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *AnnounceMessage:
-				p.handleAnnounceMessage()
-
-			case *AnnounceOkMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *AnnounceErrorMessage:
-				// ERROR errUnexpectedMessage?
-
-			case *GoAwayMessage:
-			default:
-				// ERROR errUnexpectedMessage?
-				return errUnexpectedMessage
-			}
-		}
-	}
-}
-
-func (p *Peer) Announce() (*SendTrack, error) {
-	return nil, nil
-}
-
-func (p *Peer) Subscribe() (*ReceiveTrack, error) {
-	return nil, nil
-}
-
-func (p *Peer) OnAnnouncement(callback func()) {
-}
-
 func (p *Peer) handleObjectMessage(msg *ObjectMessage) error {
 	t, ok := p.receiveTracks[msg.TrackID]
 	if !ok {
 		// handle unknown track?
+		panic("TODO")
 	}
 	t.push(msg)
 	return nil
 }
 
-func (p *Peer) handleSubscribeRequest() error {
+func (p *Peer) handleSubscribeRequest(msg SubscribeRequestMessage) error {
+	if p.subscribeHandler == nil {
+		panic("TODO")
+	}
+	t := newSendTrack(p.conn)
+	p.sendTracks[msg.FullTrackName] = t
+	p.subscribeHandler(t)
 	return nil
 }
 
-func (p *Peer) handleAnnounceMessage() error {
+func (p *Peer) handleAnnounceMessage(msg AnnounceMessage) error {
+	if p.announcementHandler == nil {
+		panic("TODO")
+	}
+	p.announcementHandler()
 	return nil
+}
+
+type ctrlMessage struct {
+	keyedMessage
+	responseCh chan Message
+}
+
+func (m *ctrlMessage) handle(msg Message) {
+	m.responseCh <- msg
+}
+
+func (p *Peer) Announce(namespace string) error {
+	am := &AnnounceMessage{
+		TrackNamespace:  namespace,
+		TrackParameters: map[parameterKey]Parameter{},
+	}
+	responseCh := make(chan Message)
+	select {
+	case p.ctrlMessageCh <- &ctrlMessage{
+		keyedMessage: am,
+		responseCh:   responseCh,
+	}:
+	case <-p.closeCh:
+		return errClosed
+	}
+	var resp Message
+	select {
+	case resp = <-responseCh:
+	case <-time.After(time.Second): // TODO: Make timeout configurable?
+		panic("TODO: timeout error")
+	case <-p.closeCh:
+		return errClosed
+	}
+	switch v := resp.(type) {
+	case *AnnounceOkMessage:
+		if v.TrackNamespace != am.TrackNamespace {
+			panic("TODO")
+		}
+	case *AnnounceErrorMessage:
+		return errors.New(v.ReasonPhrase) // TODO: Wrap error string?
+	default:
+		return errUnexpectedMessage
+	}
+	return nil
+}
+
+func (p *Peer) Subscribe(namespace string) (*ReceiveTrack, error) {
+	sm := &SubscribeRequestMessage{
+		FullTrackName:          namespace,
+		TrackRequestParameters: map[parameterKey]Parameter{},
+	}
+	responseCh := make(chan Message)
+	select {
+	case p.ctrlMessageCh <- &ctrlMessage{
+		keyedMessage: sm,
+		responseCh:   responseCh,
+	}:
+	case <-p.closeCh:
+		return nil, errClosed
+	case <-time.After(time.Second):
+		panic("TODO: timeout error")
+	}
+	var resp Message
+	select {
+	case resp = <-responseCh:
+	case <-time.After(time.Second): // TODO: Make timeout configurable?
+		panic("TODO: timeout error")
+	case <-p.closeCh:
+		return nil, errClosed
+	}
+	switch v := resp.(type) {
+	case *SubscribeOkMessage:
+		if v.FullTrackName != sm.FullTrackName {
+			panic("TODO")
+		}
+		t := newReceiveTrack()
+		p.receiveTracks[v.TrackID] = t
+		return t, nil
+
+	case *SubscribeErrorMessage:
+		return nil, errors.New(v.ReasonPhrase)
+	}
+	return nil, errUnexpectedMessage
+}
+
+func (p *Peer) OnAnnouncement(callback func()) {
+	p.announcementHandler = callback
 }

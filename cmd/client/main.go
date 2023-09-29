@@ -12,5 +12,10 @@ func main() {
 	if err := c.Connect(context.TODO(), "127.0.0.1:1909"); err != nil {
 		log.Fatal(err)
 	}
+	c.Subscribe()
+	c.Announce()
+	for {
+		c.Write(buffer)
+	}
 	select {}
 }

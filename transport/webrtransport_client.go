@@ -11,8 +11,20 @@ type WebTransportConn struct {
 	conn *webtransport.Session
 }
 
+func (c *WebTransportConn) OpenStream() (Stream, error) {
+	return c.conn.OpenStream()
+}
+
 func (c *WebTransportConn) OpenStreamSync(ctx context.Context) (Stream, error) {
 	return c.conn.OpenStreamSync(ctx)
+}
+
+func (c *WebTransportConn) OpenUniStream() (SendStream, error) {
+	return c.conn.OpenUniStream()
+}
+
+func (c *WebTransportConn) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
+	return c.conn.OpenUniStreamSync(ctx)
 }
 
 func (c *WebTransportConn) AcceptStream(ctx context.Context) (Stream, error) {

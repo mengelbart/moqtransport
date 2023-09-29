@@ -3,7 +3,6 @@ package transport
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"log"
 	"time"
 
@@ -197,7 +196,7 @@ func parseObjectMessage(r MessageReader, length int) (*ObjectMessage, error) {
 	}
 	if length == 0 {
 		var objectPayload []byte
-		objectPayload, err = ioutil.ReadAll(r)
+		objectPayload, err = io.ReadAll(r)
 		return &ObjectMessage{
 			TrackID:         trackID,
 			GroupSequence:   groupSequence,
@@ -342,6 +341,13 @@ func (m SubscribeRequestMessage) String() string {
 	return "SubscribeRequestMessage"
 }
 
+func (m SubscribeRequestMessage) key() messageKey {
+	return messageKey{
+		mt: SubscribeRequestMessageType,
+		id: m.FullTrackName,
+	}
+}
+
 func (m *SubscribeRequestMessage) Append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(SubscribeRequestMessageType))
 	buf = varint.Append(buf,
@@ -384,6 +390,13 @@ type SubscribeOkMessage struct {
 
 func (m SubscribeOkMessage) String() string {
 	return "SubscribeOkMessage"
+}
+
+func (m SubscribeOkMessage) key() messageKey {
+	return messageKey{
+		mt: SubscribeRequestMessageType,
+		id: m.FullTrackName,
+	}
 }
 
 func (m *SubscribeOkMessage) Append(buf []byte) []byte {
@@ -438,6 +451,13 @@ func (m SubscribeErrorMessage) String() string {
 	return "SubscribeErrorMessage"
 }
 
+func (m SubscribeErrorMessage) key() messageKey {
+	return messageKey{
+		mt: SubscribeRequestMessageType,
+		id: m.FullTrackName,
+	}
+}
+
 func (m *SubscribeErrorMessage) Append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(SubscribeErrorMessageType))
 	buf = varint.Append(buf,
@@ -486,6 +506,13 @@ func (m AnnounceMessage) String() string {
 	return "AnnounceMessage"
 }
 
+func (m AnnounceMessage) key() messageKey {
+	return messageKey{
+		mt: AnnounceMessageType,
+		id: m.TrackNamespace,
+	}
+}
+
 func (m *AnnounceMessage) Append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(AnnounceMessageType))
 	buf = varint.Append(buf,
@@ -529,6 +556,13 @@ func (m AnnounceOkMessage) String() string {
 	return "AnnounceOkMessage"
 }
 
+func (m AnnounceOkMessage) key() messageKey {
+	return messageKey{
+		mt: AnnounceMessageType,
+		id: m.TrackNamespace,
+	}
+}
+
 func (m *AnnounceOkMessage) Append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(AnnounceOkMessageType))
 	buf = varint.Append(buf, uint64(len(m.TrackNamespace)))
@@ -550,7 +584,7 @@ func parseAnnounceOkMessage(r MessageReader, length int) (*AnnounceOkMessage, er
 			TrackNamespace: string(buf),
 		}, err
 	}
-	name, err := ioutil.ReadAll(r)
+	name, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
@@ -560,23 +594,30 @@ func parseAnnounceOkMessage(r MessageReader, length int) (*AnnounceOkMessage, er
 }
 
 type AnnounceErrorMessage struct {
-	TrackNamspace string
-	ErrorCode     uint64
-	ReasonPhrase  string
+	TrackNamespace string
+	ErrorCode      uint64
+	ReasonPhrase   string
 }
 
 func (m AnnounceErrorMessage) String() string {
 	return "AnnounceErrorMessage"
 }
 
+func (m AnnounceErrorMessage) key() messageKey {
+	return messageKey{
+		mt: AnnounceMessageType,
+		id: m.TrackNamespace,
+	}
+}
+
 func (m *AnnounceErrorMessage) Append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(AnnounceErrorMessageType))
 	buf = varint.Append(buf,
-		varIntStringLen(m.TrackNamspace)+
+		varIntStringLen(m.TrackNamespace)+
 			uint64(varint.Len(m.ErrorCode))+
 			varIntStringLen(m.ReasonPhrase),
 	)
-	buf = appendVarIntString(buf, m.TrackNamspace)
+	buf = appendVarIntString(buf, m.TrackNamespace)
 	buf = varint.Append(buf, m.ErrorCode)
 	buf = appendVarIntString(buf, m.ReasonPhrase)
 	return buf
@@ -602,9 +643,9 @@ func parseAnnounceErrorMessage(r MessageReader, length int) (*AnnounceErrorMessa
 		return nil, errInvalidMessageEncoding
 	}
 	return &AnnounceErrorMessage{
-		TrackNamspace: trackNamspace,
-		ErrorCode:     errorCode,
-		ReasonPhrase:  reasonPhrase,
+		TrackNamespace: trackNamspace,
+		ErrorCode:      errorCode,
+		ReasonPhrase:   reasonPhrase,
 	}, err
 }
 
