@@ -42,23 +42,20 @@ func (c *WebTransportConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
 type WebTransportClient struct {
 }
 
-func NewWebTransportClient() *WebTransportClient {
-	return &WebTransportClient{}
+func NewWebTransportClient(ctx context.Context, addr string) (*Peer, error) {
+	wc := &WebTransportClient{}
+	return wc.connect(ctx, addr)
 }
-func (c *WebTransportClient) Connect(ctx context.Context, addr string) error {
+func (c *WebTransportClient) connect(ctx context.Context, addr string) (*Peer, error) {
 	var d webtransport.Dialer
 	rsp, conn, err := d.Dial(context.TODO(), "https://example.com/webtransport", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// TODO: Handle rsp?
 	log.Println(rsp)
 	wc := &WebTransportConn{
 		conn: conn,
 	}
-	_, err = NewClientPeer(ctx, wc)
-	if err != nil {
-		return err
-	}
-	return nil
+	return NewClientPeer(ctx, wc)
 }

@@ -12,11 +12,20 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+type PeerHandler interface {
+	Handle(*Peer)
+}
+
 type QUICServer struct {
+	ph PeerHandler
 }
 
 func NewQUICServer() *QUICServer {
 	return &QUICServer{}
+}
+
+func (s *QUICServer) Handle(ph PeerHandler) {
+	s.ph = ph
 }
 
 func (s *QUICServer) Listen(ctx context.Context) error {
@@ -32,9 +41,14 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 		qc := &QUICConn{
 			conn: conn,
 		}
-		_, err = NewServerPeer(ctx, qc)
+		peer, err := NewServerPeer(ctx, qc)
 		if err != nil {
 			return err
+		}
+		// TODO: This should probably be a map keyed by the MoQ-URI the request
+		// is targeting
+		if s.ph != nil {
+			s.ph.Handle(peer)
 		}
 		// TODO: Manage all peers for things like rooms?
 	}

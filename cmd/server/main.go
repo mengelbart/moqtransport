@@ -9,6 +9,7 @@ import (
 
 func main() {
 	s := transport.NewQUICServer()
+	s.Handle(nil)
 	if err := s.Listen(context.TODO()); err != nil {
 		log.Fatal(err)
 	}

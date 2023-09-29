@@ -42,25 +42,22 @@ func (c *QUICConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
 type QUICClient struct {
 }
 
-func NewQUICClient() *QUICClient {
-	return &QUICClient{}
+func NewQUICClient(ctx context.Context, addr string) (*Peer, error) {
+	qc := &QUICClient{}
+	return qc.connect(ctx, addr)
 }
 
-func (c *QUICClient) Connect(ctx context.Context, addr string) error {
+func (c *QUICClient) connect(ctx context.Context, addr string) (*Peer, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
 	}
 	conn, err := quic.DialAddr(context.TODO(), addr, tlsConf, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	qc := &QUICConn{
 		conn: conn,
 	}
-	_, err = NewClientPeer(ctx, qc)
-	if err != nil {
-		return err
-	}
-	return nil
+	return NewClientPeer(ctx, qc)
 }

@@ -8,14 +8,24 @@ import (
 )
 
 func main() {
-	c := transport.NewQUICClient()
-	if err := c.Connect(context.TODO(), "127.0.0.1:1909"); err != nil {
+}
+
+func runQUIC() {
+	c, err := transport.NewQUICClient(context.TODO(), "127.0.0.1:1909")
+	if err != nil {
 		log.Fatal(err)
 	}
-	c.Subscribe()
-	c.Announce()
-	for {
-		c.Write(buffer)
+	c.Subscribe("")
+	c.Announce("")
+	select {}
+}
+
+func runWT() {
+	c, err := transport.NewWebTransportClient(context.TODO(), "127.0.0.1:1909")
+	if err != nil {
+		log.Fatal(err)
 	}
+	c.Subscribe("")
+	c.Announce("")
 	select {}
 }
