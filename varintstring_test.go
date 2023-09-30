@@ -74,7 +74,7 @@ func TestVarIntStringLen(t *testing.T) {
 
 func TestParseVarIntString(t *testing.T) {
 	cases := []struct {
-		r      MessageReader
+		r      messageReader
 		expect string
 		len    int
 		err    error

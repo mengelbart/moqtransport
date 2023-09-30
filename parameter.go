@@ -24,13 +24,13 @@ const (
 	ingestionDeliveryRole
 )
 
-type Parameter interface {
-	Key() parameterKey
-	Append([]byte) []byte
-	Len() uint64
+type parameter interface {
+	key() parameterKey
+	append([]byte) []byte
+	length() uint64
 }
 
-func parseParameter(r MessageReader) (Parameter, int, error) {
+func parseParameter(r messageReader) (parameter, int, error) {
 	key, n, err := varint.ReadWithLen(r)
 	if err != nil {
 		return nil, 0, err
@@ -52,7 +52,7 @@ func parseParameter(r MessageReader) (Parameter, int, error) {
 	return nil, 0, errUnknownParameter
 }
 
-func parseRoleParameter(r MessageReader) (roleParameter, int, error) {
+func parseRoleParameter(r messageReader) (roleParameter, int, error) {
 	l, err := varint.Read(r)
 	if err != nil {
 		return 0, 0, err
@@ -67,7 +67,7 @@ func parseRoleParameter(r MessageReader) (roleParameter, int, error) {
 	return roleParameter(b), 2, nil
 }
 
-func parsePathParameter(r MessageReader) (pathParameter, int, error) {
+func parsePathParameter(r messageReader) (pathParameter, int, error) {
 	l, n, err := varint.ReadWithLen(r)
 	if err != nil {
 		return "", 0, err
@@ -89,50 +89,50 @@ func parsePathParameter(r MessageReader) (pathParameter, int, error) {
 // setup messages.
 type roleParameter byte
 
-func (r roleParameter) Key() parameterKey {
+func (r roleParameter) key() parameterKey {
 	return roleParameterKey
 }
 
-func (r roleParameter) Len() uint64 {
+func (r roleParameter) length() uint64 {
 	return 1
 }
 
-func (p roleParameter) Append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(p.Key()))
-	buf = varint.Append(buf, p.Len())
+func (p roleParameter) append(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(p.key()))
+	buf = varint.Append(buf, p.length())
 	return append(buf, byte(p))
 }
 
 type pathParameter string
 
-func (p pathParameter) Key() parameterKey {
+func (p pathParameter) key() parameterKey {
 	return pathParameterKey
 }
 
-func (p pathParameter) Len() uint64 {
+func (p pathParameter) length() uint64 {
 	return uint64(len(p))
 }
 
-func (p pathParameter) Append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(p.Key()))
-	buf = varint.Append(buf, p.Len())
+func (p pathParameter) append(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(p.key()))
+	buf = varint.Append(buf, p.length())
 	return append(buf, p...)
 }
 
-type Parameters map[parameterKey]Parameter
+type parameters map[parameterKey]parameter
 
-func (p Parameters) Len() uint64 {
+func (p parameters) length() uint64 {
 	l := uint64(0)
 	for _, x := range p {
-		keyLen := varint.Len(uint64(x.Key()))
-		lenLen := varint.Len(x.Len())
-		l = l + keyLen + lenLen + x.Len()
+		keyLen := varint.Len(uint64(x.key()))
+		lenLen := varint.Len(x.length())
+		l = l + keyLen + lenLen + x.length()
 	}
 	return l
 }
 
-func parseParameters(r MessageReader, length int) (Parameters, error) {
-	ps := Parameters{}
+func parseParameters(r messageReader, length int) (parameters, error) {
+	ps := parameters{}
 	i := 0
 	for i < length {
 		p, n, err := parseParameter(r)
@@ -140,10 +140,10 @@ func parseParameters(r MessageReader, length int) (Parameters, error) {
 			return nil, err
 		}
 		i += n
-		ps[p.Key()] = p
+		ps[p.key()] = p
 	}
 	if i > length {
-		return Parameters{}, errInvalidMessageEncoding
+		return parameters{}, errInvalidMessageEncoding
 	}
 	return ps, nil
 }

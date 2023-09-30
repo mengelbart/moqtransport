@@ -16,11 +16,11 @@ const (
 )
 
 type SendTrack struct {
-	conn Connection
+	conn connection
 	mode sendMode
 }
 
-func newSendTrack(conn Connection) *SendTrack {
+func newSendTrack(conn connection) *SendTrack {
 	return &SendTrack{
 		conn: conn,
 	}

@@ -24,8 +24,8 @@ func (c *QUICClient) connect(ctx context.Context, addr string) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	qc := &QUICConn{
+	qc := &quicConn{
 		conn: conn,
 	}
-	return NewClientPeer(ctx, qc)
+	return newClientPeer(ctx, qc)
 }

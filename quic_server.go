@@ -44,10 +44,10 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		qc := &QUICConn{
+		qc := &quicConn{
 			conn: conn,
 		}
-		peer, err := NewServerPeer(ctx, qc)
+		peer, err := newServerPeer(ctx, qc)
 		if err != nil {
 			return err
 		}

@@ -9,23 +9,23 @@ import (
 
 func TestVersionsLen(t *testing.T) {
 	cases := []struct {
-		versions Versions
+		versions versions
 		expected uint64
 	}{
 		{
-			versions: []Version{},
+			versions: []version{},
 			expected: 0,
 		},
 		{
-			versions: []Version{Version(0)},
+			versions: []version{version(0)},
 			expected: 1,
 		},
 		{
-			versions: []Version{Version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+			versions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
 			expected: 1,
 		},
 		{
-			versions: []Version{Version(1024)},
+			versions: []version{version(1024)},
 			expected: 2,
 		},
 	}

@@ -12,7 +12,7 @@ import (
 
 func TestParameterAppend(t *testing.T) {
 	cases := []struct {
-		p      Parameter
+		p      parameter
 		buf    []byte
 		expect []byte
 	}{
@@ -59,7 +59,7 @@ func TestParameterAppend(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := tc.p.Append(tc.buf)
+			res := tc.p.append(tc.buf)
 			assert.Equal(t, tc.expect, res)
 		})
 	}
@@ -69,7 +69,7 @@ func TestParseParameter(t *testing.T) {
 	cases := []struct {
 		buf     []byte
 		expectN int
-		expect  Parameter
+		expect  parameter
 		err     error
 	}{
 		{
@@ -115,7 +115,7 @@ func TestParseParameter(t *testing.T) {
 
 func TestParameterLen(t *testing.T) {
 	cases := []struct {
-		p      Parameter
+		p      parameter
 		expect uint64
 	}{
 		{
@@ -141,7 +141,7 @@ func TestParameterLen(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := tc.p.Len()
+			res := tc.p.length()
 			assert.Equal(t, tc.expect, res)
 		})
 	}
@@ -149,33 +149,33 @@ func TestParameterLen(t *testing.T) {
 
 func TestParseParameters(t *testing.T) {
 	cases := []struct {
-		r      MessageReader
+		r      messageReader
 		len    int
-		expect Parameters
+		expect parameters
 		err    error
 	}{
 		{
 			r:      bytes.NewReader(nil),
 			len:    0,
-			expect: Parameters{},
+			expect: parameters{},
 			err:    nil,
 		},
 		{
 			r:      bytes.NewReader([]byte{}),
 			len:    0,
-			expect: Parameters{},
+			expect: parameters{},
 			err:    nil,
 		},
 		{
 			r:      bytes.NewReader([]byte{0x01, 0x01, 'A'}),
 			len:    3,
-			expect: Parameters{pathParameterKey: pathParameter("A")},
+			expect: parameters{pathParameterKey: pathParameter("A")},
 			err:    nil,
 		},
 		{
 			r:   bytes.NewReader([]byte{0x00, 0x01, 0x01, 0x01, 0x01, 'A'}),
 			len: 6,
-			expect: Parameters{
+			expect: parameters{
 				roleParameterKey: roleParameter(ingestionRole),
 				pathParameterKey: pathParameter("A"),
 			},
@@ -184,7 +184,7 @@ func TestParseParameters(t *testing.T) {
 		{
 			r:      bytes.NewReader([]byte{0x01, 0x01, 'A', 0x02, 0x02, 0x02, 0x02}),
 			len:    3,
-			expect: Parameters{pathParameterKey: pathParameter("A")},
+			expect: parameters{pathParameterKey: pathParameter("A")},
 			err:    nil,
 		},
 		{

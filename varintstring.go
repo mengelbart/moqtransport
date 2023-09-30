@@ -16,7 +16,7 @@ func varIntStringLen(s string) uint64 {
 	return uint64(varint.Len(uint64(len(s)))) + uint64(len(s))
 }
 
-func parseVarIntString(r MessageReader) (string, int, error) {
+func parseVarIntString(r messageReader) (string, int, error) {
 	if r == nil {
 		return "", 0, errInvalidMessageReader
 	}

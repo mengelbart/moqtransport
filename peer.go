@@ -22,26 +22,26 @@ var (
 // interfaces need to add CancelRead and CancelWrite for STOP_SENDING and
 // RESET_STREAM purposes. The interface should allow implementations for quic
 // and webtransport.
-type Stream interface {
-	ReadStream
-	SendStream
+type stream interface {
+	readStream
+	sendStream
 }
 
-type ReadStream interface {
+type readStream interface {
 	io.Reader
 }
 
-type SendStream interface {
+type sendStream interface {
 	io.WriteCloser
 }
 
-type Connection interface {
-	OpenStream() (Stream, error)
-	OpenStreamSync(context.Context) (Stream, error)
-	OpenUniStream() (SendStream, error)
-	OpenUniStreamSync(context.Context) (SendStream, error)
-	AcceptStream(context.Context) (Stream, error)
-	AcceptUniStream(context.Context) (ReadStream, error)
+type connection interface {
+	OpenStream() (stream, error)
+	OpenStreamSync(context.Context) (stream, error)
+	OpenUniStream() (sendStream, error)
+	OpenUniStreamSync(context.Context) (sendStream, error)
+	AcceptStream(context.Context) (stream, error)
+	AcceptUniStream(context.Context) (readStream, error)
 	ReceiveMessage(context.Context) ([]byte, error)
 }
 
@@ -50,10 +50,10 @@ type SubscriptionHandler func(*SendTrack) (uint64, time.Duration, error)
 type AnnouncementHandler func(string) error
 
 type Peer struct {
-	conn                Connection
-	inMsgCh             chan Message
-	ctrlMessageCh       chan Message
-	ctrlStream          Stream
+	conn                connection
+	inMsgCh             chan message
+	ctrlMessageCh       chan message
+	ctrlStream          stream
 	role                role
 	receiveTracks       map[uint64]*ReceiveTrack
 	sendTracks          map[string]*SendTrack
@@ -62,16 +62,16 @@ type Peer struct {
 	closeCh             chan struct{}
 }
 
-func NewServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
-	stream, err := conn.AcceptStream(ctx)
+func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
+	s, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
 	}
-	m, err := ReadNext(varint.NewReader(stream), serverRole)
+	m, err := readNext(varint.NewReader(s), serverRole)
 	if err != nil {
 		return nil, err
 	}
-	msg, ok := m.(*ClientSetupMessage)
+	msg, ok := m.(*clientSetupMessage)
 	if !ok {
 		return nil, errUnexpectedMessage
 	}
@@ -88,20 +88,20 @@ func NewServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, nil
 	}
 	// TODO: save role parameter
-	ssm := ServerSetupMessage{
+	ssm := serverSetupMessage{
 		SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-		SetupParameters: map[parameterKey]Parameter{},
+		SetupParameters: map[parameterKey]parameter{},
 	}
-	buf := ssm.Append(make([]byte, 0, 1500))
-	_, err = stream.Write(buf)
+	buf := ssm.append(make([]byte, 0, 1500))
+	_, err = s.Write(buf)
 	if err != nil {
 		return nil, err
 	}
 	p := &Peer{
 		conn:                conn,
-		inMsgCh:             make(chan Message),
-		ctrlMessageCh:       make(chan Message),
-		ctrlStream:          stream,
+		inMsgCh:             make(chan message),
+		ctrlMessageCh:       make(chan message),
+		ctrlStream:          s,
 		role:                serverRole,
 		receiveTracks:       map[uint64]*ReceiveTrack{},
 		sendTracks:          map[string]*SendTrack{},
@@ -120,27 +120,27 @@ func (p *Peer) runServerPeer(ctx context.Context) {
 	go p.acceptDatagrams(ctx)
 }
 
-func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
-	stream, err := conn.OpenStreamSync(ctx)
+func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
+	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
 	}
-	csm := ClientSetupMessage{
-		SupportedVersions: []Version{Version(DRAFT_IETF_MOQ_TRANSPORT_00)},
-		SetupParameters: map[parameterKey]Parameter{
+	csm := clientSetupMessage{
+		SupportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+		SetupParameters: map[parameterKey]parameter{
 			roleParameterKey: ingestionDeliveryRole,
 		},
 	}
-	buf := csm.Append(make([]byte, 0, 1500))
-	_, err = stream.Write(buf)
+	buf := csm.append(make([]byte, 0, 1500))
+	_, err = s.Write(buf)
 	if err != nil {
 		return nil, err
 	}
 	p := &Peer{
 		conn:                conn,
-		inMsgCh:             make(chan Message),
-		ctrlMessageCh:       make(chan Message),
-		ctrlStream:          stream,
+		inMsgCh:             make(chan message),
+		ctrlMessageCh:       make(chan message),
+		ctrlStream:          s,
 		role:                clientRole,
 		receiveTracks:       map[uint64]*ReceiveTrack{},
 		sendTracks:          map[string]*SendTrack{},
@@ -148,16 +148,16 @@ func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		announcementHandler: nil,
 		closeCh:             make(chan struct{}),
 	}
-	m, err := ReadNext(varint.NewReader(stream), clientRole)
+	m, err := readNext(varint.NewReader(s), clientRole)
 	if err != nil {
 		return nil, err
 	}
-	_, ok := m.(*ServerSetupMessage)
+	_, ok := m.(*serverSetupMessage)
 	if !ok {
 		return nil, errUnexpectedMessage
 	}
 
-	go p.controlStreamLoop(ctx, stream)
+	go p.controlStreamLoop(ctx, s)
 	go p.acceptBidirectionalStreams(ctx)
 	go p.acceptUnidirectionalStreams(ctx)
 	// TODO: Configure if datagrams enabled?
@@ -165,17 +165,17 @@ func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
 	return p, nil
 }
 
-func (p *Peer) readMessages(r MessageReader, stream io.Reader) {
+func (p *Peer) readMessages(r messageReader, stream io.Reader) {
 	for {
 		log.Println("reading message")
-		msg, err := ReadNext(r, p.role)
+		msg, err := readNext(r, p.role)
 		if err != nil {
 			// TODO: Handle/log error?
 			log.Println(err)
 			return
 		}
 		log.Printf("read message: %v\n", msg)
-		object, ok := msg.(*ObjectMessage)
+		object, ok := msg.(*objectMessage)
 		if !ok {
 			// TODO: ERROR: We only expect object messages here. All other
 			// messages should be sent on the control stream.
@@ -185,7 +185,7 @@ func (p *Peer) readMessages(r MessageReader, stream io.Reader) {
 }
 
 type messageKey struct {
-	mt MessageType
+	mt messageType
 	id string
 }
 
@@ -194,12 +194,12 @@ type keyer interface {
 }
 
 type keyedMessage interface {
-	Message
+	message
 	keyer
 }
 
 type responseHandler interface {
-	handle(Message)
+	handle(message)
 }
 
 type keyedResponseHandler interface {
@@ -207,14 +207,14 @@ type keyedResponseHandler interface {
 	responseHandler
 }
 
-func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
-	inCh := make(chan Message)
+func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
+	inCh := make(chan message)
 	errCh := make(chan error)
 	transactions := make(map[messageKey]keyedMessage)
 
-	go func(s Stream, ch chan<- Message, errCh chan<- error) {
+	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
-			msg, err := ReadNext(varint.NewReader(s), p.role)
+			msg, err := readNext(varint.NewReader(s), p.role)
 			if err != nil {
 				errCh <- err
 				return
@@ -226,15 +226,15 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 		select {
 		case m := <-inCh:
 			switch v := m.(type) {
-			case *SubscribeRequestMessage:
+			case *subscribeRequestMessage:
 				go func() {
 					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
 				}()
-			case *AnnounceMessage:
+			case *announceMessage:
 				go func() {
 					p.ctrlMessageCh <- p.handleAnnounceMessage(v)
 				}()
-			case *GoAwayMessage:
+			case *goAwayMessage:
 				panic("TODO")
 			case keyedMessage:
 				log.Printf("got keyed message")
@@ -266,7 +266,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 				transactions[krh.key()] = krh
 			}
 			buf := make([]byte, 0, 1500)
-			buf = m.Append(buf)
+			buf = m.append(buf)
 			_, err := s.Write(buf)
 			if err != nil {
 				// TODO
@@ -282,14 +282,14 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 
 func (p *Peer) acceptBidirectionalStreams(ctx context.Context) {
 	for {
-		stream, err := p.conn.AcceptStream(ctx)
+		s, err := p.conn.AcceptStream(ctx)
 		if err != nil {
 			// TODO: Handle/log error?
 			log.Println(err)
 			return
 		}
 		log.Println("got new bidirectional stream")
-		go p.readMessages(varint.NewReader(stream), stream)
+		go p.readMessages(varint.NewReader(s), s)
 	}
 }
 
@@ -319,7 +319,7 @@ func (p *Peer) acceptDatagrams(ctx context.Context) {
 	}
 }
 
-func (p *Peer) handleObjectMessage(msg *ObjectMessage) error {
+func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 	t, ok := p.receiveTracks[msg.TrackID]
 	if !ok {
 		// handle unknown track?
@@ -329,7 +329,7 @@ func (p *Peer) handleObjectMessage(msg *ObjectMessage) error {
 	return nil
 }
 
-func (p *Peer) handleSubscribeRequest(msg *SubscribeRequestMessage) Message {
+func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
@@ -337,41 +337,41 @@ func (p *Peer) handleSubscribeRequest(msg *SubscribeRequestMessage) Message {
 	p.sendTracks[msg.FullTrackName] = t
 	id, expires, err := p.subscribeHandler(t)
 	if err != nil {
-		return &SubscribeErrorMessage{
+		return &subscribeErrorMessage{
 			FullTrackName: msg.FullTrackName,
 			ErrorCode:     0,
 			ReasonPhrase:  "failed to handle subscription",
 		}
 	}
-	return &SubscribeOkMessage{
+	return &subscribeOkMessage{
 		FullTrackName: msg.FullTrackName,
 		TrackID:       id,
 		Expires:       expires,
 	}
 }
 
-func (p *Peer) handleAnnounceMessage(msg *AnnounceMessage) Message {
+func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
 	if err := p.announcementHandler(msg.TrackNamespace); err != nil {
-		return &AnnounceErrorMessage{
+		return &announceErrorMessage{
 			TrackNamespace: msg.TrackNamespace,
 			ErrorCode:      0,
 			ReasonPhrase:   "failed to handle announcement",
 		}
 	}
-	return &AnnounceOkMessage{
+	return &announceOkMessage{
 		TrackNamespace: msg.TrackNamespace,
 	}
 }
 
 type ctrlMessage struct {
 	keyedMessage
-	responseCh chan Message
+	responseCh chan message
 }
 
-func (m *ctrlMessage) handle(msg Message) {
+func (m *ctrlMessage) handle(msg message) {
 	m.responseCh <- msg
 }
 
@@ -379,11 +379,11 @@ func (p *Peer) Announce(namespace string) error {
 	if len(namespace) == 0 {
 		return errInvalidTrackNamespace
 	}
-	am := &AnnounceMessage{
+	am := &announceMessage{
 		TrackNamespace:  namespace,
-		TrackParameters: map[parameterKey]Parameter{},
+		TrackParameters: map[parameterKey]parameter{},
 	}
-	responseCh := make(chan Message)
+	responseCh := make(chan message)
 	select {
 	case p.ctrlMessageCh <- &ctrlMessage{
 		keyedMessage: am,
@@ -392,7 +392,7 @@ func (p *Peer) Announce(namespace string) error {
 	case <-p.closeCh:
 		return errClosed
 	}
-	var resp Message
+	var resp message
 	select {
 	case resp = <-responseCh:
 	case <-time.After(time.Second): // TODO: Make timeout configurable?
@@ -401,11 +401,11 @@ func (p *Peer) Announce(namespace string) error {
 		return errClosed
 	}
 	switch v := resp.(type) {
-	case *AnnounceOkMessage:
+	case *announceOkMessage:
 		if v.TrackNamespace != am.TrackNamespace {
 			panic("TODO")
 		}
-	case *AnnounceErrorMessage:
+	case *announceErrorMessage:
 		return errors.New(v.ReasonPhrase) // TODO: Wrap error string?
 	default:
 		return errUnexpectedMessage
@@ -414,11 +414,11 @@ func (p *Peer) Announce(namespace string) error {
 }
 
 func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
-	sm := &SubscribeRequestMessage{
+	sm := &subscribeRequestMessage{
 		FullTrackName:          trackname,
-		TrackRequestParameters: map[parameterKey]Parameter{},
+		TrackRequestParameters: map[parameterKey]parameter{},
 	}
-	responseCh := make(chan Message)
+	responseCh := make(chan message)
 	select {
 	case p.ctrlMessageCh <- &ctrlMessage{
 		keyedMessage: sm,
@@ -429,7 +429,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	case <-time.After(time.Second):
 		panic("TODO: timeout error")
 	}
-	var resp Message
+	var resp message
 	select {
 	case resp = <-responseCh:
 	case <-time.After(time.Second): // TODO: Make timeout configurable?
@@ -438,7 +438,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 		return nil, errClosed
 	}
 	switch v := resp.(type) {
-	case *SubscribeOkMessage:
+	case *subscribeOkMessage:
 		if v.FullTrackName != sm.FullTrackName {
 			panic("TODO")
 		}
@@ -446,7 +446,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 		p.receiveTracks[v.TrackID] = t
 		return t, nil
 
-	case *SubscribeErrorMessage:
+	case *subscribeErrorMessage:
 		return nil, errors.New(v.ReasonPhrase)
 	}
 	return nil, errUnexpectedMessage
