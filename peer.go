@@ -1,4 +1,4 @@
-package transport
+package moqtransport
 
 import (
 	"bytes"
@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	errUnexpectedMessage = errors.New("got unexpected message")
-	errClosed            = errors.New("connection was closed")
+	errUnexpectedMessage     = errors.New("got unexpected message")
+	errInvalidTrackNamespace = errors.New("got invalid tracknamespace")
+	errClosed                = errors.New("connection was closed")
 )
 
 // TODO: Streams must be wrapped properly for quic and webtransport The
@@ -44,15 +45,20 @@ type Connection interface {
 	ReceiveMessage(context.Context) ([]byte, error)
 }
 
+type SubscriptionHandler func(*SendTrack) (uint64, time.Duration, error)
+
+type AnnouncementHandler func(string) error
+
 type Peer struct {
 	conn                Connection
 	inMsgCh             chan Message
-	ctrlMessageCh       chan keyedResponseHandler
+	ctrlMessageCh       chan Message
+	ctrlStream          Stream
 	role                role
 	receiveTracks       map[uint64]*ReceiveTrack
 	sendTracks          map[string]*SendTrack
-	subscribeHandler    func(*SendTrack)
-	announcementHandler func()
+	subscribeHandler    SubscriptionHandler
+	announcementHandler AnnouncementHandler
 	closeCh             chan struct{}
 }
 
@@ -92,17 +98,26 @@ func NewServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, err
 	}
 	p := &Peer{
-		conn:          conn,
-		inMsgCh:       make(chan Message),
-		ctrlMessageCh: make(chan keyedResponseHandler),
-		role:          serverRole,
+		conn:                conn,
+		inMsgCh:             make(chan Message),
+		ctrlMessageCh:       make(chan Message),
+		ctrlStream:          stream,
+		role:                serverRole,
+		receiveTracks:       map[uint64]*ReceiveTrack{},
+		sendTracks:          map[string]*SendTrack{},
+		subscribeHandler:    nil,
+		announcementHandler: nil,
+		closeCh:             make(chan struct{}),
 	}
-	go p.controlStreamLoop(ctx, stream)
+	return p, nil
+}
+
+func (p *Peer) runServerPeer(ctx context.Context) {
+	go p.controlStreamLoop(ctx, p.ctrlStream)
 	go p.acceptBidirectionalStreams(ctx)
 	go p.acceptUnidirectionalStreams(ctx)
 	// TODO: Configure if datagrams enabled?
 	go p.acceptDatagrams(ctx)
-	return p, nil
 }
 
 func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
@@ -122,10 +137,16 @@ func NewClientPeer(ctx context.Context, conn Connection) (*Peer, error) {
 		return nil, err
 	}
 	p := &Peer{
-		conn:          conn,
-		inMsgCh:       make(chan Message),
-		ctrlMessageCh: make(chan keyedResponseHandler),
-		role:          clientRole,
+		conn:                conn,
+		inMsgCh:             make(chan Message),
+		ctrlMessageCh:       make(chan Message),
+		ctrlStream:          stream,
+		role:                clientRole,
+		receiveTracks:       map[uint64]*ReceiveTrack{},
+		sendTracks:          map[string]*SendTrack{},
+		subscribeHandler:    nil,
+		announcementHandler: nil,
+		closeCh:             make(chan struct{}),
 	}
 	m, err := ReadNext(varint.NewReader(stream), clientRole)
 	if err != nil {
@@ -201,23 +222,22 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 			ch <- msg
 		}
 	}(s, inCh, errCh)
-	// control stream interactions are tricky.
-	// We need to:
-	// 1. Make sure we always accept any control message (the peer might want to
-	// start a transaction)
-	// 2. Send out messages passed to us on the outMsgCh
-	// 3. Wait for responses to messages we sent and match them to the correct
-	// oneoutMsgCh
-	// 4. (Maybe optional?) Be able to send out multiple messages without doing
-	// lock-steps?
-	// How can we map a message to the corresponding transaction?
 	for {
 		select {
 		case m := <-inCh:
 			switch v := m.(type) {
-			case *SubscribeRequestMessage, *AnnounceMessage, *GoAwayMessage:
-				// TODO: Handle
+			case *SubscribeRequestMessage:
+				go func() {
+					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
+				}()
+			case *AnnounceMessage:
+				go func() {
+					p.ctrlMessageCh <- p.handleAnnounceMessage(v)
+				}()
+			case *GoAwayMessage:
+				panic("TODO")
 			case keyedMessage:
+				log.Printf("got keyed message")
 				t, ok := transactions[v.key()]
 				if !ok {
 					// TODO: Error: This an error, because all keyed messages
@@ -235,13 +255,16 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s Stream) {
 					// response
 					panic("TODO")
 				}
-				rh.handle(t)
+				log.Printf("handling %v\n", v)
+				rh.handle(v)
 			default:
 				// error unexpected message, close conn?
 				panic("TODO")
 			}
 		case m := <-p.ctrlMessageCh:
-			transactions[m.key()] = m
+			if krh, ok := m.(keyedResponseHandler); ok {
+				transactions[krh.key()] = krh
+			}
 			buf := make([]byte, 0, 1500)
 			buf = m.Append(buf)
 			_, err := s.Write(buf)
@@ -306,22 +329,41 @@ func (p *Peer) handleObjectMessage(msg *ObjectMessage) error {
 	return nil
 }
 
-func (p *Peer) handleSubscribeRequest(msg SubscribeRequestMessage) error {
+func (p *Peer) handleSubscribeRequest(msg *SubscribeRequestMessage) Message {
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
 	p.sendTracks[msg.FullTrackName] = t
-	p.subscribeHandler(t)
-	return nil
+	id, expires, err := p.subscribeHandler(t)
+	if err != nil {
+		return &SubscribeErrorMessage{
+			FullTrackName: msg.FullTrackName,
+			ErrorCode:     0,
+			ReasonPhrase:  "failed to handle subscription",
+		}
+	}
+	return &SubscribeOkMessage{
+		FullTrackName: msg.FullTrackName,
+		TrackID:       id,
+		Expires:       expires,
+	}
 }
 
-func (p *Peer) handleAnnounceMessage(msg AnnounceMessage) error {
+func (p *Peer) handleAnnounceMessage(msg *AnnounceMessage) Message {
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
-	p.announcementHandler()
-	return nil
+	if err := p.announcementHandler(msg.TrackNamespace); err != nil {
+		return &AnnounceErrorMessage{
+			TrackNamespace: msg.TrackNamespace,
+			ErrorCode:      0,
+			ReasonPhrase:   "failed to handle announcement",
+		}
+	}
+	return &AnnounceOkMessage{
+		TrackNamespace: msg.TrackNamespace,
+	}
 }
 
 type ctrlMessage struct {
@@ -334,6 +376,9 @@ func (m *ctrlMessage) handle(msg Message) {
 }
 
 func (p *Peer) Announce(namespace string) error {
+	if len(namespace) == 0 {
+		return errInvalidTrackNamespace
+	}
 	am := &AnnounceMessage{
 		TrackNamespace:  namespace,
 		TrackParameters: map[parameterKey]Parameter{},
@@ -368,9 +413,9 @@ func (p *Peer) Announce(namespace string) error {
 	return nil
 }
 
-func (p *Peer) Subscribe(namespace string) (*ReceiveTrack, error) {
+func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	sm := &SubscribeRequestMessage{
-		FullTrackName:          namespace,
+		FullTrackName:          trackname,
 		TrackRequestParameters: map[parameterKey]Parameter{},
 	}
 	responseCh := make(chan Message)
@@ -407,6 +452,10 @@ func (p *Peer) Subscribe(namespace string) (*ReceiveTrack, error) {
 	return nil, errUnexpectedMessage
 }
 
-func (p *Peer) OnAnnouncement(callback func()) {
+func (p *Peer) OnAnnouncement(callback AnnouncementHandler) {
 	p.announcementHandler = callback
+}
+
+func (p *Peer) OnSubscription(callback SubscriptionHandler) {
+	p.subscribeHandler = callback
 }

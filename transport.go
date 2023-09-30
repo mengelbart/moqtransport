@@ -1,4 +1,4 @@
-package transport
+package moqtransport
 
 const DRAFT_IETF_MOQ_TRANSPORT_00 = 0
 

@@ -1,4 +1,4 @@
-package transport
+package moqtransport
 
 import (
 	"errors"
@@ -98,7 +98,7 @@ func ReadNext(reader MessageReader, r role) (Message, error) {
 		return nil, err
 	}
 	length := int(l)
-	log.Printf("parsing message of type: %v\n", MessageType(mt))
+	log.Printf("parsing message of type: %v and length: %v\n", MessageType(mt), length)
 
 	switch MessageType(mt) {
 	case ObjectMessageType:
@@ -574,6 +574,7 @@ func parseAnnounceOkMessage(r MessageReader, length int) (*AnnounceOkMessage, er
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
+	log.Printf("parsing announce ok of length %v", length)
 	if length > 0 {
 		buf := make([]byte, length)
 		_, err := io.ReadFull(r, buf)
@@ -588,6 +589,7 @@ func parseAnnounceOkMessage(r MessageReader, length int) (*AnnounceOkMessage, er
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("parsing announce ok done")
 	return &AnnounceOkMessage{
 		TrackNamespace: string(name),
 	}, err

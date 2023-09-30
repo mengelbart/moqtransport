@@ -1,4 +1,4 @@
-package transport
+package moqtransport
 
 import "gitlab.lrz.de/cm/moqtransport/varint"
 

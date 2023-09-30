@@ -1,4 +1,4 @@
-package transport
+package moqtransport
 
 import (
 	"context"
@@ -11,6 +11,12 @@ import (
 
 	"github.com/quic-go/quic-go"
 )
+
+type PeerHandlerFunc func(*Peer)
+
+func (h PeerHandlerFunc) Handle(p *Peer) {
+	h(p)
+}
 
 type PeerHandler interface {
 	Handle(*Peer)
@@ -50,6 +56,7 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 		if s.ph != nil {
 			s.ph.Handle(peer)
 		}
+		go peer.runServerPeer(ctx)
 		// TODO: Manage all peers for things like rooms?
 	}
 }
