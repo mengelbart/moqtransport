@@ -3,12 +3,15 @@ package moqtransport
 import "io"
 
 type ReceiveTrack struct {
-	receiveBuffer io.ReadWriter
+	receiveBuffer io.Writer
+	bufferReader  io.Reader
 }
 
 func newReceiveTrack() *ReceiveTrack {
+	r, w := io.Pipe()
 	return &ReceiveTrack{
-		receiveBuffer: nil,
+		receiveBuffer: w,
+		bufferReader:  r,
 	}
 }
 
@@ -21,5 +24,5 @@ func (t *ReceiveTrack) push(msg *objectMessage) error {
 }
 
 func (t *ReceiveTrack) Read(p []byte) (n int, err error) {
-	return 0, nil
+	return t.bufferReader.Read(p)
 }

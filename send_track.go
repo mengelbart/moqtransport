@@ -18,6 +18,7 @@ const (
 type SendTrack struct {
 	conn connection
 	mode sendMode
+	id   uint64
 }
 
 func newSendTrack(conn connection) *SendTrack {
@@ -31,7 +32,16 @@ func (t *SendTrack) writeNewStream(b []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return s.Write(b)
+	om := &objectMessage{
+		TrackID:         t.id,
+		GroupSequence:   0,
+		ObjectSequence:  0,
+		ObjectSendOrder: 0,
+		ObjectPayload:   b,
+	}
+	buf := make([]byte, 0, 64_000)
+	buf = om.append(buf)
+	return s.Write(buf)
 }
 
 func (t *SendTrack) Write(b []byte) (n int, err error) {

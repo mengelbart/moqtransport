@@ -2,8 +2,8 @@ package moqtransport
 
 import (
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"time"
 
 	"gitlab.lrz.de/cm/moqtransport/varint"
@@ -98,7 +98,6 @@ func readNext(reader messageReader, r role) (message, error) {
 		return nil, err
 	}
 	length := int(l)
-	log.Printf("parsing message of type: %v and length: %v\n", messageType(mt), length)
 
 	switch messageType(mt) {
 	case objectMessageType:
@@ -338,7 +337,10 @@ type subscribeRequestMessage struct {
 }
 
 func (m subscribeRequestMessage) String() string {
-	return "SubscribeRequestMessage"
+	out := "SubscribeRequestMessage"
+	out += fmt.Sprintf("\tFullTrackName: %v\n", m.FullTrackName)
+	out += fmt.Sprintf("\tTrackRequestParameters: %v\n", m.TrackRequestParameters)
+	return out
 }
 
 func (m subscribeRequestMessage) key() messageKey {
@@ -389,7 +391,11 @@ type subscribeOkMessage struct {
 }
 
 func (m subscribeOkMessage) String() string {
-	return "SubscribeOkMessage"
+	out := "SubscribeOkMessage"
+	out += fmt.Sprintf("\tFullTrackName: %v\n", m.FullTrackName)
+	out += fmt.Sprintf("\tTrackID: %v\n", m.TrackID)
+	out += fmt.Sprintf("\tExpires: %v\n", m.Expires)
+	return out
 }
 
 func (m subscribeOkMessage) key() messageKey {
@@ -448,7 +454,11 @@ type subscribeErrorMessage struct {
 }
 
 func (m subscribeErrorMessage) String() string {
-	return "SubscribeErrorMessage"
+	out := "SubscribeErrorMessage"
+	out += fmt.Sprintf("\tFullTrackName: %v\n", m.FullTrackName)
+	out += fmt.Sprintf("\tTrackID: %v\n", m.ErrorCode)
+	out += fmt.Sprintf("\tExpires: %v\n", m.ReasonPhrase)
+	return out
 }
 
 func (m subscribeErrorMessage) key() messageKey {
@@ -503,7 +513,10 @@ type announceMessage struct {
 }
 
 func (m announceMessage) String() string {
-	return "AnnounceMessage"
+	out := "AnnounceMessage"
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.TrackNamespace)
+	out += fmt.Sprintf("\tTrackParameters: %v\n", m.TrackParameters)
+	return out
 }
 
 func (m announceMessage) key() messageKey {
@@ -553,7 +566,9 @@ type announceOkMessage struct {
 }
 
 func (m announceOkMessage) String() string {
-	return "AnnounceOkMessage"
+	out := "AnnounceOkMessage"
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.TrackNamespace)
+	return out
 }
 
 func (m announceOkMessage) key() messageKey {
@@ -574,7 +589,6 @@ func parseAnnounceOkMessage(r messageReader, length int) (*announceOkMessage, er
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	log.Printf("parsing announce ok of length %v", length)
 	if length > 0 {
 		buf := make([]byte, length)
 		_, err := io.ReadFull(r, buf)
@@ -589,7 +603,6 @@ func parseAnnounceOkMessage(r messageReader, length int) (*announceOkMessage, er
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("parsing announce ok done")
 	return &announceOkMessage{
 		TrackNamespace: string(name),
 	}, err
@@ -602,7 +615,11 @@ type announceErrorMessage struct {
 }
 
 func (m announceErrorMessage) String() string {
-	return "AnnounceErrorMessage"
+	out := "AnnounceErrorMessage"
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.TrackNamespace)
+	out += fmt.Sprintf("\tErrorCdoe: %v\n", m.ErrorCode)
+	out += fmt.Sprintf("\tReasonPhrase: %v\n", m.ReasonPhrase)
+	return out
 }
 
 func (m announceErrorMessage) key() messageKey {

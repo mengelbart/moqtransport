@@ -45,7 +45,7 @@ type connection interface {
 	ReceiveMessage(context.Context) ([]byte, error)
 }
 
-type SubscriptionHandler func(*SendTrack) (uint64, time.Duration, error)
+type SubscriptionHandler func(string, *SendTrack) (uint64, time.Duration, error)
 
 type AnnouncementHandler func(string) error
 
@@ -167,18 +167,17 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 
 func (p *Peer) readMessages(r messageReader, stream io.Reader) {
 	for {
-		log.Println("reading message")
 		msg, err := readNext(r, p.role)
 		if err != nil {
 			// TODO: Handle/log error?
 			log.Println(err)
 			return
 		}
-		log.Printf("read message: %v\n", msg)
 		object, ok := msg.(*objectMessage)
 		if !ok {
 			// TODO: ERROR: We only expect object messages here. All other
 			// messages should be sent on the control stream.
+			panic("unexpected message type")
 		}
 		p.handleObjectMessage(object)
 	}
@@ -225,6 +224,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 	for {
 		select {
 		case m := <-inCh:
+			log.Printf("handling %v\n", m)
 			switch v := m.(type) {
 			case *subscribeRequestMessage:
 				go func() {
@@ -237,7 +237,6 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 			case *goAwayMessage:
 				panic("TODO")
 			case keyedMessage:
-				log.Printf("got keyed message")
 				t, ok := transactions[v.key()]
 				if !ok {
 					// TODO: Error: This an error, because all keyed messages
@@ -255,7 +254,6 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 					// response
 					panic("TODO")
 				}
-				log.Printf("handling %v\n", v)
 				rh.handle(v)
 			default:
 				// error unexpected message, close conn?
@@ -288,7 +286,6 @@ func (p *Peer) acceptBidirectionalStreams(ctx context.Context) {
 			log.Println(err)
 			return
 		}
-		log.Println("got new bidirectional stream")
 		go p.readMessages(varint.NewReader(s), s)
 	}
 }
@@ -301,7 +298,6 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) {
 			log.Println(err)
 			return
 		}
-		log.Println("got new unidirectional stream")
 		go p.readMessages(varint.NewReader(stream), stream)
 	}
 }
@@ -335,14 +331,16 @@ func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
 	}
 	t := newSendTrack(p.conn)
 	p.sendTracks[msg.FullTrackName] = t
-	id, expires, err := p.subscribeHandler(t)
+	id, expires, err := p.subscribeHandler(msg.FullTrackName, t)
 	if err != nil {
+		log.Println(err)
 		return &subscribeErrorMessage{
 			FullTrackName: msg.FullTrackName,
-			ErrorCode:     0,
+			ErrorCode:     GenericErrorCode,
 			ReasonPhrase:  "failed to handle subscription",
 		}
 	}
+	t.id = id
 	return &subscribeOkMessage{
 		FullTrackName: msg.FullTrackName,
 		TrackID:       id,
