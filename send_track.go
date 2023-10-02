@@ -33,11 +33,11 @@ func (t *SendTrack) writeNewStream(b []byte) (int, error) {
 		return 0, err
 	}
 	om := &objectMessage{
-		TrackID:         t.id,
-		GroupSequence:   0,
-		ObjectSequence:  0,
-		ObjectSendOrder: 0,
-		ObjectPayload:   b,
+		trackID:         t.id,
+		groupSequence:   0,
+		objectSequence:  0,
+		objectSendOrder: 0,
+		objectPayload:   b,
 	}
 	buf := make([]byte, 0, 64_000)
 	buf = om.append(buf)

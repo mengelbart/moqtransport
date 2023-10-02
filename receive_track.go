@@ -16,7 +16,7 @@ func newReceiveTrack() *ReceiveTrack {
 }
 
 func (t *ReceiveTrack) push(msg *objectMessage) error {
-	_, err := t.receiveBuffer.Write(msg.ObjectPayload)
+	_, err := t.receiveBuffer.Write(msg.objectPayload)
 	if err != nil {
 		return err
 	}

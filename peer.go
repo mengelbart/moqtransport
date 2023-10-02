@@ -76,12 +76,12 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, errUnexpectedMessage
 	}
 	// TODO: Algorithm to select best matching version
-	if !slices.Contains(msg.SupportedVersions, DRAFT_IETF_MOQ_TRANSPORT_00) {
+	if !slices.Contains(msg.supportedVersions, DRAFT_IETF_MOQ_TRANSPORT_00) {
 		// TODO: Close conn with error
 		log.Println("TODO: Close conn with error")
 		return nil, nil
 	}
-	_, ok = msg.SetupParameters[roleParameterKey]
+	_, ok = msg.setupParameters[roleParameterKey]
 	if !ok {
 		// ERROR: role is required
 		log.Println("TODO: ERROR: role is required")
@@ -89,8 +89,8 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	}
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
-		SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-		SetupParameters: map[parameterKey]parameter{},
+		selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+		setupParameters: map[parameterKey]parameter{},
 	}
 	buf := ssm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
@@ -126,8 +126,8 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, err
 	}
 	csm := clientSetupMessage{
-		SupportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
-		SetupParameters: map[parameterKey]parameter{
+		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+		setupParameters: map[parameterKey]parameter{
 			roleParameterKey: ingestionDeliveryRole,
 		},
 	}
@@ -316,7 +316,7 @@ func (p *Peer) acceptDatagrams(ctx context.Context) {
 }
 
 func (p *Peer) handleObjectMessage(msg *objectMessage) error {
-	t, ok := p.receiveTracks[msg.TrackID]
+	t, ok := p.receiveTracks[msg.trackID]
 	if !ok {
 		// handle unknown track?
 		panic("TODO")
@@ -330,21 +330,21 @@ func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
-	p.sendTracks[msg.FullTrackName] = t
-	id, expires, err := p.subscribeHandler(msg.FullTrackName, t)
+	p.sendTracks[msg.fullTrackName] = t
+	id, expires, err := p.subscribeHandler(msg.fullTrackName, t)
 	if err != nil {
 		log.Println(err)
 		return &subscribeErrorMessage{
-			FullTrackName: msg.FullTrackName,
-			ErrorCode:     GenericErrorCode,
-			ReasonPhrase:  "failed to handle subscription",
+			fullTrackName: msg.fullTrackName,
+			errorCode:     GenericErrorCode,
+			reasonPhrase:  "failed to handle subscription",
 		}
 	}
 	t.id = id
 	return &subscribeOkMessage{
-		FullTrackName: msg.FullTrackName,
-		TrackID:       id,
-		Expires:       expires,
+		fullTrackName: msg.fullTrackName,
+		trackID:       id,
+		expires:       expires,
 	}
 }
 
@@ -352,15 +352,15 @@ func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
-	if err := p.announcementHandler(msg.TrackNamespace); err != nil {
+	if err := p.announcementHandler(msg.trackNamespace); err != nil {
 		return &announceErrorMessage{
-			TrackNamespace: msg.TrackNamespace,
-			ErrorCode:      0,
-			ReasonPhrase:   "failed to handle announcement",
+			trackNamespace: msg.trackNamespace,
+			errorCode:      0,
+			reasonPhrase:   "failed to handle announcement",
 		}
 	}
 	return &announceOkMessage{
-		TrackNamespace: msg.TrackNamespace,
+		trackNamespace: msg.trackNamespace,
 	}
 }
 
@@ -378,8 +378,8 @@ func (p *Peer) Announce(namespace string) error {
 		return errInvalidTrackNamespace
 	}
 	am := &announceMessage{
-		TrackNamespace:  namespace,
-		TrackParameters: map[parameterKey]parameter{},
+		trackNamespace:         namespace,
+		trackRequestParameters: map[parameterKey]parameter{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -400,11 +400,11 @@ func (p *Peer) Announce(namespace string) error {
 	}
 	switch v := resp.(type) {
 	case *announceOkMessage:
-		if v.TrackNamespace != am.TrackNamespace {
+		if v.trackNamespace != am.trackNamespace {
 			panic("TODO")
 		}
 	case *announceErrorMessage:
-		return errors.New(v.ReasonPhrase) // TODO: Wrap error string?
+		return errors.New(v.reasonPhrase) // TODO: Wrap error string?
 	default:
 		return errUnexpectedMessage
 	}
@@ -413,8 +413,8 @@ func (p *Peer) Announce(namespace string) error {
 
 func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	sm := &subscribeRequestMessage{
-		FullTrackName:          trackname,
-		TrackRequestParameters: map[parameterKey]parameter{},
+		fullTrackName:          trackname,
+		trackRequestParameters: map[parameterKey]parameter{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -437,15 +437,15 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		if v.FullTrackName != sm.FullTrackName {
+		if v.fullTrackName != sm.fullTrackName {
 			panic("TODO")
 		}
 		t := newReceiveTrack()
-		p.receiveTracks[v.TrackID] = t
+		p.receiveTracks[v.trackID] = t
 		return t, nil
 
 	case *subscribeErrorMessage:
-		return nil, errors.New(v.ReasonPhrase)
+		return nil, errors.New(v.reasonPhrase)
 	}
 	return nil, errUnexpectedMessage
 }
