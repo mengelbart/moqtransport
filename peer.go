@@ -16,6 +16,8 @@ var (
 	errUnexpectedMessage     = errors.New("got unexpected message")
 	errInvalidTrackNamespace = errors.New("got invalid tracknamespace")
 	errClosed                = errors.New("connection was closed")
+	errUnsupportedVersion    = errors.New("unsupported version")
+	errMissingRoleParameter  = errors.New("missing role parameter")
 )
 
 // TODO: Streams must be wrapped properly for quic and webtransport The
@@ -77,15 +79,11 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	}
 	// TODO: Algorithm to select best matching version
 	if !slices.Contains(msg.supportedVersions, DRAFT_IETF_MOQ_TRANSPORT_00) {
-		// TODO: Close conn with error
-		log.Println("TODO: Close conn with error")
-		return nil, nil
+		return nil, errUnsupportedVersion
 	}
 	_, ok = msg.setupParameters[roleParameterKey]
 	if !ok {
-		// ERROR: role is required
-		log.Println("TODO: ERROR: role is required")
-		return nil, nil
+		return nil, errMissingRoleParameter
 	}
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
@@ -152,9 +150,12 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, ok := m.(*serverSetupMessage)
+	ssm, ok := m.(*serverSetupMessage)
 	if !ok {
 		return nil, errUnexpectedMessage
+	}
+	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
+		return nil, errUnsupportedVersion
 	}
 
 	go p.controlStreamLoop(ctx, s)

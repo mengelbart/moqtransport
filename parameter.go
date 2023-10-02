@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	errUnknownParameter = errors.New("unknown parameter")
+	errUnknownParameter   = errors.New("unknown parameter")
+	errDuplicateParameter = errors.New("duplicated parameter")
 )
 
 type parameterKey uint64
@@ -134,12 +135,17 @@ func (p parameters) length() uint64 {
 func parseParameters(r messageReader, length int) (parameters, error) {
 	ps := parameters{}
 	i := 0
+	set := map[parameterKey]struct{}{}
 	for i < length {
 		p, n, err := parseParameter(r)
 		if err != nil {
 			return nil, err
 		}
 		i += n
+		if _, ok := set[p.key()]; ok {
+			return nil, errDuplicateParameter
+		}
+		set[p.key()] = struct{}{}
 		ps[p.key()] = p
 	}
 	if i > length {

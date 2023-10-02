@@ -3,6 +3,7 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 
 	"github.com/quic-go/quic-go"
 )
@@ -49,5 +50,13 @@ func (c *QUICClient) connect(ctx context.Context, addr string) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	return newClientPeer(ctx, qc)
+	p, err := newClientPeer(ctx, qc)
+	if err != nil {
+		if errors.Is(err, errUnsupportedVersion) {
+			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
+		}
+		conn.CloseWithError(GenericErrorCode, "internal server error")
+		return nil, err
+	}
+	return p, nil
 }

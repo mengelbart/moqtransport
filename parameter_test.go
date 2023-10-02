@@ -199,6 +199,12 @@ func TestParseParameters(t *testing.T) {
 			expect: nil,
 			err:    errUnknownParameter,
 		},
+		{
+			r:      bytes.NewReader([]byte{0x00, 0x01, 0x01, 0x00, 0x01, 'A'}),
+			len:    6,
+			expect: nil,
+			err:    errDuplicateParameter,
+		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {

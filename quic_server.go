@@ -7,6 +7,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"log"
 	"math/big"
 
 	"github.com/quic-go/quic-go"
@@ -71,7 +73,16 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 		}
 		peer, err := newServerPeer(ctx, qc)
 		if err != nil {
-			return err
+			log.Printf("failed to create new server peer: %v", err)
+			switch {
+			case errors.Is(err, errUnsupportedVersion):
+				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+			case errors.Is(err, errMissingRoleParameter):
+				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+			default:
+				conn.CloseWithError(GenericErrorCode, "internal server error")
+			}
+			continue
 		}
 		// TODO: This should probably be a map keyed by the MoQ-URI the request
 		// is targeting
