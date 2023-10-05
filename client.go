@@ -54,7 +54,7 @@ func DialWebTransport(ctx context.Context, addr string) (*Peer, error) {
 	}
 	// TODO: Handle rsp?
 	log.Println(rsp)
-	wc := &WebTransportConn{
+	wc := &webTransportConn{
 		sess: conn,
 	}
 	return newClientPeer(ctx, wc)

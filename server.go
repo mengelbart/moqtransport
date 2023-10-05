@@ -31,7 +31,7 @@ type Server struct {
 	Handler PeerHandler
 }
 
-type Listener interface {
+type listener interface {
 	Accept(context.Context) (connection, error)
 }
 
@@ -59,7 +59,7 @@ func (l *wtListener) Accept(ctx context.Context) (connection, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case s := <-l.ch:
-		wc := &WebTransportConn{
+		wc := &webTransportConn{
 			sess: s,
 		}
 		return wc, nil
@@ -147,7 +147,7 @@ func (s *Server) ListenWebTransport(ctx context.Context) error {
 }
 
 func (s *Server) ListenQUIC(ctx context.Context) error {
-	listener, err := quic.ListenAddr("127.0.0.1:1909", generateTLSConfig(), &quic.Config{
+	ql, err := quic.ListenAddr("127.0.0.1:1909", generateTLSConfig(), &quic.Config{
 		GetConfigForClient:               nil,
 		Versions:                         nil,
 		HandshakeIdleTimeout:             0,
@@ -174,14 +174,14 @@ func (s *Server) ListenQUIC(ctx context.Context) error {
 		return err
 	}
 	l := &quicListener{
-		ql: listener,
+		ql: ql,
 	}
 	return s.Listen(ctx, l)
 }
 
-func (s *Server) Listen(ctx context.Context, listener Listener) error {
+func (s *Server) Listen(ctx context.Context, l listener) error {
 	for {
-		conn, err := listener.Accept(context.TODO())
+		conn, err := l.Accept(context.TODO())
 		if err != nil {
 			return err
 		}
