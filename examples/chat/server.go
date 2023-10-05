@@ -92,7 +92,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			r.lock.Lock()
 			defer r.lock.Unlock()
 			log.Printf("subscribing user %v to publisher %v", name, username)
-			if err := r.publishers[username].subscribe(s.peers[p], t); err != nil {
+			if err := r.publishers[username].subscribe(name, t); err != nil {
 				return 0, 0, err
 			}
 			s.nextTrackID += 1
