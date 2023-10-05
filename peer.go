@@ -18,6 +18,7 @@ var (
 	errClosed                = errors.New("connection was closed")
 	errUnsupportedVersion    = errors.New("unsupported version")
 	errMissingRoleParameter  = errors.New("missing role parameter")
+	errGoAway                = errors.New("received go away from peer")
 )
 
 // TODO: Streams must be wrapped properly for quic and webtransport The
@@ -45,6 +46,7 @@ type connection interface {
 	AcceptStream(context.Context) (stream, error)
 	AcceptUniStream(context.Context) (readStream, error)
 	ReceiveMessage(context.Context) ([]byte, error)
+	CloseWithError(uint64, string) error
 }
 
 type SubscriptionHandler func(string, *SendTrack) (uint64, time.Duration, error)
@@ -110,12 +112,30 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	return p, nil
 }
 
-func (p *Peer) runServerPeer(ctx context.Context) {
-	go p.controlStreamLoop(ctx, p.ctrlStream)
-	go p.acceptBidirectionalStreams(ctx)
-	go p.acceptUnidirectionalStreams(ctx)
-	// TODO: Configure if datagrams enabled?
-	go p.acceptDatagrams(ctx)
+func (p *Peer) run(ctx context.Context) error {
+	errCh := make(chan error)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for _, f := range []func(context.Context) error{
+		p.controlStreamLoop,
+		p.acceptUnidirectionalStreams,
+		p.acceptBidirectionalStreams,
+		p.acceptDatagrams,
+	} {
+		go func(ctx context.Context, f func(context.Context) error, ch chan<- error) {
+			if err := f(ctx); err != nil {
+				ch <- err
+			}
+		}(ctx, f, errCh)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		return err
+	}
 }
 
 func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
@@ -157,28 +177,20 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
 		return nil, errUnsupportedVersion
 	}
-
-	go p.controlStreamLoop(ctx, s)
-	go p.acceptBidirectionalStreams(ctx)
-	go p.acceptUnidirectionalStreams(ctx)
-	// TODO: Configure if datagrams enabled?
-	go p.acceptDatagrams(ctx)
+	// TODO: Handle error and propagate it to the user?
+	go p.run(ctx)
 	return p, nil
 }
 
-func (p *Peer) readMessages(r messageReader, stream io.Reader) {
+func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 	for {
 		msg, err := readNext(r, p.role)
 		if err != nil {
-			// TODO: Handle/log error?
-			log.Println(err)
-			return
+			return err
 		}
 		object, ok := msg.(*objectMessage)
 		if !ok {
-			// TODO: ERROR: We only expect object messages here. All other
-			// messages should be sent on the control stream.
-			panic("unexpected message type")
+			return errUnexpectedMessage
 		}
 		p.handleObjectMessage(object)
 	}
@@ -207,7 +219,7 @@ type keyedResponseHandler interface {
 	responseHandler
 }
 
-func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
+func (p *Peer) controlStreamLoop(ctx context.Context) error {
 	inCh := make(chan message)
 	errCh := make(chan error)
 	transactions := make(map[messageKey]keyedMessage)
@@ -221,7 +233,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 			}
 			ch <- msg
 		}
-	}(s, inCh, errCh)
+	}(p.ctrlStream, inCh, errCh)
 	for {
 		select {
 		case m := <-inCh:
@@ -236,7 +248,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 					p.ctrlMessageCh <- p.handleAnnounceMessage(v)
 				}()
 			case *goAwayMessage:
-				panic("TODO")
+				return errGoAway
 			case keyedMessage:
 				t, ok := transactions[v.key()]
 				if !ok {
@@ -246,19 +258,15 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 					// an Ok or Error for Announce or subscribe, that should
 					// only happen when we also stored an associated transaction
 					// earlier.
-					panic("TODO")
+					return errors.New("unexpected unkeyed message")
 				}
 				rh, ok := t.(responseHandler)
 				if !ok {
-					// TODO: Error: This is also an error, because we shouldn't
-					// have started a transaction if we cannot handle the
-					// response
-					panic("TODO")
+					return errors.New("unexpected message without responseHandler")
 				}
 				rh.handle(v)
 			default:
-				// error unexpected message, close conn?
-				panic("TODO")
+				return errUnexpectedMessage
 			}
 		case m := <-p.ctrlMessageCh:
 			if krh, ok := m.(keyedResponseHandler); ok {
@@ -266,50 +274,41 @@ func (p *Peer) controlStreamLoop(ctx context.Context, s stream) {
 			}
 			buf := make([]byte, 0, 1500)
 			buf = m.append(buf)
-			_, err := s.Write(buf)
+			_, err := p.ctrlStream.Write(buf)
 			if err != nil {
-				// TODO
-				log.Println(err)
+				return err
 			}
 		case err := <-errCh:
-			// TODO
-			log.Println(err)
-			panic(err)
+			return err
 		}
 	}
 }
 
-func (p *Peer) acceptBidirectionalStreams(ctx context.Context) {
+func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 	for {
 		s, err := p.conn.AcceptStream(ctx)
 		if err != nil {
-			// TODO: Handle/log error?
-			log.Println(err)
-			return
+			return err
 		}
 		go p.readMessages(varint.NewReader(s), s)
 	}
 }
 
-func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) {
+func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 	for {
 		stream, err := p.conn.AcceptUniStream(ctx)
 		if err != nil {
-			// TODO: Handle/log error?
-			log.Println(err)
-			return
+			return err
 		}
 		go p.readMessages(varint.NewReader(stream), stream)
 	}
 }
 
-func (p *Peer) acceptDatagrams(ctx context.Context) {
+func (p *Peer) acceptDatagrams(ctx context.Context) error {
 	for {
 		dgram, err := p.conn.ReceiveMessage(ctx)
 		if err != nil {
-			// TODO: Handle/log error?
-			log.Println(err)
-			return
+			return err
 		}
 		r := bytes.NewReader(dgram)
 		go p.readMessages(r, nil)
