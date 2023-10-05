@@ -25,7 +25,7 @@ func (c *QUICClient) connect(ctx context.Context, addr string) (*Peer, error) {
 		GetConfigForClient:               nil,
 		Versions:                         nil,
 		HandshakeIdleTimeout:             0,
-		MaxIdleTimeout:                   0,
+		MaxIdleTimeout:                   1<<63 - 1,
 		RequireAddressValidation:         nil,
 		MaxRetryTokenAge:                 0,
 		MaxTokenAge:                      0,

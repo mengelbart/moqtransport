@@ -39,6 +39,10 @@ func (c *WebTransportConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
 	panic("ReceiveMessage is not implemented for WebTransport")
 }
 
+func (c *WebTransportConn) CloseWithError(e uint64, msg string) error {
+	return c.conn.CloseWithError(webtransport.SessionErrorCode(e), msg)
+}
+
 type WebTransportClient struct {
 }
 

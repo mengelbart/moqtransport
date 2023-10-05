@@ -24,24 +24,39 @@ type PeerHandler interface {
 	Handle(*Peer)
 }
 
-type QUICServer struct {
-	ph PeerHandler
+type Server struct {
+	Handler PeerHandler
 }
 
-func NewQUICServer() *QUICServer {
-	return &QUICServer{}
+type Listener interface {
+	Accept(context.Context) (connection, error)
 }
 
-func (s *QUICServer) Handle(ph PeerHandler) {
-	s.ph = ph
+type quicListener struct {
+	ql *quic.Listener
 }
 
-func (s *QUICServer) Listen(ctx context.Context) error {
+func (l *quicListener) Accept(ctx context.Context) (connection, error) {
+	c, err := l.ql.Accept(ctx)
+	if err != nil {
+		return nil, err
+	}
+	qc := &quicConn{
+		conn: c,
+	}
+	return qc, nil
+}
+
+func (s *Server) ListenWebTransport(ctx context.Context) error {
+	panic("TODO")
+}
+
+func (s *Server) ListenQUIC(ctx context.Context) error {
 	listener, err := quic.ListenAddr("127.0.0.1:1909", generateTLSConfig(), &quic.Config{
 		GetConfigForClient:               nil,
 		Versions:                         nil,
 		HandshakeIdleTimeout:             0,
-		MaxIdleTimeout:                   0,
+		MaxIdleTimeout:                   1<<63 - 1,
 		RequireAddressValidation:         nil,
 		MaxRetryTokenAge:                 0,
 		MaxTokenAge:                      0,
@@ -63,15 +78,19 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	l := &quicListener{
+		ql: listener,
+	}
+	return s.Listen(ctx, l)
+}
+
+func (s *Server) Listen(ctx context.Context, listener Listener) error {
 	for {
 		conn, err := listener.Accept(context.TODO())
 		if err != nil {
 			return err
 		}
-		qc := &quicConn{
-			conn: conn,
-		}
-		peer, err := newServerPeer(ctx, qc)
+		peer, err := newServerPeer(ctx, conn)
 		if err != nil {
 			log.Printf("failed to create new server peer: %v", err)
 			switch {
@@ -86,11 +105,12 @@ func (s *QUICServer) Listen(ctx context.Context) error {
 		}
 		// TODO: This should probably be a map keyed by the MoQ-URI the request
 		// is targeting
-		if s.ph != nil {
-			s.ph.Handle(peer)
+		if s.Handler != nil {
+			s.Handler.Handle(peer)
 		}
-		go peer.runServerPeer(ctx)
-		// TODO: Manage all peers for things like rooms?
+		go func() {
+			peer.run(ctx)
+		}()
 	}
 }
 

@@ -21,7 +21,7 @@ type Server struct {
 	peers       map[*moqtransport.Peer]string
 	nextTrackID uint64
 	lock        sync.Mutex
-	moq         *moqtransport.QUICServer
+	moq         *moqtransport.Server
 }
 
 func NewServer() *Server {
@@ -30,14 +30,14 @@ func NewServer() *Server {
 		peers:       map[*moqtransport.Peer]string{},
 		nextTrackID: 1,
 		lock:        sync.Mutex{},
-		moq:         moqtransport.NewQUICServer(),
+		moq:         &moqtransport.Server{},
 	}
-	s.moq.Handle(moqtransport.PeerHandler(moqtransport.PeerHandlerFunc(s.peerHandler())))
+	s.moq.Handler = moqtransport.PeerHandler(moqtransport.PeerHandlerFunc(s.peerHandler()))
 	return s
 }
 
 func (s *Server) Listen(ctx context.Context) error {
-	return s.moq.Listen(ctx)
+	return s.moq.ListenQUIC(ctx)
 }
 
 func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
