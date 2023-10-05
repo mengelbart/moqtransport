@@ -28,7 +28,7 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, addr string) (*Client, error) {
-	qc, err := moqtransport.NewQUICClient(ctx, addr)
+	qc, err := moqtransport.DialQUIC(ctx, addr)
 	if err != nil {
 		return nil, err
 	}

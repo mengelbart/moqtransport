@@ -10,8 +10,11 @@ import (
 	"errors"
 	"log"
 	"math/big"
+	"net/http"
 
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 )
 
 type PeerHandlerFunc func(*Peer)
@@ -47,8 +50,100 @@ func (l *quicListener) Accept(ctx context.Context) (connection, error) {
 	return qc, nil
 }
 
+type wtListener struct {
+	ch chan *webtransport.Session
+}
+
+func (l *wtListener) Accept(ctx context.Context) (connection, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case s := <-l.ch:
+		wc := &WebTransportConn{
+			sess: s,
+		}
+		return wc, nil
+	}
+}
+
 func (s *Server) ListenWebTransport(ctx context.Context) error {
-	panic("TODO")
+	ws := &webtransport.Server{
+		H3: http3.Server{
+			Addr:      ":4443",
+			Port:      0,
+			TLSConfig: &tls.Config{},
+			QuicConfig: &quic.Config{
+				GetConfigForClient:               nil,
+				Versions:                         nil,
+				HandshakeIdleTimeout:             0,
+				MaxIdleTimeout:                   1<<63 - 1,
+				RequireAddressValidation:         nil,
+				MaxRetryTokenAge:                 0,
+				MaxTokenAge:                      0,
+				TokenStore:                       nil,
+				InitialStreamReceiveWindow:       0,
+				MaxStreamReceiveWindow:           0,
+				InitialConnectionReceiveWindow:   0,
+				MaxConnectionReceiveWindow:       0,
+				AllowConnectionWindowIncrease:    nil,
+				MaxIncomingStreams:               0,
+				MaxIncomingUniStreams:            0,
+				KeepAlivePeriod:                  0,
+				DisablePathMTUDiscovery:          false,
+				DisableVersionNegotiationPackets: false,
+				Allow0RTT:                        false,
+				EnableDatagrams:                  false,
+				Tracer:                           nil,
+			},
+			Handler:            nil,
+			EnableDatagrams:    false,
+			MaxHeaderBytes:     0,
+			AdditionalSettings: map[uint64]uint64{},
+			StreamHijacker:     nil,
+			UniStreamHijacker:  nil,
+		},
+		StreamReorderingTimeout: 0,
+		CheckOrigin:             nil,
+	}
+	l := &wtListener{
+		ch: make(chan *webtransport.Session),
+	}
+	http.HandleFunc("", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := ws.Upgrade(w, r)
+		if err != nil {
+			log.Printf("upgrading failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case l.ch <- conn:
+		}
+		// Wait for end of request or session termination
+		select {
+		case <-r.Context().Done():
+		case <-conn.Context().Done():
+		}
+	})
+	// TODO: Implement graaceful server shutdown
+	errCh := make(chan error)
+	go func() {
+		if err := ws.ListenAndServe(); err != nil {
+			errCh <- err
+		}
+	}()
+	go func() {
+		if err := s.Listen(ctx, l); err != nil {
+			errCh <- err
+		}
+	}()
+	select {
+	case <-ctx.Done():
+	case err := <-errCh:
+		return err
+	}
+	return nil
 }
 
 func (s *Server) ListenQUIC(ctx context.Context) error {
