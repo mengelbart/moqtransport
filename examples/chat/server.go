@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -24,20 +25,27 @@ type Server struct {
 	moq         *moqtransport.Server
 }
 
-func NewServer() *Server {
+func NewServer(tlsConfig *tls.Config) *Server {
 	s := &Server{
 		chatRooms:   map[string]*room{},
 		peers:       map[*moqtransport.Peer]string{},
 		nextTrackID: 1,
 		lock:        sync.Mutex{},
-		moq:         &moqtransport.Server{},
+		moq: &moqtransport.Server{
+			Handler:   nil,
+			TLSConfig: tlsConfig,
+		},
 	}
 	s.moq.Handler = moqtransport.PeerHandler(moqtransport.PeerHandlerFunc(s.peerHandler()))
 	return s
 }
 
-func (s *Server) Listen(ctx context.Context) error {
-	return s.moq.ListenQUIC(ctx)
+func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
+	return s.moq.ListenQUIC(ctx, addr)
+}
+
+func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
+	return s.moq.ListenWebTransport(ctx, addr)
 }
 
 func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {

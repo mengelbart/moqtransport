@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -27,19 +28,31 @@ type Client struct {
 	nextTrackID uint64
 }
 
-func NewClient(ctx context.Context, addr string) (*Client, error) {
-	qc, err := moqtransport.DialQUIC(ctx, addr)
+func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
+	p, err := moqtransport.DialQUIC(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
+	return NewClient(p)
+}
+
+func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
+	p, err := moqtransport.DialWebTransport(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(p)
+}
+
+func NewClient(p *moqtransport.Peer) (*Client, error) {
+	log.SetOutput(io.Discard)
 	c := &Client{
-		peer:        qc,
+		peer:        p,
 		rooms:       map[string]*joinedRooms{},
 		lock:        sync.Mutex{},
 		nextTrackID: 0,
 	}
 	c.peer.OnAnnouncement(func(s string) error {
-		log.Printf("got unexpected announcement: %v, ignoring...", s)
 		return nil
 	})
 	c.peer.OnSubscription(func(trackname string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
@@ -71,7 +84,6 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("got catalog delta: %v\n", delta)
 		for _, p := range delta.joined {
 			if p == username {
 				continue
@@ -80,16 +92,17 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 			if err != nil {
 				log.Fatal(err)
 			}
-			go func() {
+			go func(room, user string) {
+				fmt.Printf("%v joined the chat %v\n> ", user, room)
 				for {
 					buf := make([]byte, 64_000)
 					n, err = t.Read(buf)
 					if err != nil {
 						log.Fatal(err)
 					}
-					fmt.Fprint(os.Stdout, string(buf[:n]))
+					fmt.Fprintf(os.Stdout, "room %v|user %v: %v\n> ", room, user, string(buf[:n]))
 				}
-			}()
+			}(roomID, p)
 		}
 	}
 }
@@ -121,7 +134,6 @@ func (c *Client) joinRoom(roomID, username string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("got catalog: %v\n", participants)
 	for p := range participants.participants {
 		if p == username {
 			continue
@@ -130,16 +142,16 @@ func (c *Client) joinRoom(roomID, username string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		go func() {
+		go func(room, user string) {
 			for {
 				buf := make([]byte, 64_000)
 				n, err = t.Read(buf)
 				if err != nil {
 					log.Fatal(err)
 				}
-				fmt.Fprint(os.Stdout, string(buf[:n]))
+				fmt.Fprintf(os.Stdout, "room %v|user %v: %v\n> ", room, user, string(buf[:n]))
 			}
-		}()
+		}(roomID, p)
 	}
 	go c.handleCatalogDeltas(roomID, username, catalogTrack)
 }
@@ -172,7 +184,7 @@ func (c *Client) Run() {
 				fmt.Println("invalid join command, usage: 'msg <room id> <msg>'")
 				continue
 			}
-			_, err = c.rooms[fields[1]].st.Write([]byte(msg))
+			_, err = c.rooms[fields[1]].st.Write([]byte(strings.TrimSpace(msg)))
 			if err != nil {
 				log.Fatal(err)
 			}

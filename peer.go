@@ -112,17 +112,21 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	return p, nil
 }
 
-func (p *Peer) run(ctx context.Context) error {
+func (p *Peer) run(ctx context.Context, enableDatagrams bool) error {
 	errCh := make(chan error)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	for _, f := range []func(context.Context) error{
+	fs := []func(context.Context) error{
 		p.controlStreamLoop,
 		p.acceptUnidirectionalStreams,
 		p.acceptBidirectionalStreams,
-		p.acceptDatagrams,
-	} {
+	}
+	if enableDatagrams {
+		fs = append(fs, p.acceptDatagrams)
+	}
+
+	for _, f := range fs {
 		go func(ctx context.Context, f func(context.Context) error, ch chan<- error) {
 			if err := f(ctx); err != nil {
 				ch <- err
@@ -138,7 +142,7 @@ func (p *Peer) run(ctx context.Context) error {
 	}
 }
 
-func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
+func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (*Peer, error) {
 	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -178,7 +182,7 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, errUnsupportedVersion
 	}
 	// TODO: Handle error and propagate it to the user?
-	go p.run(ctx)
+	go p.run(ctx, enableDatagrams)
 	return p, nil
 }
 

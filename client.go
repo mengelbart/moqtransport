@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"log"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -48,16 +47,15 @@ func DialWebTransport(ctx context.Context, addr string) (*Peer, error) {
 		},
 		StreamReorderingTimeout: 0,
 	}
-	rsp, conn, err := d.Dial(context.TODO(), addr, nil)
+	// TODO: Handle response?
+	_, conn, err := d.Dial(context.TODO(), addr, nil)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: Handle rsp?
-	log.Println(rsp)
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientPeer(ctx, wc)
+	return newClientPeer(ctx, wc, false)
 }
 
 func DialQUIC(ctx context.Context, addr string) (*Peer, error) {
@@ -94,7 +92,7 @@ func DialQUIC(ctx context.Context, addr string) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientPeer(ctx, qc)
+	p, err := newClientPeer(ctx, qc, true)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())

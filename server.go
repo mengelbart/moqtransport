@@ -2,14 +2,9 @@ package moqtransport
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"log"
-	"math/big"
 	"net/http"
 
 	"github.com/quic-go/quic-go"
@@ -28,7 +23,8 @@ type PeerHandler interface {
 }
 
 type Server struct {
-	Handler PeerHandler
+	Handler   PeerHandler
+	TLSConfig *tls.Config
 }
 
 type listener interface {
@@ -66,12 +62,12 @@ func (l *wtListener) Accept(ctx context.Context) (connection, error) {
 	}
 }
 
-func (s *Server) ListenWebTransport(ctx context.Context) error {
+func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	ws := &webtransport.Server{
 		H3: http3.Server{
-			Addr:      ":4443",
+			Addr:      addr,
 			Port:      0,
-			TLSConfig: &tls.Config{},
+			TLSConfig: s.TLSConfig,
 			QuicConfig: &quic.Config{
 				GetConfigForClient:               nil,
 				Versions:                         nil,
@@ -103,12 +99,17 @@ func (s *Server) ListenWebTransport(ctx context.Context) error {
 			UniStreamHijacker:  nil,
 		},
 		StreamReorderingTimeout: 0,
-		CheckOrigin:             nil,
+		CheckOrigin: func(r *http.Request) bool {
+			// TODO: Make configurable
+			return true
+			// return r.Header.Get("Origin") == "http://localhost:8000"
+		},
 	}
 	l := &wtListener{
 		ch: make(chan *webtransport.Session),
 	}
-	http.HandleFunc("", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("upgrading to WebTransport")
 		conn, err := ws.Upgrade(w, r)
 		if err != nil {
 			log.Printf("upgrading failed: %v", err)
@@ -146,8 +147,8 @@ func (s *Server) ListenWebTransport(ctx context.Context) error {
 	return nil
 }
 
-func (s *Server) ListenQUIC(ctx context.Context) error {
-	ql, err := quic.ListenAddr("127.0.0.1:1909", generateTLSConfig(), &quic.Config{
+func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
+	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
 		GetConfigForClient:               nil,
 		Versions:                         nil,
 		HandshakeIdleTimeout:             0,
@@ -180,6 +181,7 @@ func (s *Server) ListenQUIC(ctx context.Context) error {
 }
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
+	_, enableDatagrams := l.(*quicListener)
 	for {
 		conn, err := l.Accept(context.TODO())
 		if err != nil {
@@ -204,31 +206,7 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 			s.Handler.Handle(peer)
 		}
 		go func() {
-			peer.run(ctx)
+			peer.run(ctx, enableDatagrams)
 		}()
-	}
-}
-
-// Setup a bare-bones TLS config for the server
-func generateTLSConfig() *tls.Config {
-	key, err := rsa.GenerateKey(rand.Reader, 1024)
-	if err != nil {
-		panic(err)
-	}
-	template := x509.Certificate{SerialNumber: big.NewInt(1)}
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
-	if err != nil {
-		panic(err)
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		panic(err)
-	}
-	return &tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"moq-00"},
 	}
 }
