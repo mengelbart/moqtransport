@@ -21,13 +21,12 @@ func main() {
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
 	flag.Parse()
 
-	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
+	tlsConfig, err := generateTLSConfigWithCertAndKey(*certFile, *keyFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("failed to generate TLS config from cert file and key, generating in memory certs: %v", err)
+		tlsConfig = generateTLSConfig()
 	}
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-	}
+
 	s := chat.NewServer(tlsConfig)
 	if *wt {
 		if err := s.ListenWebTransport(context.TODO(), *addr); err != nil {
@@ -38,6 +37,16 @@ func main() {
 	if err := s.ListenQUIC(context.TODO(), *addr); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
 
 // Setup a bare-bones TLS config for the server
