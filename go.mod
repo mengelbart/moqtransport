@@ -1,10 +1,12 @@
-module gitlab.lrz.de/cm/moqtransport
+module github.com/mengelbart/moqtransport
 
 go 1.21.1
 
 require (
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db
+	github.com/quic-go/quic-go v0.38.1
+	github.com/quic-go/webtransport-go v0.5.3
 )
 
 require (
@@ -21,12 +23,7 @@ require (
 	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/text v0.9.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
-)
-
-require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/quic-go/quic-go v0.38.1
-	github.com/quic-go/webtransport-go v0.5.3
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

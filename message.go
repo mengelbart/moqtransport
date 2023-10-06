@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"gitlab.lrz.de/cm/moqtransport/varint"
+	"github.com/mengelbart/moqtransport/varint"
 )
 
 var (

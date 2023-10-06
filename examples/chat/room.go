@@ -7,7 +7,7 @@ import (
 	"log"
 	"sync"
 
-	"gitlab.lrz.de/cm/moqtransport"
+	"github.com/mengelbart/moqtransport"
 )
 
 type room struct {

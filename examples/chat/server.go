@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.lrz.de/cm/moqtransport"
+	"github.com/mengelbart/moqtransport"
 )
 
 var (

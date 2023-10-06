@@ -1,6 +1,6 @@
 package moqtransport
 
-import "gitlab.lrz.de/cm/moqtransport/varint"
+import "github.com/mengelbart/moqtransport/varint"
 
 type version uint64
 

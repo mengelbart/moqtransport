@@ -5,7 +5,7 @@ import (
 	"flag"
 	"log"
 
-	"gitlab.lrz.de/cm/moqtransport/examples/chat"
+	"github.com/mengelbart/moqtransport/examples/chat"
 )
 
 func main() {

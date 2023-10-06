@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"gitlab.lrz.de/cm/moqtransport/varint"
+	"github.com/mengelbart/moqtransport/varint"
 )
 
 var (

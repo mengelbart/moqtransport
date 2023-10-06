@@ -6,8 +6,9 @@ import (
 	"io"
 	"testing"
 
+	"github.com/mengelbart/moqtransport/varint"
+
 	"github.com/stretchr/testify/assert"
-	"gitlab.lrz.de/cm/moqtransport/varint"
 )
 
 func TestParameterAppend(t *testing.T) {
