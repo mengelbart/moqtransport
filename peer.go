@@ -294,7 +294,11 @@ func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		go p.readMessages(varint.NewReader(s), s)
+		go func() {
+			if err := p.readMessages(varint.NewReader(s), s); err != nil {
+				panic(err)
+			}
+		}()
 	}
 }
 
@@ -304,7 +308,11 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		go p.readMessages(varint.NewReader(stream), stream)
+		go func() {
+			if err := p.readMessages(varint.NewReader(stream), stream); err != nil {
+				panic(err)
+			}
+		}()
 	}
 }
 
@@ -315,7 +323,11 @@ func (p *Peer) acceptDatagrams(ctx context.Context) error {
 			return err
 		}
 		r := bytes.NewReader(dgram)
-		go p.readMessages(r, nil)
+		go func() {
+			if err := p.readMessages(r, nil); err != nil {
+				panic(err)
+			}
+		}()
 	}
 }
 
