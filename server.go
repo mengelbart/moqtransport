@@ -202,11 +202,11 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		}
 		// TODO: This should probably be a map keyed by the MoQ-URI the request
 		// is targeting
-		if s.Handler != nil {
-			s.Handler.Handle(peer)
-		}
 		go func() {
 			peer.run(ctx, enableDatagrams)
 		}()
+		if s.Handler != nil {
+			s.Handler.Handle(peer)
+		}
 	}
 }
