@@ -52,6 +52,7 @@ func (t *SendTrack) writeNewStream(b []byte) (int, error) {
 	}
 	buf := make([]byte, 0, 64_000)
 	buf = om.append(buf)
+	defer s.Close()
 	return s.Write(buf)
 }
 
