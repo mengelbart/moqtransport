@@ -1,6 +1,8 @@
 package moqtransport
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	errInvalidSendMode = errors.New("invalid send mode")
@@ -16,14 +18,23 @@ const (
 )
 
 type SendTrack struct {
-	conn connection
-	mode sendMode
-	id   uint64
+	conn   connection
+	mode   sendMode
+	id     uint64
+	stream sendStream
 }
 
 func newSendTrack(conn connection) *SendTrack {
+	s, err := conn.OpenUniStream()
+	if err != nil {
+		// TODO
+		panic(err)
+	}
 	return &SendTrack{
-		conn: conn,
+		conn:   conn,
+		mode:   singleStream,
+		id:     0,
+		stream: s,
 	}
 }
 
@@ -50,7 +61,17 @@ func (t *SendTrack) Write(b []byte) (n int, err error) {
 		return t.writeNewStream(b)
 	case streamPerGroup:
 		// ...
-		return 0, nil
+	case singleStream:
+		om := &objectMessage{
+			trackID:         t.id,
+			groupSequence:   0,
+			objectSequence:  0,
+			objectSendOrder: 0,
+			objectPayload:   b,
+		}
+		buf := make([]byte, 0, 64_000)
+		buf = om.append(buf)
+		return t.stream.Write(buf)
 	}
 	return 0, errInvalidSendMode
 }
