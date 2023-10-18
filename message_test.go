@@ -262,7 +262,7 @@ func TestParseObjectMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -393,7 +393,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -532,7 +532,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -627,7 +627,7 @@ func TestParseLocation(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -797,7 +797,7 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -904,7 +904,7 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -999,7 +999,7 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1075,7 +1075,7 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1182,7 +1182,7 @@ func TestParseSubscribeFinMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1316,7 +1316,7 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1394,7 +1394,7 @@ func TestParseAnnounceMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1474,7 +1474,7 @@ func TestParseAnnounceOkMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1564,7 +1564,7 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1644,7 +1644,7 @@ func TestParseUnannounceMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}
@@ -1714,7 +1714,7 @@ func TestParseGoAwayMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := parser{
+			p := loggingParser{
 				logger: &log.Logger{},
 				reader: tc.r,
 			}

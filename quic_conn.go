@@ -30,7 +30,7 @@ func (c *quicConn) AcceptStream(ctx context.Context) (stream, error) {
 	return c.conn.AcceptStream(ctx)
 }
 
-func (c *quicConn) AcceptUniStream(ctx context.Context) (readStream, error) {
+func (c *quicConn) AcceptUniStream(ctx context.Context) (receiveStream, error) {
 	return c.conn.AcceptUniStream(ctx)
 }
 

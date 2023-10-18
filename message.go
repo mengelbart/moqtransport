@@ -98,12 +98,12 @@ type messageReader interface {
 	io.ByteReader
 }
 
-type parser struct {
+type loggingParser struct {
 	logger *log.Logger
 	reader messageReader
 }
 
-func (p *parser) readNext() (msg message, err error) {
+func (p *loggingParser) parse() (msg message, err error) {
 	mt, err := quicvarint.Read(p.reader)
 	if err != nil {
 		p.logger.Printf("got error when trying to find next message: %v", err)
@@ -188,7 +188,7 @@ func (m *objectMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseObjectMessage(typ uint64) (*objectMessage, error) {
+func (p *loggingParser) parseObjectMessage(typ uint64) (*objectMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -279,7 +279,7 @@ func (m *clientSetupMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseClientSetupMessage() (*clientSetupMessage, error) {
+func (p *loggingParser) parseClientSetupMessage() (*clientSetupMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -320,7 +320,7 @@ func (m *serverSetupMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseServerSetupMessage() (*serverSetupMessage, error) {
+func (p *loggingParser) parseServerSetupMessage() (*serverSetupMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -351,7 +351,7 @@ func (l location) append(buf []byte) []byte {
 	return append(buf, byte(l.value))
 }
 
-func (p *parser) parseLocation() (location, error) {
+func (p *loggingParser) parseLocation() (location, error) {
 	if p.reader == nil {
 		return location{}, errInvalidMessageReader
 	}
@@ -415,7 +415,7 @@ func (m *subscribeRequestMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseSubscribeRequestMessage() (*subscribeRequestMessage, error) {
+func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeRequestMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -489,7 +489,7 @@ func (m *subscribeOkMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
+func (p *loggingParser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -548,7 +548,7 @@ func (m *subscribeErrorMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseSubscribeErrorMessage() (*subscribeErrorMessage, error) {
+func (p *loggingParser) parseSubscribeErrorMessage() (*subscribeErrorMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -593,7 +593,7 @@ func (m *unsubscribeMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseUnsubscribeMessage() (*unsubscribeMessage, error) {
+func (p *loggingParser) parseUnsubscribeMessage() (*unsubscribeMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -635,7 +635,7 @@ func (m *subscribeFinMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseSubscribeFinMessage() (*subscribeFinMessage, error) {
+func (p *loggingParser) parseSubscribeFinMessage() (*subscribeFinMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -691,7 +691,7 @@ func (m *subscribeRstMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseSubscribeRstMessage() (*subscribeRstMessage, error) {
+func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -759,7 +759,7 @@ func (m *announceMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseAnnounceMessage() (*announceMessage, error) {
+func (p *loggingParser) parseAnnounceMessage() (*announceMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -802,7 +802,7 @@ func (m *announceOkMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseAnnounceOkMessage() (*announceOkMessage, error) {
+func (p *loggingParser) parseAnnounceOkMessage() (*announceOkMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -844,7 +844,7 @@ func (m *announceErrorMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseAnnounceErrorMessage() (*announceErrorMessage, error) {
+func (p *loggingParser) parseAnnounceErrorMessage() (*announceErrorMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -885,7 +885,7 @@ func (m *unannounceMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseUnannounceMessage() (*unannounceMessage, error) {
+func (p *loggingParser) parseUnannounceMessage() (*unannounceMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -916,7 +916,7 @@ func (m *goAwayMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *parser) parseGoAwayMessage() (*goAwayMessage, error) {
+func (p *loggingParser) parseGoAwayMessage() (*goAwayMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
