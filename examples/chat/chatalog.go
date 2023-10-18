@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -73,6 +74,7 @@ func (c *chatalog) serialize() string {
 		return version
 	}
 	participantList := maps.Keys(c.participants)
+	slices.Sort(participantList)
 	return version + "\n" + strings.Join(participantList, "\n")
 }
 
