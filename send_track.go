@@ -18,13 +18,13 @@ const (
 )
 
 type SendTrack struct {
-	conn   connection
+	conn   Connection
 	mode   sendMode
 	id     uint64
 	stream sendStream
 }
 
-func newSendTrack(conn connection) *SendTrack {
+func newSendTrack(conn Connection) *SendTrack {
 	s, err := conn.OpenUniStream()
 	if err != nil {
 		// TODO

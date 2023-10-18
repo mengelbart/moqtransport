@@ -52,24 +52,26 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		lock:        sync.Mutex{},
 		nextTrackID: 0,
 	}
-	c.peer.OnAnnouncement(func(s string) error {
-		return nil
-	})
-	c.peer.OnSubscription(func(trackname string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
-		namespace := strings.SplitN(trackname, "/", 3)
-		if len(namespace) < 2 {
-			return 0, 0, errors.New("invalid trackname")
-		}
-		moq_chat, id := namespace[0], namespace[1]
-		if moq_chat != "moq-chat" {
-			return 0, 0, errors.New("invalid moq-chat namespace")
-		}
-		if _, ok := c.rooms[id]; !ok {
-			return 0, 0, errors.New("invalid subscribe request")
-		}
-		c.rooms[id].st = st
-		return c.rooms[id].trackID, 0, nil
-	})
+	c.peer.Handle(
+		func(s string) error {
+			return nil
+		},
+		func(trackname string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
+			namespace := strings.SplitN(trackname, "/", 3)
+			if len(namespace) < 2 {
+				return 0, 0, errors.New("invalid trackname")
+			}
+			moq_chat, id := namespace[0], namespace[1]
+			if moq_chat != "moq-chat" {
+				return 0, 0, errors.New("invalid moq-chat namespace")
+			}
+			if _, ok := c.rooms[id]; !ok {
+				return 0, 0, errors.New("invalid subscribe request")
+			}
+			c.rooms[id].st = st
+			return c.rooms[id].trackID, 0, nil
+		},
+	)
 	return c, nil
 }
 

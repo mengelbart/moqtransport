@@ -38,7 +38,7 @@ type sendStream interface {
 	io.WriteCloser
 }
 
-type connection interface {
+type Connection interface {
 	OpenStream() (stream, error)
 	OpenStreamSync(context.Context) (stream, error)
 	OpenUniStream() (sendStream, error)
@@ -49,12 +49,35 @@ type connection interface {
 	CloseWithError(uint64, string) error
 }
 
+type messageKey struct {
+	mt messageType
+	id string
+}
+
+type keyer interface {
+	key() messageKey
+}
+
+type keyedMessage interface {
+	message
+	keyer
+}
+
+type responseHandler interface {
+	handle(message)
+}
+
+type keyedResponseHandler interface {
+	keyedMessage
+	responseHandler
+}
+
 type SubscriptionHandler func(string, *SendTrack) (uint64, time.Duration, error)
 
 type AnnouncementHandler func(string) error
 
 type Peer struct {
-	conn                connection
+	conn                Connection
 	inMsgCh             chan message
 	ctrlMessageCh       chan message
 	ctrlStream          stream
@@ -63,10 +86,14 @@ type Peer struct {
 	sendTracks          map[string]*SendTrack
 	subscribeHandler    SubscriptionHandler
 	announcementHandler AnnouncementHandler
+	handlerSetupCh      chan struct{}
 	closeCh             chan struct{}
 }
 
-func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
+func newServerPeer(ctx context.Context, conn Connection) (*Peer, error) {
+	if conn == nil {
+		return nil, errors.New("nil connection")
+	}
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -107,8 +134,54 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		sendTracks:          map[string]*SendTrack{},
 		subscribeHandler:    nil,
 		announcementHandler: nil,
+		handlerSetupCh:      make(chan struct{}),
 		closeCh:             make(chan struct{}),
 	}
+	return p, nil
+}
+
+func newClientPeer(ctx context.Context, conn Connection, enableDatagrams bool) (*Peer, error) {
+	s, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	csm := clientSetupMessage{
+		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+		setupParameters: map[parameterKey]parameter{
+			roleParameterKey: ingestionDeliveryRole,
+		},
+	}
+	buf := csm.append(make([]byte, 0, 1500))
+	_, err = s.Write(buf)
+	if err != nil {
+		return nil, err
+	}
+	p := &Peer{
+		conn:                conn,
+		inMsgCh:             make(chan message),
+		ctrlMessageCh:       make(chan message),
+		ctrlStream:          s,
+		role:                clientRole,
+		receiveTracks:       map[uint64]*ReceiveTrack{},
+		sendTracks:          map[string]*SendTrack{},
+		subscribeHandler:    nil,
+		announcementHandler: nil,
+		handlerSetupCh:      make(chan struct{}),
+		closeCh:             make(chan struct{}),
+	}
+	m, err := readNext(varint.NewReader(s), clientRole)
+	if err != nil {
+		return nil, err
+	}
+	ssm, ok := m.(*serverSetupMessage)
+	if !ok {
+		return nil, errUnexpectedMessage
+	}
+	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
+		return nil, errUnsupportedVersion
+	}
+	// TODO: Handle error and propagate it to the user?
+	go p.run(ctx, enableDatagrams)
 	return p, nil
 }
 
@@ -142,50 +215,6 @@ func (p *Peer) run(ctx context.Context, enableDatagrams bool) error {
 	}
 }
 
-func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (*Peer, error) {
-	s, err := conn.OpenStreamSync(ctx)
-	if err != nil {
-		return nil, err
-	}
-	csm := clientSetupMessage{
-		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
-		setupParameters: map[parameterKey]parameter{
-			roleParameterKey: ingestionDeliveryRole,
-		},
-	}
-	buf := csm.append(make([]byte, 0, 1500))
-	_, err = s.Write(buf)
-	if err != nil {
-		return nil, err
-	}
-	p := &Peer{
-		conn:                conn,
-		inMsgCh:             make(chan message),
-		ctrlMessageCh:       make(chan message),
-		ctrlStream:          s,
-		role:                clientRole,
-		receiveTracks:       map[uint64]*ReceiveTrack{},
-		sendTracks:          map[string]*SendTrack{},
-		subscribeHandler:    nil,
-		announcementHandler: nil,
-		closeCh:             make(chan struct{}),
-	}
-	m, err := readNext(varint.NewReader(s), clientRole)
-	if err != nil {
-		return nil, err
-	}
-	ssm, ok := m.(*serverSetupMessage)
-	if !ok {
-		return nil, errUnexpectedMessage
-	}
-	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
-		return nil, errUnsupportedVersion
-	}
-	// TODO: Handle error and propagate it to the user?
-	go p.run(ctx, enableDatagrams)
-	return p, nil
-}
-
 func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 	for {
 		msg, err := readNext(r, p.role)
@@ -198,29 +227,6 @@ func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 		}
 		p.handleObjectMessage(object)
 	}
-}
-
-type messageKey struct {
-	mt messageType
-	id string
-}
-
-type keyer interface {
-	key() messageKey
-}
-
-type keyedMessage interface {
-	message
-	keyer
-}
-
-type responseHandler interface {
-	handle(message)
-}
-
-type keyedResponseHandler interface {
-	keyedMessage
-	responseHandler
 }
 
 func (p *Peer) controlStreamLoop(ctx context.Context) error {
@@ -244,13 +250,29 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 			log.Printf("handling %v\n", m)
 			switch v := m.(type) {
 			case *subscribeRequestMessage:
-				go func() {
-					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
-				}()
+				go func(ctx context.Context) {
+					select {
+					case <-p.handlerSetupCh:
+					case <-ctx.Done():
+						return
+					}
+					select {
+					case p.ctrlMessageCh <- p.handleSubscribeRequest(v):
+					case <-ctx.Done():
+					}
+				}(ctx)
 			case *announceMessage:
-				go func() {
-					p.ctrlMessageCh <- p.handleAnnounceMessage(v)
-				}()
+				go func(ctx context.Context) {
+					select {
+					case <-p.handlerSetupCh:
+					case <-ctx.Done():
+						return
+					}
+					select {
+					case p.ctrlMessageCh <- p.handleAnnounceMessage(v):
+					case <-ctx.Done():
+					}
+				}(ctx)
 			case *goAwayMessage:
 				return errGoAway
 			case keyedMessage:
@@ -466,10 +488,8 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	return nil, errUnexpectedMessage
 }
 
-func (p *Peer) OnAnnouncement(callback AnnouncementHandler) {
-	p.announcementHandler = callback
-}
-
-func (p *Peer) OnSubscription(callback SubscriptionHandler) {
-	p.subscribeHandler = callback
+func (p *Peer) Handle(a AnnouncementHandler, s SubscriptionHandler) {
+	p.announcementHandler = a
+	p.subscribeHandler = s
+	close(p.handlerSetupCh)
 }

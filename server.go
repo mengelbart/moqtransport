@@ -28,14 +28,14 @@ type Server struct {
 }
 
 type listener interface {
-	Accept(context.Context) (connection, error)
+	Accept(context.Context) (Connection, error)
 }
 
 type quicListener struct {
 	ql *quic.Listener
 }
 
-func (l *quicListener) Accept(ctx context.Context) (connection, error) {
+func (l *quicListener) Accept(ctx context.Context) (Connection, error) {
 	c, err := l.ql.Accept(ctx)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ type wtListener struct {
 	ch chan *webtransport.Session
 }
 
-func (l *wtListener) Accept(ctx context.Context) (connection, error) {
+func (l *wtListener) Accept(ctx context.Context) (Connection, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -181,32 +181,38 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 }
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
-	_, enableDatagrams := l.(*quicListener)
 	for {
 		conn, err := l.Accept(context.TODO())
 		if err != nil {
 			return err
 		}
-		peer, err := newServerPeer(ctx, conn)
-		if err != nil {
-			log.Printf("failed to create new server peer: %v", err)
-			switch {
-			case errors.Is(err, errUnsupportedVersion):
-				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			case errors.Is(err, errMissingRoleParameter):
-				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			default:
-				conn.CloseWithError(GenericErrorCode, "internal server error")
-			}
-			continue
+		enableDatagrams := false
+		quicConn, ok := l.(interface{ ConnectionState() quic.ConnectionState })
+		if ok {
+			enableDatagrams = quicConn.ConnectionState().SupportsDatagrams
 		}
-		// TODO: This should probably be a map keyed by the MoQ-URI the request
-		// is targeting
-		go func() {
-			peer.run(ctx, enableDatagrams)
-		}()
-		if s.Handler != nil {
-			s.Handler.Handle(peer)
+		s.HandleConn(ctx, conn, enableDatagrams)
+	}
+}
+
+func (s *Server) HandleConn(ctx context.Context, conn Connection, enableDatagrams bool) {
+	peer, err := newServerPeer(ctx, conn)
+	if err != nil {
+		log.Printf("failed to create new server peer: %v", err)
+		switch {
+		case errors.Is(err, errUnsupportedVersion):
+			conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+		case errors.Is(err, errMissingRoleParameter):
+			conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+		default:
+			conn.CloseWithError(GenericErrorCode, "internal server error")
 		}
+		return
+	}
+	// TODO: This should probably be a map keyed by the MoQ-URI the request
+	// is targeting
+	go peer.run(ctx, enableDatagrams)
+	if s.Handler != nil {
+		go s.Handler.Handle(peer)
 	}
 }
