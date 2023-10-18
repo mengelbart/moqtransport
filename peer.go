@@ -23,34 +23,6 @@ var (
 	errGoAway                = errors.New("received go away from peer")
 )
 
-// TODO: Streams must be wrapped properly for quic and webtransport The
-// interfaces need to add CancelRead and CancelWrite for STOP_SENDING and
-// RESET_STREAM purposes. The interface should allow implementations for quic
-// and webtransport.
-type stream interface {
-	readStream
-	sendStream
-}
-
-type readStream interface {
-	io.Reader
-}
-
-type sendStream interface {
-	io.WriteCloser
-}
-
-type connection interface {
-	OpenStream() (stream, error)
-	OpenStreamSync(context.Context) (stream, error)
-	OpenUniStream() (sendStream, error)
-	OpenUniStreamSync(context.Context) (sendStream, error)
-	AcceptStream(context.Context) (stream, error)
-	AcceptUniStream(context.Context) (readStream, error)
-	ReceiveMessage(context.Context) ([]byte, error)
-	CloseWithError(uint64, string) error
-}
-
 type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
 
 type AnnouncementHandler func(string) error
@@ -65,6 +37,7 @@ type Peer struct {
 	subscribeHandler    SubscriptionHandler
 	announcementHandler AnnouncementHandler
 	closeCh             chan struct{}
+	newParser           parserFactory
 
 	logger *log.Logger
 }
@@ -73,7 +46,16 @@ func (p *Peer) CloseWithError(code uint64, reason string) error {
 	return p.conn.CloseWithError(code, reason)
 }
 
-func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
+type parser interface {
+	parse() (message, error)
+}
+
+type parserFactory func(messageReader, *log.Logger) parser
+
+func newServerPeer(ctx context.Context, conn connection, newParser parserFactory) (*Peer, error) {
+	if conn == nil {
+		return nil, errors.New("nil connection")
+	}
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -88,9 +70,10 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		subscribeHandler:    nil,
 		announcementHandler: nil,
 		closeCh:             make(chan struct{}),
+		newParser:           newParser,
 		logger:              log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
 	}
-	m, err := p.parseMessage(quicvarint.NewReader(s))
+	m, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +120,7 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 		logger:              log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
 	}
 	csm := clientSetupMessage{
-		SupportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_01)},
+		SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
@@ -150,11 +133,11 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 	if err != nil {
 		return nil, err
 	}
-	m, err := p.parseMessage(quicvarint.NewReader(s))
+	msg, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
 	if err != nil {
 		return nil, err
 	}
-	ssm, ok := m.(*serverSetupMessage)
+	ssm, ok := msg.(*serverSetupMessage)
 	if !ok {
 		return nil, errUnexpectedMessage
 	}
@@ -193,23 +176,9 @@ func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
 	}
 }
 
-func (p *Peer) parseMessage(r messageReader) (message, error) {
-	ps := &parser{
-		logger: p.logger,
-		reader: r,
-	}
-	msg, err := ps.readNext()
-	if err != nil {
-		p.logger.Printf("failed to parse message: %v", err)
-		return nil, err
-	}
-	p.logger.Printf("parsed message: %v", msg)
-	return msg, nil
-}
-
 func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 	for {
-		msg, err := p.parseMessage(r)
+		msg, err := p.newParser(r, p.logger).parse()
 		if err != nil {
 			return err
 		}
@@ -252,7 +221,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		defer s.Close()
 		for {
-			msg, err := p.parseMessage(quicvarint.NewReader(s))
+			msg, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
 			if err != nil {
 				errCh <- err
 				return

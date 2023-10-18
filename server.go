@@ -137,7 +137,12 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		if err != nil {
 			return err
 		}
-		peer, err := newServerPeer(ctx, conn)
+		peer, err := newServerPeer(ctx, conn, func(r messageReader, l *log.Logger) parser {
+			return &loggingParser{
+				logger: &log.Logger{},
+				reader: r,
+			}
+		})
 		if err != nil {
 			switch {
 			case errors.Is(err, errUnsupportedVersion):

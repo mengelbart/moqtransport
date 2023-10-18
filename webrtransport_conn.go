@@ -30,7 +30,7 @@ func (c *webTransportConn) AcceptStream(ctx context.Context) (stream, error) {
 	return c.sess.AcceptStream(ctx)
 }
 
-func (c *webTransportConn) AcceptUniStream(ctx context.Context) (readStream, error) {
+func (c *webTransportConn) AcceptUniStream(ctx context.Context) (receiveStream, error) {
 	return c.sess.AcceptUniStream(ctx)
 }
 
