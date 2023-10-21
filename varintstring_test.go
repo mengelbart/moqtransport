@@ -76,52 +76,44 @@ func TestParseVarIntString(t *testing.T) {
 	cases := []struct {
 		r      messageReader
 		expect string
-		len    int
 		err    error
 	}{
 		{
 			r:      nil,
 			expect: "",
-			len:    0,
 			err:    errors.New("invalid message reader"),
 		},
 		{
 			r:      bytes.NewReader([]byte{}),
 			expect: "",
-			len:    0,
 			err:    io.EOF,
 		},
 		{
 			r:      bytes.NewReader(append([]byte{0x01}, "A"...)),
 			expect: "A",
-			len:    2,
 			err:    nil,
 		},
 		{
 			r:      bytes.NewReader(append([]byte{0x04}, "ABC"...)),
 			expect: "",
-			len:    0,
 			err:    io.EOF,
 		},
 		{
 			r:      bytes.NewReader(append([]byte{0x02}, "ABC"...)),
 			expect: "AB",
-			len:    3,
 			err:    nil,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, n, err := parseVarIntString(tc.r)
+			res, err := parseVarIntString(tc.r)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
-				assert.Equal(t, tc.len, n)
 				return
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expect, res)
-			assert.Equal(t, tc.len, n)
 		})
 	}
 

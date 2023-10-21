@@ -16,25 +16,25 @@ func varIntStringLen(s string) uint64 {
 	return uint64(varint.Len(uint64(len(s)))) + uint64(len(s))
 }
 
-func parseVarIntString(r messageReader) (string, int, error) {
+func parseVarIntString(r messageReader) (string, error) {
 	if r == nil {
-		return "", 0, errInvalidMessageReader
+		return "", errInvalidMessageReader
 	}
-	l, n, err := varint.ReadWithLen(r)
+	l, err := varint.Read(r)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	if l == 0 {
-		return "", n, nil
+		return "", nil
 	}
 	val := make([]byte, l)
 	var m int
 	m, err = r.Read(val)
 	if err != nil {
-		return "", n + m, err
+		return "", err
 	}
 	if uint64(m) != l {
-		return "", 0, io.EOF
+		return "", io.EOF
 	}
-	return string(val), n + m, nil
+	return string(val), nil
 }

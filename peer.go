@@ -243,7 +243,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 		case m := <-inCh:
 			log.Printf("handling %v\n", m)
 			switch v := m.(type) {
-			case *subscribeRequestMessage:
+			case *subscribeMessage:
 				go func() {
 					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
 				}()
@@ -341,26 +341,26 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 	return nil
 }
 
-func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
+func (p *Peer) handleSubscribeRequest(msg *subscribeMessage) message {
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
-	p.sendTracks[msg.fullTrackName] = t
-	id, expires, err := p.subscribeHandler(msg.fullTrackName, t)
+	p.sendTracks[msg.trackName] = t
+	id, expires, err := p.subscribeHandler(msg.trackName, t)
 	if err != nil {
 		log.Println(err)
 		return &subscribeErrorMessage{
-			fullTrackName: msg.fullTrackName,
-			errorCode:     GenericErrorCode,
-			reasonPhrase:  "failed to handle subscription",
+			trackName:    msg.trackName,
+			errorCode:    GenericErrorCode,
+			reasonPhrase: "failed to handle subscription",
 		}
 	}
 	t.id = id
 	return &subscribeOkMessage{
-		fullTrackName: msg.fullTrackName,
-		trackID:       id,
-		expires:       expires,
+		trackName: msg.trackName,
+		trackID:   id,
+		expires:   expires,
 	}
 }
 
@@ -428,9 +428,9 @@ func (p *Peer) Announce(namespace string) error {
 }
 
 func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
-	sm := &subscribeRequestMessage{
-		fullTrackName:          trackname,
-		trackRequestParameters: map[parameterKey]parameter{},
+	sm := &subscribeMessage{
+		trackName:  trackname,
+		parameters: map[parameterKey]parameter{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -453,7 +453,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		if v.fullTrackName != sm.fullTrackName {
+		if v.trackName != sm.trackName {
 			panic("TODO")
 		}
 		t := newReceiveTrack()
