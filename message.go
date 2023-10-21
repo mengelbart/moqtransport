@@ -530,6 +530,108 @@ func parseUnsubscribeMessage(r messageReader) (*unsubscribeMessage, error) {
 	}, err
 }
 
+type subscribeFinMessage struct {
+	trackNamespace string
+	trackName      string
+	finalGroup     uint64
+	finalObject    uint64
+}
+
+func (m *subscribeFinMessage) append(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(subscribeFinMessageType))
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
+	buf = varint.Append(buf, m.finalGroup)
+	buf = varint.Append(buf, m.finalObject)
+	return buf
+}
+
+func parseSubscribeFinMessage(r messageReader) (*subscribeFinMessage, error) {
+	if r == nil {
+		return nil, errInvalidMessageReader
+	}
+	namespace, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	name, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	finalGroup, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	finalObject, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	return &subscribeFinMessage{
+		trackNamespace: namespace,
+		trackName:      name,
+		finalGroup:     finalGroup,
+		finalObject:    finalObject,
+	}, nil
+}
+
+type subscribeRstMessage struct {
+	trackNamespace string
+	trackName      string
+	errorCode      uint64
+	reasonPhrase   string
+	finalGroup     uint64
+	finalObject    uint64
+}
+
+func (m *subscribeRstMessage) append(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(subscribeRstMessageType))
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
+	buf = varint.Append(buf, m.errorCode)
+	buf = appendVarIntString(buf, m.reasonPhrase)
+	buf = varint.Append(buf, m.finalGroup)
+	buf = varint.Append(buf, m.finalObject)
+	return buf
+}
+
+func parseSubscribeRstMessage(r messageReader) (*subscribeRstMessage, error) {
+	if r == nil {
+		return nil, errInvalidMessageReader
+	}
+	namespace, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	name, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	errCode, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	reasonPhrase, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	finalGroup, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	finalObject, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	return &subscribeRstMessage{
+		trackNamespace: namespace,
+		trackName:      name,
+		errorCode:      errCode,
+		reasonPhrase:   reasonPhrase,
+		finalGroup:     finalGroup,
+		finalObject:    finalObject,
+	}, nil
+}
+
 type announceMessage struct {
 	trackNamespace         string
 	trackRequestParameters parameters
