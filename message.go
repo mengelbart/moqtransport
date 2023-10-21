@@ -29,30 +29,33 @@ type message interface {
 type messageType uint64
 
 const (
-	objectMessageType messageType = iota
+	objectMessageLenType messageType = iota
 	setupMessageType
-	reserved0x02Type
-	subscribeRequestMessageType
+	objectMessageNoLenType
+	subscribeMessageType
 	subscribeOkMessageType
 	subscribeErrorMessageType
 	announceMessageType
 	announceOkMessageType
 	announceErrorMessageType
 	unannounceMessageType
-	goAwayMessageType
 	unsubscribeMessageType
+	subscribeFinMessageType
+	subscribeRstMessageType
+
+	goAwayMessageType messageType = 0x10
 )
 
 func (mt messageType) String() string {
 	switch mt {
-	case objectMessageType:
-		return "ObjectMessage"
+	case objectMessageLenType:
+		return "ObjectLenMessage"
 	case setupMessageType:
 		return "SetupMessage"
-	case reserved0x02Type:
-		return "Reserved0x02Type"
-	case subscribeRequestMessageType:
-		return "SubscribeRequestMessage"
+	case objectMessageNoLenType:
+		return "ObjectNoLenMessage"
+	case subscribeMessageType:
+		return "SubscribeMessage"
 	case subscribeOkMessageType:
 		return "SubscribeOkMessage"
 	case subscribeErrorMessageType:
@@ -65,10 +68,14 @@ func (mt messageType) String() string {
 		return "AnnounceErrorMessage"
 	case unannounceMessageType:
 		return "AnannounceMessage"
-	case goAwayMessageType:
-		return "GoAwayMessage"
 	case unsubscribeMessageType:
 		return "UnsubscribeMessage"
+	case subscribeFinMessageType:
+		return "SubscribeFinMessage"
+	case subscribeRstMessageType:
+		return "SubscribeRstMessage"
+	case goAwayMessageType:
+		return "GoAwayMessage"
 	}
 	return "unknown message type"
 }
@@ -98,53 +105,49 @@ func readNext(reader messageReader, r role) (message, error) {
 	if err != nil {
 		return nil, err
 	}
-	l, err := varint.Read(reader)
-	if err != nil {
-		return nil, err
-	}
-	length := int(l)
-
 	switch messageType(mt) {
-	case objectMessageType:
-		msg, err := parseObjectMessage(reader, length)
+	case objectMessageLenType:
+		msg, err := parseObjectMessage(reader, mt)
 		return msg, err
 	case setupMessageType:
 		switch r {
 		case serverRole:
-			csm, err := parseClientSetupMessage(reader, length)
+			csm, err := parseClientSetupMessage(reader)
 			return csm, err
 		case clientRole:
-			ssm, err := parseServerSetupMessage(reader, length)
+			ssm, err := parseServerSetupMessage(reader)
 			return ssm, err
 		}
-	case subscribeRequestMessageType:
-		srm, err := parseSubscribeRequestMessage(reader, length)
+	case subscribeMessageType:
+		srm, err := parseSubscribeMessage(reader)
 		return srm, err
 	case subscribeOkMessageType:
-		som, err := parseSubscribeOkMessage(reader, length)
+		som, err := parseSubscribeOkMessage(reader)
 		return som, err
 	case subscribeErrorMessageType:
-		sem, err := parseSubscribeErrorMessage(reader, length)
+		sem, err := parseSubscribeErrorMessage(reader)
 		return sem, err
 	case announceMessageType:
-		am, err := parseAnnounceMessage(reader, length)
+		am, err := parseAnnounceMessage(reader)
 		return am, err
 	case announceOkMessageType:
-		aom, err := parseAnnounceOkMessage(reader, length)
+		aom, err := parseAnnounceOkMessage(reader)
 		return aom, err
 	case announceErrorMessageType:
-		return parseAnnounceErrorMessage(reader, length)
+		return parseAnnounceErrorMessage(reader)
 	case unannounceMessageType:
-		return parseUnannounceMessage(reader, length)
+		return parseUnannounceMessage(reader)
 	case goAwayMessageType:
-		return parseGoAwayMessage(length)
+		return parseGoAwayMessage(reader)
 	case unsubscribeMessageType:
-		return parseUnsubscribeMessage(reader, length)
+		return parseUnsubscribeMessage(reader)
 	}
 	return nil, errors.New("unknown message type")
 }
 
 type objectMessage struct {
+	hasLength bool
+
 	trackID         uint64
 	groupSequence   uint64
 	objectSequence  uint64
@@ -153,58 +156,58 @@ type objectMessage struct {
 }
 
 func (m objectMessage) String() string {
-	return "ObjectMessage"
+	if m.hasLength {
+		return objectMessageLenType.String()
+	}
+	return objectMessageNoLenType.String()
 }
 
 func (m *objectMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(objectMessageType))
-	buf = varint.Append(buf,
-		uint64(varint.Len(m.trackID))+
-			uint64(varint.Len(m.groupSequence))+
-			uint64(varint.Len(m.objectSequence))+
-			uint64(varint.Len(m.objectSendOrder))+
-			uint64(len(m.objectPayload)),
-	)
-
+	if m.hasLength {
+		buf = varint.Append(buf, uint64(objectMessageLenType))
+	} else {
+		buf = varint.Append(buf, uint64(objectMessageNoLenType))
+	}
 	buf = varint.Append(buf, m.trackID)
 	buf = varint.Append(buf, m.groupSequence)
 	buf = varint.Append(buf, m.objectSequence)
 	buf = varint.Append(buf, m.objectSendOrder)
+	if m.hasLength {
+		buf = varint.Append(buf, uint64(len(m.objectPayload)))
+	}
 	buf = append(buf, m.objectPayload...)
 	return buf
 }
 
-func parseObjectMessage(r messageReader, length int) (*objectMessage, error) {
+func parseObjectMessage(r messageReader, typ uint64) (*objectMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < objectMessageMinimumLength {
+	if typ != uint64(objectMessageLenType) && typ != uint64(objectMessageNoLenType) {
 		return nil, errInvalidMessageEncoding
 	}
-	offset := 0
-	trackID, n, err := varint.ReadWithLen(r)
+	hasLen := typ == 0x00
+	trackID, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	offset += n
-	groupSequence, n, err := varint.ReadWithLen(r)
+	groupSequence, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	offset += n
-	objectSequence, n, err := varint.ReadWithLen(r)
+	objectSequence, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	offset += n
-	objectSendOrder, n, err := varint.ReadWithLen(r)
+	objectSendOrder, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	if length == 0 {
+	if !hasLen {
 		var objectPayload []byte
 		objectPayload, err = io.ReadAll(r)
 		return &objectMessage{
+			hasLength:       hasLen,
 			trackID:         trackID,
 			groupSequence:   groupSequence,
 			objectSequence:  objectSequence,
@@ -212,15 +215,18 @@ func parseObjectMessage(r messageReader, length int) (*objectMessage, error) {
 			objectPayload:   objectPayload,
 		}, err
 	}
-	offset += n
-	payloadLen := length - offset
-	if payloadLen > 0 {
-		objectPayload := make([]byte, payloadLen)
+	length, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	if length > 0 {
+		objectPayload := make([]byte, length)
 		_, err = io.ReadFull(r, objectPayload)
 		if err != nil {
 			return nil, err
 		}
 		return &objectMessage{
+			hasLength:       hasLen,
 			trackID:         trackID,
 			groupSequence:   groupSequence,
 			objectSequence:  objectSequence,
@@ -229,6 +235,7 @@ func parseObjectMessage(r messageReader, length int) (*objectMessage, error) {
 		}, err
 	}
 	return &objectMessage{
+		hasLength:       hasLen,
 		trackID:         trackID,
 		groupSequence:   groupSequence,
 		objectSequence:  objectSequence,
@@ -243,55 +250,36 @@ type clientSetupMessage struct {
 }
 
 func (m clientSetupMessage) String() string {
-	return "ClientSetupMessage"
+	return setupMessageType.String()
 }
 
 func (m *clientSetupMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(setupMessageType))
-	buf = varint.Append(buf,
-		uint64(varint.Len(uint64(len(m.supportedVersions))))+
-			m.supportedVersions.Len()+
-			m.setupParameters.length(),
-	)
 	buf = varint.Append(buf, uint64(len(m.supportedVersions)))
 	for _, v := range m.supportedVersions {
 		buf = varint.Append(buf, uint64(v))
 	}
+	buf = varint.Append(buf, uint64(len(m.setupParameters)))
 	for _, p := range m.setupParameters {
 		buf = p.append(buf)
 	}
 	return buf
 }
 
-func parseClientSetupMessage(r messageReader, length int) (*clientSetupMessage, error) {
+func parseClientSetupMessage(r messageReader) (*clientSetupMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < clientSetupMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	offset := 0
-	numSupportedVersions, n, err := varint.ReadWithLen(r)
+	vs, err := parseVersions(r)
 	if err != nil {
 		return nil, err
 	}
-	offset += n
-	var versions versions
-	for i := 0; i < int(numSupportedVersions); i++ {
-		var v uint64
-		v, n, err = varint.ReadWithLen(r)
-		if err != nil {
-			return nil, err
-		}
-		offset += n
-		versions = append(versions, version(v))
-	}
-	ps, err := parseParameters(r, length-offset)
+	ps, err := parseParameters(r)
 	if err != nil {
 		return nil, err
 	}
 	return &clientSetupMessage{
-		supportedVersions: versions,
+		supportedVersions: vs,
 		setupParameters:   ps,
 	}, nil
 }
@@ -302,34 +290,28 @@ type serverSetupMessage struct {
 }
 
 func (m serverSetupMessage) String() string {
-	return "ServerSetupMessage"
+	return setupMessageType.String()
 }
 
 func (m *serverSetupMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(setupMessageType))
-	buf = varint.Append(buf,
-		m.selectedVersion.Len()+
-			m.setupParameters.length(),
-	)
 	buf = varint.Append(buf, uint64(m.selectedVersion))
+	buf = varint.Append(buf, uint64(len(m.setupParameters)))
 	for _, p := range m.setupParameters {
 		buf = p.append(buf)
 	}
 	return buf
 }
 
-func parseServerSetupMessage(r messageReader, length int) (*serverSetupMessage, error) {
+func parseServerSetupMessage(r messageReader) (*serverSetupMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
-	}
-	if length < serverSetupMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
 	}
 	sv, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r, length-1)
+	ps, err := parseParameters(r)
 	if err != nil {
 		return nil, err
 	}
@@ -339,68 +321,72 @@ func parseServerSetupMessage(r messageReader, length int) (*serverSetupMessage, 
 	}, nil
 }
 
-type subscribeRequestMessage struct {
-	fullTrackName          string
-	trackRequestParameters parameters
+type subscribeMessage struct {
+	trackNamespace string
+	trackName      string
+	parameters     parameters
 }
 
-func (m subscribeRequestMessage) String() string {
-	out := "SubscribeRequestMessage"
-	out += fmt.Sprintf("\tFullTrackName: %v\n", m.fullTrackName)
-	out += fmt.Sprintf("\tTrackRequestParameters: %v\n", m.trackRequestParameters)
+func (m subscribeMessage) String() string {
+	out := subscribeMessageType.String()
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
+	out += fmt.Sprintf("\tTrackRequestParameters: %v\n", m.parameters)
 	return out
 }
 
-func (m subscribeRequestMessage) key() messageKey {
+func (m subscribeMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: m.fullTrackName,
+		mt: subscribeMessageType,
+		id: m.trackName,
 	}
 }
 
-func (m *subscribeRequestMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeRequestMessageType))
-	buf = varint.Append(buf,
-		varIntStringLen(m.fullTrackName)+
-			m.trackRequestParameters.length(),
-	)
-	buf = appendVarIntString(buf, m.fullTrackName)
-	for _, p := range m.trackRequestParameters {
+func (m *subscribeMessage) append(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(subscribeMessageType))
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
+	buf = varint.Append(buf, uint64(len(m.parameters)))
+	for _, p := range m.parameters {
 		buf = p.append(buf)
 	}
 	return buf
 }
 
-func parseSubscribeRequestMessage(r messageReader, length int) (*subscribeRequestMessage, error) {
+func parseSubscribeMessage(r messageReader) (*subscribeMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < subscribeRequestMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	name, n, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r, length-n)
+	name, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	return &subscribeRequestMessage{
-		fullTrackName:          name,
-		trackRequestParameters: ps,
+	ps, err := parseParameters(r)
+	if err != nil {
+		return nil, err
+	}
+	return &subscribeMessage{
+		trackNamespace: namespace,
+		trackName:      name,
+		parameters:     ps,
 	}, nil
 }
 
 type subscribeOkMessage struct {
-	fullTrackName string
-	trackID       uint64
-	expires       time.Duration
+	trackNamespace string
+	trackName      string
+	trackID        uint64
+	expires        time.Duration
 }
 
 func (m subscribeOkMessage) String() string {
-	out := "SubscribeOkMessage"
-	out += fmt.Sprintf("\tFullTrackName: %v\n", m.fullTrackName)
+	out := subscribeOkMessageType.String()
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tFullTrackName: %v\n", m.trackName)
 	out += fmt.Sprintf("\tTrackID: %v\n", m.trackID)
 	out += fmt.Sprintf("\tExpires: %v\n", m.expires)
 	return out
@@ -408,62 +394,59 @@ func (m subscribeOkMessage) String() string {
 
 func (m subscribeOkMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: m.fullTrackName,
+		mt: subscribeMessageType,
+		id: m.trackName,
 	}
 }
 
 func (m *subscribeOkMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(subscribeOkMessageType))
-	buf = varint.Append(buf,
-		varIntStringLen(m.fullTrackName)+
-			uint64(varint.Len(m.trackID))+
-			uint64(varint.Len(uint64(m.expires))),
-	)
-	buf = appendVarIntString(buf, m.fullTrackName)
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
 	buf = varint.Append(buf, m.trackID)
 	buf = varint.Append(buf, uint64(m.expires))
 	return buf
 }
 
-func parseSubscribeOkMessage(r messageReader, length int) (*subscribeOkMessage, error) {
+func parseSubscribeOkMessage(r messageReader) (*subscribeOkMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < subscribeOkMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	fullTrackName, n, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	trackID, m, err := varint.ReadWithLen(r)
+	trackName, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	e, k, err := varint.ReadWithLen(r)
+	trackID, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	if n+m+k != length {
-		return nil, errInvalidMessageEncoding
+	e, err := varint.Read(r)
+	if err != nil {
+		return nil, err
 	}
 	return &subscribeOkMessage{
-		fullTrackName: fullTrackName,
-		trackID:       trackID,
-		expires:       time.Duration(e) * time.Millisecond,
+		trackNamespace: namespace,
+		trackName:      trackName,
+		trackID:        trackID,
+		expires:        time.Duration(e) * time.Millisecond,
 	}, nil
 }
 
 type subscribeErrorMessage struct {
-	fullTrackName string
-	errorCode     uint64
-	reasonPhrase  string
+	trackNamespace string
+	trackName      string
+	errorCode      uint64
+	reasonPhrase   string
 }
 
 func (m subscribeErrorMessage) String() string {
-	out := "SubscribeErrorMessage"
-	out += fmt.Sprintf("\tFullTrackName: %v\n", m.fullTrackName)
+	out := subscribeErrorMessageType.String()
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
 	out += fmt.Sprintf("\tTrackID: %v\n", m.errorCode)
 	out += fmt.Sprintf("\tExpires: %v\n", m.reasonPhrase)
 	return out
@@ -471,89 +454,79 @@ func (m subscribeErrorMessage) String() string {
 
 func (m subscribeErrorMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: m.fullTrackName,
+		mt: subscribeMessageType,
+		id: m.trackName,
 	}
 }
 
 func (m *subscribeErrorMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(subscribeErrorMessageType))
-	buf = varint.Append(buf,
-		varIntStringLen(m.fullTrackName)+
-			uint64(varint.Len(m.errorCode))+
-			varIntStringLen(m.reasonPhrase),
-	)
-	buf = appendVarIntString(buf, m.fullTrackName)
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
 	buf = varint.Append(buf, m.errorCode)
 	buf = appendVarIntString(buf, m.reasonPhrase)
 	return buf
 }
 
-func parseSubscribeErrorMessage(r messageReader, length int) (*subscribeErrorMessage, error) {
+func parseSubscribeErrorMessage(r messageReader) (*subscribeErrorMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < subscribeErrorMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	fullTrackName, n, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	errorCode, m, err := varint.ReadWithLen(r)
+	fullTrackName, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	reasonPhrase, k, err := parseVarIntString(r)
-	if n+m+k != length {
-		return nil, errInvalidMessageEncoding
+	errorCode, err := varint.Read(r)
+	if err != nil {
+		return nil, err
 	}
+	reasonPhrase, err := parseVarIntString(r)
 	return &subscribeErrorMessage{
-		fullTrackName: fullTrackName,
-		errorCode:     errorCode,
-		reasonPhrase:  reasonPhrase,
+		trackNamespace: namespace,
+		trackName:      fullTrackName,
+		errorCode:      errorCode,
+		reasonPhrase:   reasonPhrase,
 	}, err
 }
 
-// TODO: This is technicall almost identical to AnnounceOkMessage so it should
-// probably share some code?
 type unsubscribeMessage struct {
 	trackNamespace string
+	trackName      string
 }
 
 func (m unsubscribeMessage) String() string {
-	out := "UnsubscribeMessage"
+	out := unsubscribeMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
 	return out
 }
 
 func (m *unsubscribeMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(unsubscribeMessageType))
-	buf = varint.Append(buf, uint64(len(m.trackNamespace)))
-	buf = append(buf, []byte(m.trackNamespace)...)
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
 	return buf
 }
 
-func parseUnsubscribeMessage(r messageReader, length int) (*unsubscribeMessage, error) {
+func parseUnsubscribeMessage(r messageReader) (*unsubscribeMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length > 0 {
-		buf := make([]byte, length)
-		_, err := io.ReadFull(r, buf)
-		if err != nil {
-			return nil, err
-		}
-		return &unsubscribeMessage{
-			trackNamespace: string(buf),
-		}, err
+	namespace, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
 	}
-	name, err := io.ReadAll(r)
+	trackName, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
 	return &unsubscribeMessage{
-		trackNamespace: string(name),
+		trackNamespace: namespace,
+		trackName:      trackName,
 	}, err
 }
 
@@ -563,7 +536,7 @@ type announceMessage struct {
 }
 
 func (m announceMessage) String() string {
-	out := "AnnounceMessage"
+	out := announceMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
 	out += fmt.Sprintf("\tTrackRequestParameters: %v\n", m.trackRequestParameters)
 	return out
@@ -578,30 +551,23 @@ func (m announceMessage) key() messageKey {
 
 func (m *announceMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(announceMessageType))
-	buf = varint.Append(buf,
-		varIntStringLen(m.trackNamespace)+
-			m.trackRequestParameters.length(),
-	)
 	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = varint.Append(buf, uint64(len(m.trackRequestParameters)))
 	for _, p := range m.trackRequestParameters {
 		buf = p.append(buf)
 	}
 	return buf
 }
 
-func parseAnnounceMessage(r messageReader, length int) (*announceMessage, error) {
+func parseAnnounceMessage(r messageReader) (*announceMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < announceMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	var n int
-	trackNamspace, n, err := parseVarIntString(r)
+	trackNamspace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r, length-n)
+	ps, err := parseParameters(r)
 	if err != nil {
 		return nil, err
 	}
@@ -616,7 +582,7 @@ type announceOkMessage struct {
 }
 
 func (m announceOkMessage) String() string {
-	out := "AnnounceOkMessage"
+	out := announceOkMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
 	return out
 }
@@ -630,31 +596,20 @@ func (m announceOkMessage) key() messageKey {
 
 func (m *announceOkMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(announceOkMessageType))
-	buf = varint.Append(buf, uint64(len(m.trackNamespace)))
-	buf = append(buf, []byte(m.trackNamespace)...)
+	buf = appendVarIntString(buf, m.trackNamespace)
 	return buf
 }
 
-func parseAnnounceOkMessage(r messageReader, length int) (*announceOkMessage, error) {
+func parseAnnounceOkMessage(r messageReader) (*announceOkMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length > 0 {
-		buf := make([]byte, length)
-		_, err := io.ReadFull(r, buf)
-		if err != nil {
-			return nil, err
-		}
-		return &announceOkMessage{
-			trackNamespace: string(buf),
-		}, err
-	}
-	name, err := io.ReadAll(r)
+	namespace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
 	return &announceOkMessage{
-		trackNamespace: string(name),
+		trackNamespace: namespace,
 	}, err
 }
 
@@ -665,7 +620,7 @@ type announceErrorMessage struct {
 }
 
 func (m announceErrorMessage) String() string {
-	out := "AnnounceErrorMessage"
+	out := announceErrorMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
 	out += fmt.Sprintf("\tErrorCdoe: %v\n", m.errorCode)
 	out += fmt.Sprintf("\tReasonPhrase: %v\n", m.reasonPhrase)
@@ -681,101 +636,89 @@ func (m announceErrorMessage) key() messageKey {
 
 func (m *announceErrorMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(announceErrorMessageType))
-	buf = varint.Append(buf,
-		varIntStringLen(m.trackNamespace)+
-			uint64(varint.Len(m.errorCode))+
-			varIntStringLen(m.reasonPhrase),
-	)
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = varint.Append(buf, m.errorCode)
 	buf = appendVarIntString(buf, m.reasonPhrase)
 	return buf
 }
 
-func parseAnnounceErrorMessage(r messageReader, length int) (*announceErrorMessage, error) {
+func parseAnnounceErrorMessage(r messageReader) (*announceErrorMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length < announceErrorMessageMinimumLength {
-		return nil, errInvalidMessageEncoding
-	}
-	trackNamspace, n, err := parseVarIntString(r)
+	trackNamspace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	errorCode, m, err := varint.ReadWithLen(r)
+	errorCode, err := varint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	reasonPhrase, k, err := parseVarIntString(r)
-	if n+m+k != length {
-		return nil, errInvalidMessageEncoding
+	reasonPhrase, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
 	}
 	return &announceErrorMessage{
 		trackNamespace: trackNamspace,
 		errorCode:      errorCode,
 		reasonPhrase:   reasonPhrase,
-	}, err
+	}, nil
 }
 
 type unannounceMessage struct {
 	trackNamespace string
 }
 
-// TODO: This is technicall almost identical to AnnounceOkMessage so it should
-// probably share some code?
 func (m unannounceMessage) String() string {
-	out := "UnannounceMessage"
+	out := unannounceMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
 	return out
 }
 
 func (m *unannounceMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(unannounceMessageType))
-	buf = varint.Append(buf, uint64(len(m.trackNamespace)))
-	buf = append(buf, []byte(m.trackNamespace)...)
+	buf = appendVarIntString(buf, m.trackNamespace)
 	return buf
 }
 
-func parseUnannounceMessage(r messageReader, length int) (*unannounceMessage, error) {
+func parseUnannounceMessage(r messageReader) (*unannounceMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	if length > 0 {
-		buf := make([]byte, length)
-		_, err := io.ReadFull(r, buf)
-		if err != nil {
-			return nil, err
-		}
-		return &unannounceMessage{
-			trackNamespace: string(buf),
-		}, err
-	}
-	name, err := io.ReadAll(r)
+	namespace, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
 	return &unannounceMessage{
-		trackNamespace: string(name),
-	}, err
+		trackNamespace: namespace,
+	}, nil
 }
 
 type goAwayMessage struct {
+	newSessionURI string
 }
 
 func (m goAwayMessage) String() string {
-	return "GoAwayMessage"
+	out := goAwayMessageType.String()
+	out += fmt.Sprintf("\tNewSessionURI: %v\n", m.newSessionURI)
+	return out
 }
 
 func (m *goAwayMessage) append(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(goAwayMessageType))
-	buf = varint.Append(buf, 0)
+	buf = appendVarIntString(buf, m.newSessionURI)
 	return buf
 }
 
-func parseGoAwayMessage(length int) (*goAwayMessage, error) {
-	if length != 0 {
-		return nil, errInvalidMessageEncoding
+func parseGoAwayMessage(r messageReader) (*goAwayMessage, error) {
+	if r == nil {
+		return nil, errInvalidMessageReader
 	}
-	return &goAwayMessage{}, nil
+	uri, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
+	}
+	return &goAwayMessage{
+		newSessionURI: uri,
+	}, nil
 }
