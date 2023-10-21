@@ -4,7 +4,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/mengelbart/moqtransport/varint"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 var (
@@ -36,7 +36,7 @@ func parseSetupParameter(r messageReader) (parameter, error) {
 }
 
 func parseParameter(r messageReader) (parameter, error) {
-	key, err := varint.Read(r)
+	key, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func parseParameter(r messageReader) (parameter, error) {
 }
 
 func parseRoleParameter(r messageReader) (roleParameter, error) {
-	l, err := varint.Read(r)
+	l, err := quicvarint.Read(r)
 	if err != nil {
 		return 0, err
 	}
@@ -73,7 +73,7 @@ func parseRoleParameter(r messageReader) (roleParameter, error) {
 }
 
 func parsePathParameter(r messageReader) (pathParameter, error) {
-	l, err := varint.Read(r)
+	l, err := quicvarint.Read(r)
 	if err != nil {
 		return "", err
 	}
@@ -103,8 +103,8 @@ func (r roleParameter) length() uint64 {
 }
 
 func (p roleParameter) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(p.key()))
-	buf = varint.Append(buf, p.length())
+	buf = quicvarint.Append(buf, uint64(p.key()))
+	buf = quicvarint.Append(buf, p.length())
 	return append(buf, byte(p))
 }
 
@@ -119,8 +119,8 @@ func (p pathParameter) length() uint64 {
 }
 
 func (p pathParameter) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(p.key()))
-	buf = varint.Append(buf, p.length())
+	buf = quicvarint.Append(buf, uint64(p.key()))
+	buf = quicvarint.Append(buf, p.length())
 	return append(buf, p...)
 }
 
@@ -131,7 +131,7 @@ func parseParameters(r messageReader) (parameters, error) {
 		return nil, errInvalidMessageReader
 	}
 	ps := parameters{}
-	numParameters, err := varint.Read(r)
+	numParameters, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}

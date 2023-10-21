@@ -6,8 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/mengelbart/moqtransport/varint"
-
+	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,7 +77,7 @@ func TestParseParameter(t *testing.T) {
 			err:    nil,
 		},
 		{
-			buf:    append(append([]byte{byte(pathParameterKey)}, varint.Append([]byte{}, uint64(len("/path/param")))...), "/path/param"...),
+			buf:    append(append([]byte{byte(pathParameterKey)}, quicvarint.Append([]byte{}, uint64(len("/path/param")))...), "/path/param"...),
 			expect: pathParameter("/path/param"),
 			err:    nil,
 		},
