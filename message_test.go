@@ -924,6 +924,239 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 	}
 }
 
+func TestSubscribeFinMessageAppend(t *testing.T) {
+	cases := []struct {
+		sfm    subscribeFinMessage
+		buf    []byte
+		expect []byte
+	}{
+		{
+			sfm: subscribeFinMessage{
+				trackNamespace: "",
+				trackName:      "",
+				finalGroup:     0,
+				finalObject:    0,
+			},
+			buf:    []byte{},
+			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x00},
+		},
+		{
+			sfm: subscribeFinMessage{
+				trackNamespace: "Test",
+				trackName:      "Name",
+				finalGroup:     1,
+				finalObject:    2,
+			},
+			buf:    []byte{},
+			expect: []byte{0x0b, 0x04, 'T', 'e', 's', 't', 0x04, 'N', 'a', 'm', 'e', 0x01, 0x02},
+		},
+		{
+			sfm: subscribeFinMessage{
+				trackNamespace: "Test",
+				trackName:      "Name",
+				finalGroup:     1,
+				finalObject:    2,
+			},
+			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0b, 0x04, 'T', 'e', 's', 't', 0x04, 'N', 'a', 'm', 'e', 0x01, 0x02},
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res := tc.sfm.append(tc.buf)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestParseSubscribeFinMessage(t *testing.T) {
+	cases := []struct {
+		r      messageReader
+		expect *subscribeFinMessage
+		err    error
+	}{
+		{
+			r:      nil,
+			expect: nil,
+			err:    errInvalidMessageReader,
+		},
+		{
+			r:      bytes.NewReader([]byte{}),
+			expect: nil,
+			err:    io.EOF,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x00, 0x00, 0x00, 0x00,
+			}),
+			expect: &subscribeFinMessage{
+				trackNamespace: "",
+				trackName:      "",
+				finalGroup:     0,
+				finalObject:    0,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x05, 's', 'p', 'a', 'c', 'e',
+				0x04, 'n', 'a', 'm', 'e',
+				0x01,
+				0x02,
+			}),
+			expect: &subscribeFinMessage{
+				trackNamespace: "space",
+				trackName:      "name",
+				finalGroup:     1,
+				finalObject:    2,
+			},
+			err: nil,
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res, err := parseSubscribeFinMessage(tc.r)
+			if tc.err != nil {
+				assert.Equal(t, tc.err, err)
+				assert.Equal(t, tc.expect, res)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestSubscribeRstMessageAppend(t *testing.T) {
+	cases := []struct {
+		srm    subscribeRstMessage
+		buf    []byte
+		expect []byte
+	}{
+		{
+			srm: subscribeRstMessage{
+				trackNamespace: "",
+				trackName:      "",
+				errorCode:      0,
+				reasonPhrase:   "",
+				finalGroup:     0,
+				finalObject:    0,
+			},
+			buf:    []byte{},
+			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+		},
+		{
+			srm: subscribeRstMessage{
+				trackNamespace: "space",
+				trackName:      "name",
+				errorCode:      1,
+				reasonPhrase:   "reason",
+				finalGroup:     2,
+				finalObject:    3,
+			},
+			buf: []byte{},
+			expect: []byte{
+				0x0c,
+				0x05, 's', 'p', 'a', 'c', 'e',
+				0x04, 'n', 'a', 'm', 'e',
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x02, 0x03,
+			},
+		},
+		{
+			srm: subscribeRstMessage{
+				trackNamespace: "space",
+				trackName:      "name",
+				errorCode:      1,
+				reasonPhrase:   "reason",
+				finalGroup:     2,
+				finalObject:    3,
+			},
+			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
+			expect: []byte{
+				0x0a, 0x0b, 0x0c, 0x0d,
+				0x0c,
+				0x05, 's', 'p', 'a', 'c', 'e',
+				0x04, 'n', 'a', 'm', 'e',
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x02, 0x03,
+			},
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res := tc.srm.append(tc.buf)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestParseSubscribeRstMessage(t *testing.T) {
+	cases := []struct {
+		r      messageReader
+		expect *subscribeRstMessage
+		err    error
+	}{
+		{
+			r:      nil,
+			expect: nil,
+			err:    errInvalidMessageReader,
+		},
+		{
+			r:      bytes.NewReader([]byte{}),
+			expect: nil,
+			err:    io.EOF,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+			}),
+			expect: &subscribeRstMessage{
+				trackNamespace: "",
+				trackName:      "",
+				errorCode:      0,
+				reasonPhrase:   "",
+				finalGroup:     0,
+				finalObject:    0,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x05, 's', 'p', 'a', 'c', 'e',
+				0x04, 'n', 'a', 'm', 'e',
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x02,
+				0x03,
+			}),
+			expect: &subscribeRstMessage{
+				trackNamespace: "space",
+				trackName:      "name",
+				errorCode:      1,
+				reasonPhrase:   "reason",
+				finalGroup:     2,
+				finalObject:    3,
+			},
+			err: nil,
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res, err := parseSubscribeRstMessage(tc.r)
+			if tc.err != nil {
+				assert.Equal(t, tc.err, err)
+				assert.Equal(t, tc.expect, res)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
 func TestAnnounceMessageAppend(t *testing.T) {
 	cases := []struct {
 		am     announceMessage
