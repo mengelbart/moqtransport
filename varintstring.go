@@ -3,24 +3,24 @@ package moqtransport
 import (
 	"io"
 
-	"github.com/mengelbart/moqtransport/varint"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 func appendVarIntString(buf []byte, s string) []byte {
-	buf = varint.Append(buf, uint64(len(s)))
+	buf = quicvarint.Append(buf, uint64(len(s)))
 	buf = append(buf, s...)
 	return buf
 }
 
 func varIntStringLen(s string) uint64 {
-	return uint64(varint.Len(uint64(len(s)))) + uint64(len(s))
+	return uint64(quicvarint.Len(uint64(len(s)))) + uint64(len(s))
 }
 
 func parseVarIntString(r messageReader) (string, error) {
 	if r == nil {
 		return "", errInvalidMessageReader
 	}
-	l, err := varint.Read(r)
+	l, err := quicvarint.Read(r)
 	if err != nil {
 		return "", err
 	}

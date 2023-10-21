@@ -8,7 +8,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/mengelbart/moqtransport/varint"
+	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slices"
 )
 
@@ -71,7 +71,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := readNext(varint.NewReader(s), serverRole)
+	m, err := readNext(quicvarint.NewReader(s), serverRole)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (
 		announcementHandler: nil,
 		closeCh:             make(chan struct{}),
 	}
-	m, err := readNext(varint.NewReader(s), clientRole)
+	m, err := readNext(quicvarint.NewReader(s), clientRole)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +230,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
-			msg, err := readNext(varint.NewReader(s), p.role)
+			msg, err := readNext(quicvarint.NewReader(s), p.role)
 			if err != nil {
 				errCh <- err
 				return
@@ -295,7 +295,7 @@ func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 			return err
 		}
 		go func() {
-			if err := p.readMessages(varint.NewReader(s), s); err != nil {
+			if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
 				panic(err)
 			}
 		}()
@@ -309,7 +309,7 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 			return err
 		}
 		go func() {
-			if err := p.readMessages(varint.NewReader(stream), stream); err != nil {
+			if err := p.readMessages(quicvarint.NewReader(stream), stream); err != nil {
 				panic(err)
 			}
 		}()

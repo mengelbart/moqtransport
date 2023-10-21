@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/mengelbart/moqtransport/varint"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 var (
@@ -101,7 +101,7 @@ type messageReader interface {
 }
 
 func readNext(reader messageReader, r role) (message, error) {
-	mt, err := varint.Read(reader)
+	mt, err := quicvarint.Read(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -164,16 +164,16 @@ func (m objectMessage) String() string {
 
 func (m *objectMessage) append(buf []byte) []byte {
 	if m.hasLength {
-		buf = varint.Append(buf, uint64(objectMessageLenType))
+		buf = quicvarint.Append(buf, uint64(objectMessageLenType))
 	} else {
-		buf = varint.Append(buf, uint64(objectMessageNoLenType))
+		buf = quicvarint.Append(buf, uint64(objectMessageNoLenType))
 	}
-	buf = varint.Append(buf, m.trackID)
-	buf = varint.Append(buf, m.groupSequence)
-	buf = varint.Append(buf, m.objectSequence)
-	buf = varint.Append(buf, m.objectSendOrder)
+	buf = quicvarint.Append(buf, m.trackID)
+	buf = quicvarint.Append(buf, m.groupSequence)
+	buf = quicvarint.Append(buf, m.objectSequence)
+	buf = quicvarint.Append(buf, m.objectSendOrder)
 	if m.hasLength {
-		buf = varint.Append(buf, uint64(len(m.objectPayload)))
+		buf = quicvarint.Append(buf, uint64(len(m.objectPayload)))
 	}
 	buf = append(buf, m.objectPayload...)
 	return buf
@@ -187,19 +187,19 @@ func parseObjectMessage(r messageReader, typ uint64) (*objectMessage, error) {
 		return nil, errInvalidMessageEncoding
 	}
 	hasLen := typ == 0x00
-	trackID, err := varint.Read(r)
+	trackID, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	groupSequence, err := varint.Read(r)
+	groupSequence, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	objectSequence, err := varint.Read(r)
+	objectSequence, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	objectSendOrder, err := varint.Read(r)
+	objectSendOrder, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -215,7 +215,7 @@ func parseObjectMessage(r messageReader, typ uint64) (*objectMessage, error) {
 			objectPayload:   objectPayload,
 		}, err
 	}
-	length, err := varint.Read(r)
+	length, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -254,12 +254,12 @@ func (m clientSetupMessage) String() string {
 }
 
 func (m *clientSetupMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(setupMessageType))
-	buf = varint.Append(buf, uint64(len(m.supportedVersions)))
+	buf = quicvarint.Append(buf, uint64(setupMessageType))
+	buf = quicvarint.Append(buf, uint64(len(m.supportedVersions)))
 	for _, v := range m.supportedVersions {
-		buf = varint.Append(buf, uint64(v))
+		buf = quicvarint.Append(buf, uint64(v))
 	}
-	buf = varint.Append(buf, uint64(len(m.setupParameters)))
+	buf = quicvarint.Append(buf, uint64(len(m.setupParameters)))
 	for _, p := range m.setupParameters {
 		buf = p.append(buf)
 	}
@@ -294,9 +294,9 @@ func (m serverSetupMessage) String() string {
 }
 
 func (m *serverSetupMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(setupMessageType))
-	buf = varint.Append(buf, uint64(m.selectedVersion))
-	buf = varint.Append(buf, uint64(len(m.setupParameters)))
+	buf = quicvarint.Append(buf, uint64(setupMessageType))
+	buf = quicvarint.Append(buf, uint64(m.selectedVersion))
+	buf = quicvarint.Append(buf, uint64(len(m.setupParameters)))
 	for _, p := range m.setupParameters {
 		buf = p.append(buf)
 	}
@@ -307,7 +307,7 @@ func parseServerSetupMessage(r messageReader) (*serverSetupMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	sv, err := varint.Read(r)
+	sv, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -343,10 +343,10 @@ func (m subscribeMessage) key() messageKey {
 }
 
 func (m *subscribeMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeMessageType))
+	buf = quicvarint.Append(buf, uint64(subscribeMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
-	buf = varint.Append(buf, uint64(len(m.parameters)))
+	buf = quicvarint.Append(buf, uint64(len(m.parameters)))
 	for _, p := range m.parameters {
 		buf = p.append(buf)
 	}
@@ -400,11 +400,11 @@ func (m subscribeOkMessage) key() messageKey {
 }
 
 func (m *subscribeOkMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeOkMessageType))
+	buf = quicvarint.Append(buf, uint64(subscribeOkMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
-	buf = varint.Append(buf, m.trackID)
-	buf = varint.Append(buf, uint64(m.expires))
+	buf = quicvarint.Append(buf, m.trackID)
+	buf = quicvarint.Append(buf, uint64(m.expires))
 	return buf
 }
 
@@ -420,11 +420,11 @@ func parseSubscribeOkMessage(r messageReader) (*subscribeOkMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	trackID, err := varint.Read(r)
+	trackID, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	e, err := varint.Read(r)
+	e, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -460,10 +460,10 @@ func (m subscribeErrorMessage) key() messageKey {
 }
 
 func (m *subscribeErrorMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeErrorMessageType))
+	buf = quicvarint.Append(buf, uint64(subscribeErrorMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
-	buf = varint.Append(buf, m.errorCode)
+	buf = quicvarint.Append(buf, m.errorCode)
 	buf = appendVarIntString(buf, m.reasonPhrase)
 	return buf
 }
@@ -480,7 +480,7 @@ func parseSubscribeErrorMessage(r messageReader) (*subscribeErrorMessage, error)
 	if err != nil {
 		return nil, err
 	}
-	errorCode, err := varint.Read(r)
+	errorCode, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +506,7 @@ func (m unsubscribeMessage) String() string {
 }
 
 func (m *unsubscribeMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(unsubscribeMessageType))
+	buf = quicvarint.Append(buf, uint64(unsubscribeMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
 	return buf
@@ -538,11 +538,11 @@ type subscribeFinMessage struct {
 }
 
 func (m *subscribeFinMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeFinMessageType))
+	buf = quicvarint.Append(buf, uint64(subscribeFinMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
-	buf = varint.Append(buf, m.finalGroup)
-	buf = varint.Append(buf, m.finalObject)
+	buf = quicvarint.Append(buf, m.finalGroup)
+	buf = quicvarint.Append(buf, m.finalObject)
 	return buf
 }
 
@@ -558,11 +558,11 @@ func parseSubscribeFinMessage(r messageReader) (*subscribeFinMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	finalGroup, err := varint.Read(r)
+	finalGroup, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	finalObject, err := varint.Read(r)
+	finalObject, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -584,13 +584,13 @@ type subscribeRstMessage struct {
 }
 
 func (m *subscribeRstMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(subscribeRstMessageType))
+	buf = quicvarint.Append(buf, uint64(subscribeRstMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	buf = appendVarIntString(buf, m.trackName)
-	buf = varint.Append(buf, m.errorCode)
+	buf = quicvarint.Append(buf, m.errorCode)
 	buf = appendVarIntString(buf, m.reasonPhrase)
-	buf = varint.Append(buf, m.finalGroup)
-	buf = varint.Append(buf, m.finalObject)
+	buf = quicvarint.Append(buf, m.finalGroup)
+	buf = quicvarint.Append(buf, m.finalObject)
 	return buf
 }
 
@@ -606,7 +606,7 @@ func parseSubscribeRstMessage(r messageReader) (*subscribeRstMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	errCode, err := varint.Read(r)
+	errCode, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -614,11 +614,11 @@ func parseSubscribeRstMessage(r messageReader) (*subscribeRstMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	finalGroup, err := varint.Read(r)
+	finalGroup, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
-	finalObject, err := varint.Read(r)
+	finalObject, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -652,9 +652,9 @@ func (m announceMessage) key() messageKey {
 }
 
 func (m *announceMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(announceMessageType))
+	buf = quicvarint.Append(buf, uint64(announceMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
-	buf = varint.Append(buf, uint64(len(m.trackRequestParameters)))
+	buf = quicvarint.Append(buf, uint64(len(m.trackRequestParameters)))
 	for _, p := range m.trackRequestParameters {
 		buf = p.append(buf)
 	}
@@ -697,7 +697,7 @@ func (m announceOkMessage) key() messageKey {
 }
 
 func (m *announceOkMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(announceOkMessageType))
+	buf = quicvarint.Append(buf, uint64(announceOkMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	return buf
 }
@@ -737,9 +737,9 @@ func (m announceErrorMessage) key() messageKey {
 }
 
 func (m *announceErrorMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(announceErrorMessageType))
+	buf = quicvarint.Append(buf, uint64(announceErrorMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
-	buf = varint.Append(buf, m.errorCode)
+	buf = quicvarint.Append(buf, m.errorCode)
 	buf = appendVarIntString(buf, m.reasonPhrase)
 	return buf
 }
@@ -752,7 +752,7 @@ func parseAnnounceErrorMessage(r messageReader) (*announceErrorMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	errorCode, err := varint.Read(r)
+	errorCode, err := quicvarint.Read(r)
 	if err != nil {
 		return nil, err
 	}
@@ -778,7 +778,7 @@ func (m unannounceMessage) String() string {
 }
 
 func (m *unannounceMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(unannounceMessageType))
+	buf = quicvarint.Append(buf, uint64(unannounceMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
 	return buf
 }
@@ -807,7 +807,7 @@ func (m goAwayMessage) String() string {
 }
 
 func (m *goAwayMessage) append(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(goAwayMessageType))
+	buf = quicvarint.Append(buf, uint64(goAwayMessageType))
 	buf = appendVarIntString(buf, m.newSessionURI)
 	return buf
 }
