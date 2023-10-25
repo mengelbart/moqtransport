@@ -90,7 +90,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
 		selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-		setupParameters: map[parameterKey]parameter{},
+		setupParameters: map[uint64]parameter{},
 	}
 	buf := ssm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
@@ -149,8 +149,11 @@ func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (
 	}
 	csm := clientSetupMessage{
 		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
-		setupParameters: map[parameterKey]parameter{
-			roleParameterKey: ingestionDeliveryRole,
+		setupParameters: map[uint64]parameter{
+			roleParameterKey: varintParameter{
+				k: roleParameterKey,
+				v: ingestionDeliveryRole,
+			},
 		},
 	}
 	buf := csm.append(make([]byte, 0, 1500))
@@ -395,7 +398,7 @@ func (p *Peer) Announce(namespace string) error {
 	}
 	am := &announceMessage{
 		trackNamespace:         namespace,
-		trackRequestParameters: map[parameterKey]parameter{},
+		trackRequestParameters: map[uint64]parameter{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -430,7 +433,7 @@ func (p *Peer) Announce(namespace string) error {
 func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	sm := &subscribeMessage{
 		trackName:  trackname,
-		parameters: map[parameterKey]parameter{},
+		parameters: parameters{},
 	}
 	responseCh := make(chan message)
 	select {

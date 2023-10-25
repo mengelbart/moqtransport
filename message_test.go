@@ -302,7 +302,10 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		{
 			csm: clientSetupMessage{
 				supportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_00},
-				setupParameters:   parameters{pathParameterKey: pathParameter("A")},
+				setupParameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -426,7 +429,10 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: serverSetupMessage{
 				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-				setupParameters: parameters{roleParameterKey: roleParameter(ingestionRole)},
+				setupParameters: parameters{roleParameterKey: varintParameter{
+					k: roleParameterKey,
+					v: ingestionRole,
+				}},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -436,7 +442,10 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: serverSetupMessage{
 				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-				setupParameters: parameters{pathParameterKey: pathParameter("A")},
+				setupParameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			buf: []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02,
@@ -491,7 +500,10 @@ func TestParseServerSetupMessage(t *testing.T) {
 			}),
 			expect: &serverSetupMessage{
 				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-				setupParameters: parameters{pathParameterKey: pathParameter("A")},
+				setupParameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			err: nil,
 		},
@@ -501,7 +513,10 @@ func TestParseServerSetupMessage(t *testing.T) {
 			}),
 			expect: &serverSetupMessage{
 				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
-				setupParameters: parameters{pathParameterKey: pathParameter("A")},
+				setupParameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			err: nil,
 		},
@@ -550,7 +565,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			srm: subscribeMessage{
 				trackNamespace: "",
 				trackName:      "trackname",
-				parameters:     parameters{pathParameterKey: pathParameter("A")},
+				parameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			buf:    []byte{},
 			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x09}, "trackname"...), []byte{0x01, 0x01, 0x01, 'A'}...),
@@ -559,7 +577,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			srm: subscribeMessage{
 				trackNamespace: "",
 				trackName:      "trackname",
-				parameters:     parameters{pathParameterKey: pathParameter("A")},
+				parameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
 			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeMessageType), 0x00, 0x09}, "trackname"...), []byte{0x01, 0x01, 0x01, 'A'}...),
@@ -621,7 +642,10 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &subscribeMessage{
 				trackNamespace: "",
 				trackName:      "trackname",
-				parameters:     parameters{pathParameterKey: pathParameter("A")},
+				parameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			err: nil,
 		},
@@ -632,7 +656,10 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &subscribeMessage{
 				trackNamespace: "",
 				trackName:      "trackname",
-				parameters:     parameters{pathParameterKey: pathParameter("A")},
+				parameters: parameters{pathParameterKey: stringParameter{
+					k: pathParameterKey,
+					v: "A",
+				}},
 			},
 			err: nil,
 		},
