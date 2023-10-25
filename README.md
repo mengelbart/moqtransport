@@ -43,6 +43,17 @@ mkcert -install
 change the name of the files or use a different host name, you can use the
 `-cert` and `-key` flags of the server command to point it to the correct files.
 
-We can now start the server and client with the `-webtransport` flag to run MoQ
-Transport on top of WebTransport.
+We can now start the server and client with the `-webtransport` and `-addr`
+flags to run MoQ Transport on top of WebTransport:
 
+Server:
+
+```shell
+go run examples/server/main.go -webtransport
+```
+
+Client:
+
+```shell
+go run examples/client/main.go -webtransport -addr https://localhost:8080/chat
+```
