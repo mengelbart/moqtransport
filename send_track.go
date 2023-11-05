@@ -44,6 +44,7 @@ func (t *SendTrack) writeNewStream(b []byte) (int, error) {
 		return 0, err
 	}
 	om := &objectMessage{
+		hasLength:       false,
 		trackID:         t.id,
 		groupSequence:   0,
 		objectSequence:  0,
@@ -64,6 +65,7 @@ func (t *SendTrack) Write(b []byte) (n int, err error) {
 		// ...
 	case singleStream:
 		om := &objectMessage{
+			hasLength:       true,
 			trackID:         t.id,
 			groupSequence:   0,
 			objectSequence:  0,
