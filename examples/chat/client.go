@@ -181,7 +181,7 @@ func (c *Client) Run() {
 			}
 			msg, ok := strings.CutPrefix(cmd, fmt.Sprintf("msg %v", fields[1]))
 			if !ok {
-				fmt.Println("invalid join command, usage: 'msg <room id> <msg>'")
+				fmt.Println("invalid msg command, usage: 'msg <room id> <msg>'")
 				continue
 			}
 			_, err = c.rooms[fields[1]].st.Write([]byte(strings.TrimSpace(msg)))

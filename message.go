@@ -118,6 +118,9 @@ func readNext(reader messageReader, r role) (message, error) {
 			ssm, err := parseServerSetupMessage(reader)
 			return ssm, err
 		}
+	case objectMessageNoLenType:
+		msg, err := parseObjectMessage(reader, mt)
+		return msg, err
 	case subscribeMessageType:
 		srm, err := parseSubscribeMessage(reader)
 		return srm, err
@@ -137,10 +140,14 @@ func readNext(reader messageReader, r role) (message, error) {
 		return parseAnnounceErrorMessage(reader)
 	case unannounceMessageType:
 		return parseUnannounceMessage(reader)
-	case goAwayMessageType:
-		return parseGoAwayMessage(reader)
 	case unsubscribeMessageType:
 		return parseUnsubscribeMessage(reader)
+	case subscribeFinMessageType:
+		return parseSubscribeFinMessage(reader)
+	case subscribeRstMessageType:
+		return parseSubscribeRstMessage(reader)
+	case goAwayMessageType:
+		return parseGoAwayMessage(reader)
 	}
 	return nil, errors.New("unknown message type")
 }
@@ -537,6 +544,15 @@ type subscribeFinMessage struct {
 	finalObject    uint64
 }
 
+func (m subscribeFinMessage) String() string {
+	out := subscribeFinMessageType.String()
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
+	out += fmt.Sprintf("\tFinalGroup: %v\n", m.finalGroup)
+	out += fmt.Sprintf("\tFinalObject: %v\n", m.finalObject)
+	return out
+}
+
 func (m *subscribeFinMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeFinMessageType))
 	buf = appendVarIntString(buf, m.trackNamespace)
@@ -581,6 +597,17 @@ type subscribeRstMessage struct {
 	reasonPhrase   string
 	finalGroup     uint64
 	finalObject    uint64
+}
+
+func (m subscribeRstMessage) String() string {
+	out := subscribeRstMessageType.String()
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
+	out += fmt.Sprintf("\tErrorCode: %v\n", m.errorCode)
+	out += fmt.Sprintf("\tReasonPhrase: %v\n", m.reasonPhrase)
+	out += fmt.Sprintf("\tFinalGroup: %v\n", m.finalGroup)
+	out += fmt.Sprintf("\tFinalObject: %v\n", m.finalObject)
+	return out
 }
 
 func (m *subscribeRstMessage) append(buf []byte) []byte {
