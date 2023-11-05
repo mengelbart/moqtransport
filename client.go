@@ -55,7 +55,7 @@ func DialWebTransport(ctx context.Context, addr string) (*Peer, error) {
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientPeer(ctx, wc, false)
+	return newClientPeer(ctx, wc)
 }
 
 func DialQUIC(ctx context.Context, addr string) (*Peer, error) {
@@ -92,7 +92,7 @@ func DialQUIC(ctx context.Context, addr string) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientPeer(ctx, qc, true)
+	p, err := newClientPeer(ctx, qc)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())

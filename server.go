@@ -181,7 +181,6 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 }
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
-	_, enableDatagrams := l.(*quicListener)
 	for {
 		conn, err := l.Accept(context.TODO())
 		if err != nil {
@@ -200,11 +199,6 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 			}
 			continue
 		}
-		// TODO: This should probably be a map keyed by the MoQ-URI the request
-		// is targeting
-		go func() {
-			peer.run(ctx, enableDatagrams)
-		}()
 		if s.Handler != nil {
 			s.Handler.Handle(peer)
 		}
