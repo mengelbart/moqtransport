@@ -71,7 +71,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := readNext(quicvarint.NewReader(s), serverRole)
+	m, err := readNext(quicvarint.NewReader(s))
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (
 		announcementHandler: nil,
 		closeCh:             make(chan struct{}),
 	}
-	m, err := readNext(quicvarint.NewReader(s), clientRole)
+	m, err := readNext(quicvarint.NewReader(s))
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (
 
 func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 	for {
-		msg, err := readNext(r, p.role)
+		msg, err := readNext(r)
 		if err != nil {
 			return err
 		}
@@ -233,7 +233,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
-			msg, err := readNext(quicvarint.NewReader(s), p.role)
+			msg, err := readNext(quicvarint.NewReader(s))
 			if err != nil {
 				errCh <- err
 				return

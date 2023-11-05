@@ -30,8 +30,8 @@ type messageType uint64
 
 const (
 	objectMessageLenType messageType = iota
-	setupMessageType
-	objectMessageNoLenType
+
+	objectMessageNoLenType messageType = iota + 1
 	subscribeMessageType
 	subscribeOkMessageType
 	subscribeErrorMessageType
@@ -44,14 +44,15 @@ const (
 	subscribeRstMessageType
 
 	goAwayMessageType messageType = 0x10
+
+	clientSetupMessageType messageType = 0x40
+	serverSetupMessageType messageType = 0x41
 )
 
 func (mt messageType) String() string {
 	switch mt {
 	case objectMessageLenType:
 		return "ObjectLenMessage"
-	case setupMessageType:
-		return "SetupMessage"
 	case objectMessageNoLenType:
 		return "ObjectNoLenMessage"
 	case subscribeMessageType:
@@ -76,6 +77,10 @@ func (mt messageType) String() string {
 		return "SubscribeRstMessage"
 	case goAwayMessageType:
 		return "GoAwayMessage"
+	case clientSetupMessageType:
+		return "ClientSetupMessage"
+	case serverSetupMessageType:
+		return "ServerSetupMessage"
 	}
 	return "unknown message type"
 }
@@ -85,7 +90,7 @@ type messageReader interface {
 	io.ByteReader
 }
 
-func readNext(reader messageReader, r role) (message, error) {
+func readNext(reader messageReader) (message, error) {
 	mt, err := quicvarint.Read(reader)
 	if err != nil {
 		return nil, err
@@ -94,15 +99,6 @@ func readNext(reader messageReader, r role) (message, error) {
 	case objectMessageLenType:
 		msg, err := parseObjectMessage(reader, mt)
 		return msg, err
-	case setupMessageType:
-		switch r {
-		case serverRole:
-			csm, err := parseClientSetupMessage(reader)
-			return csm, err
-		case clientRole:
-			ssm, err := parseServerSetupMessage(reader)
-			return ssm, err
-		}
 	case objectMessageNoLenType:
 		msg, err := parseObjectMessage(reader, mt)
 		return msg, err
@@ -133,6 +129,10 @@ func readNext(reader messageReader, r role) (message, error) {
 		return parseSubscribeRstMessage(reader)
 	case goAwayMessageType:
 		return parseGoAwayMessage(reader)
+	case clientSetupMessageType:
+		return parseClientSetupMessage(reader)
+	case serverSetupMessageType:
+		return parseServerSetupMessage(reader)
 	}
 	return nil, errors.New("unknown message type")
 }
@@ -242,11 +242,11 @@ type clientSetupMessage struct {
 }
 
 func (m clientSetupMessage) String() string {
-	return setupMessageType.String()
+	return clientSetupMessageType.String()
 }
 
 func (m *clientSetupMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(setupMessageType))
+	buf = quicvarint.Append(buf, uint64(clientSetupMessageType))
 	buf = quicvarint.Append(buf, uint64(len(m.supportedVersions)))
 	for _, v := range m.supportedVersions {
 		buf = quicvarint.Append(buf, uint64(v))
@@ -282,11 +282,11 @@ type serverSetupMessage struct {
 }
 
 func (m serverSetupMessage) String() string {
-	return setupMessageType.String()
+	return serverSetupMessageType.String()
 }
 
 func (m *serverSetupMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(setupMessageType))
+	buf = quicvarint.Append(buf, uint64(serverSetupMessageType))
 	buf = quicvarint.Append(buf, uint64(m.selectedVersion))
 	buf = quicvarint.Append(buf, uint64(len(m.setupParameters)))
 	for _, p := range m.setupParameters {

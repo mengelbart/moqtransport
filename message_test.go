@@ -286,7 +286,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x00, 0x00,
+				0x40, byte(clientSetupMessageType), 0x00, 0x00,
 			},
 		},
 		{
@@ -296,7 +296,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x00,
+				0x40, byte(clientSetupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x00,
 			},
 		},
 		{
@@ -309,7 +309,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x01, 0x01, 0x01, 'A',
+				0x40, byte(clientSetupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x01, 0x01, 0x01, 'A',
 			},
 		},
 	}
@@ -413,7 +413,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x00, 0x00,
+				0x40, byte(serverSetupMessageType), 0x00, 0x00,
 			},
 		},
 		{
@@ -423,7 +423,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x00, 0x00,
+				0x40, byte(serverSetupMessageType), 0x00, 0x00,
 			},
 		},
 		{
@@ -436,7 +436,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(setupMessageType), 0x00, 0x01, 0x00, 0x01, 0x01,
+				0x40, byte(serverSetupMessageType), 0x00, 0x01, 0x00, 0x01, 0x01,
 			},
 		},
 		{
@@ -449,7 +449,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02,
-				byte(setupMessageType), 0x00, 0x01, 0x01, 0x01, 'A',
+				0x40, byte(serverSetupMessageType), 0x00, 0x01, 0x01, 0x01, 'A',
 			},
 		},
 	}
