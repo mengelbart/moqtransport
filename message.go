@@ -80,21 +80,6 @@ func (mt messageType) String() string {
 	return "unknown message type"
 }
 
-const (
-	objectMessageMinimumLength           = 4
-	clientSetupMessageMinimumLength      = 2
-	serverSetupMessageMinimumLength      = 1
-	subscribeRequestMessageMinimumLength = 1
-	subscribeOkMessageMinimumLength      = 3
-	subscribeErrorMessageMinimumLength   = 3
-	announceMessageMinimumLength         = 1
-	announceOkMessageMinimumLength       = 0
-	announceErrorMessageMinimumLength    = 3
-	unannounceMessageMinimumLength       = 0
-	goAwayMessageMinimumLength           = 0
-	unsubscribeMessageMinimumLength      = 0
-)
-
 type messageReader interface {
 	io.Reader
 	io.ByteReader
