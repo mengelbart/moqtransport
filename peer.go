@@ -112,37 +112,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	return p, nil
 }
 
-func (p *Peer) run(ctx context.Context, enableDatagrams bool) error {
-	errCh := make(chan error)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	fs := []func(context.Context) error{
-		p.controlStreamLoop,
-		p.acceptUnidirectionalStreams,
-		p.acceptBidirectionalStreams,
-	}
-	if enableDatagrams {
-		fs = append(fs, p.acceptDatagrams)
-	}
-
-	for _, f := range fs {
-		go func(ctx context.Context, f func(context.Context) error, ch chan<- error) {
-			if err := f(ctx); err != nil {
-				ch <- err
-			}
-		}(ctx, f, errCh)
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-errCh:
-		return err
-	}
-}
-
-func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (*Peer, error) {
+func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -184,9 +154,37 @@ func newClientPeer(ctx context.Context, conn connection, enableDatagrams bool) (
 	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
 		return nil, errUnsupportedVersion
 	}
-	// TODO: Handle error and propagate it to the user?
-	go p.run(ctx, enableDatagrams)
 	return p, nil
+}
+
+func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
+	errCh := make(chan error)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	fs := []func(context.Context) error{
+		p.controlStreamLoop,
+		p.acceptUnidirectionalStreams,
+		p.acceptBidirectionalStreams,
+	}
+	if enableDatagrams {
+		fs = append(fs, p.acceptDatagrams)
+	}
+
+	for _, f := range fs {
+		go func(ctx context.Context, f func(context.Context) error, ch chan<- error) {
+			if err := f(ctx); err != nil {
+				ch <- err
+			}
+		}(ctx, f, errCh)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		return err
+	}
 }
 
 func (p *Peer) readMessages(r messageReader, stream io.Reader) error {

@@ -70,6 +70,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		c.rooms[id].st = st
 		return c.rooms[id].trackID, 0, nil
 	})
+	go c.peer.Run(context.Background(), false)
 	return c, nil
 }
 
