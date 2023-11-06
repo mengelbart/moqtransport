@@ -80,7 +80,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, errUnexpectedMessage
 	}
 	// TODO: Algorithm to select best matching version
-	if !slices.Contains(msg.supportedVersions, DRAFT_IETF_MOQ_TRANSPORT_00) {
+	if !slices.Contains(msg.supportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
 		return nil, errUnsupportedVersion
 	}
 	_, ok = msg.setupParameters[roleParameterKey]
@@ -89,7 +89,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	}
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
-		selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+		selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
 		setupParameters: map[uint64]parameter{},
 	}
 	buf := ssm.append(make([]byte, 0, 1500))
@@ -118,7 +118,7 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, err
 	}
 	csm := clientSetupMessage{
-		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_01)},
 		setupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
