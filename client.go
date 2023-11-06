@@ -48,7 +48,7 @@ func DialWebTransport(ctx context.Context, addr string) (*Peer, error) {
 		StreamReorderingTimeout: 0,
 	}
 	// TODO: Handle response?
-	_, conn, err := d.Dial(context.TODO(), addr, nil)
+	_, conn, err := d.Dial(ctx, addr, nil)
 	if err != nil {
 		return nil, err
 	}
