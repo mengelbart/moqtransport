@@ -244,7 +244,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 		case m := <-inCh:
 			log.Printf("handling %v\n", m)
 			switch v := m.(type) {
-			case *subscribeMessage:
+			case *subscribeRequestMessage:
 				go func() {
 					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
 				}()
@@ -342,24 +342,25 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 	return nil
 }
 
-func (p *Peer) handleSubscribeRequest(msg *subscribeMessage) message {
+func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
-	p.sendTracks[msg.trackName] = t
-	id, expires, err := p.subscribeHandler(msg.trackName, t)
+	p.sendTracks[msg.fullTrackName] = t
+	id, expires, err := p.subscribeHandler(msg.fullTrackName, t)
 	if err != nil {
 		log.Println(err)
 		return &subscribeErrorMessage{
-			trackName:    msg.trackName,
-			errorCode:    GenericErrorCode,
-			reasonPhrase: "failed to handle subscription",
+			trackNamespace: "",
+			trackName:      msg.fullTrackName,
+			errorCode:      GenericErrorCode,
+			reasonPhrase:   "failed to handle subscription",
 		}
 	}
 	t.id = id
 	return &subscribeOkMessage{
-		trackName: msg.trackName,
+		trackName: msg.fullTrackName,
 		trackID:   id,
 		expires:   expires,
 	}
@@ -429,9 +430,9 @@ func (p *Peer) Announce(namespace string) error {
 }
 
 func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
-	sm := &subscribeMessage{
-		trackName:  trackname,
-		parameters: parameters{},
+	sm := &subscribeRequestMessage{
+		fullTrackName: trackname,
+		parameters:    parameters{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -454,7 +455,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		if v.trackName != sm.trackName {
+		if v.trackName != sm.fullTrackName {
 			panic("TODO")
 		}
 		t := newReceiveTrack()

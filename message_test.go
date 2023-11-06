@@ -535,55 +535,164 @@ func TestParseServerSetupMessage(t *testing.T) {
 	}
 }
 
-func TestSubscribeMessageAppend(t *testing.T) {
+func TestLocationAppend(t *testing.T) {
 	cases := []struct {
-		srm    subscribeMessage
+		loc    location
 		buf    []byte
 		expect []byte
 	}{
 		{
-			srm: subscribeMessage{
-				trackNamespace: "",
-				trackName:      "",
-				parameters:     parameters{},
+			loc:    location{},
+			buf:    []byte{},
+			expect: []byte{0x00},
+		},
+		{
+			loc: location{
+				mode:  1,
+				value: 0,
+			},
+			buf:    []byte{},
+			expect: []byte{0x01, 0x00},
+		},
+		{
+			loc: location{
+				mode:  2,
+				value: 10,
+			},
+			buf:    []byte{},
+			expect: []byte{0x02, 0x0A},
+		},
+		{
+			loc: location{
+				mode:  3,
+				value: 8,
+			},
+			buf:    []byte{0x0A, 0x0B},
+			expect: []byte{0x0A, 0x0B, 0x03, 0x08},
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res := tc.loc.append(tc.buf)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestParseLocation(t *testing.T) {
+	cases := []struct {
+		r      messageReader
+		expect location
+		err    error
+	}{
+		{
+			r:      nil,
+			expect: location{},
+			err:    errInvalidMessageReader,
+		},
+		{
+			r:      bytes.NewReader([]byte{}),
+			expect: location{},
+			err:    io.EOF,
+		},
+		{
+			r: bytes.NewReader([]byte{0x00}),
+			expect: location{
+				mode:  0,
+				value: 0,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{0x01, 0x02}),
+			expect: location{
+				mode:  1,
+				value: 2,
+			},
+			err: nil,
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res, err := parseLocation(tc.r)
+			if tc.err != nil {
+				assert.Equal(t, tc.err, err)
+				assert.Equal(t, tc.expect, res)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestSubscribeRequestMessageAppend(t *testing.T) {
+	cases := []struct {
+		srm    subscribeRequestMessage
+		buf    []byte
+		expect []byte
+	}{
+		{
+			srm: subscribeRequestMessage{
+				fullTrackName: "",
+				startGroup:    location{},
+				startObject:   location{},
+				endGroup:      location{},
+				endObject:     location{},
+				parameters:    parameters{},
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeMessageType), 0x00, 0x00, 0x00,
+				byte(subscribeRequestMessageType), 0x00, 0x00, 0x00, 0x00, 0x0, 0x00,
 			},
 		},
 		{
-			srm: subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters:     parameters{},
+			srm: subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup: location{
+					mode:  0,
+					value: 0,
+				},
+				startObject: location{
+					mode:  1,
+					value: 0,
+				},
+				endGroup: location{
+					mode:  2,
+					value: 0,
+				},
+				endObject: location{
+					mode:  3,
+					value: 0,
+				},
+				parameters: parameters{},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x09}, "trackname"...), 0x00),
+			expect: append(append([]byte{byte(subscribeRequestMessageType), 0x09}, "trackname"...), 0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00),
 		},
 		{
-			srm: subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
-				}},
+			srm: subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup:    location{},
+				startObject:   location{},
+				endGroup:      location{},
+				endObject:     location{},
+				parameters:    parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x09}, "trackname"...), []byte{0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{byte(subscribeRequestMessageType), 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
 		},
 		{
-			srm: subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
-				}},
+			srm: subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup:    location{},
+				startObject:   location{},
+				endGroup:      location{},
+				endObject:     location{},
+				parameters:    parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
-			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeMessageType), 0x00, 0x09}, "trackname"...), []byte{0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeRequestMessageType), 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
 		},
 	}
 	for i, tc := range cases {
@@ -594,10 +703,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 	}
 }
 
-func TestParseSubscribeMessage(t *testing.T) {
+func TestParseSubscribeRequestMessage(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		expect *subscribeMessage
+		expect *subscribeRequestMessage
 		err    error
 	}{
 		{
@@ -619,47 +728,62 @@ func TestParseSubscribeMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), 0x00),
+				append(append([]byte{0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x00),
 			),
-			expect: &subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters:     parameters{},
+			expect: &subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup:    location{},
+				startObject:   location{},
+				endGroup:      location{},
+				endObject:     location{},
+				parameters:    parameters{},
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), 0x01, 0x01, 0x01),
+				append(append([]byte{0x09}, "trackname"...), 0x01, 0x01, 0x01),
 			),
 			expect: nil,
 			err:    io.EOF,
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), 0x01, 0x01, 0x01, 'A'),
+				append(append([]byte{0x09}, "trackname"...), 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x01, 0x01, 'A'),
 			),
-			expect: &subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
-				}},
+			expect: &subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup: location{
+					mode:  1,
+					value: 2,
+				},
+				startObject: location{
+					mode:  1,
+					value: 2,
+				},
+				endGroup: location{
+					mode:  1,
+					value: 2,
+				},
+				endObject: location{
+					mode:  1,
+					value: 2,
+				},
+				parameters: parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+				append(append([]byte{0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			),
-			expect: &subscribeMessage{
-				trackNamespace: "",
-				trackName:      "trackname",
-				parameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
-				}},
+			expect: &subscribeRequestMessage{
+				fullTrackName: "trackname",
+				startGroup:    location{},
+				startObject:   location{},
+				endGroup:      location{},
+				endObject:     location{},
+				parameters:    parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			err: nil,
 		},
