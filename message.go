@@ -14,6 +14,13 @@ var (
 	errInvalidMessageEncoding = errors.New("invalid message encoding")
 )
 
+const (
+	subscribeLocationModeNone = iota
+	subscribeLocationModeAbsolute
+	subscribeLocationModeRelativePrevious
+	subscribeLocationModeRelativeNext
+)
+
 type role int
 
 const (
@@ -32,7 +39,7 @@ const (
 	objectMessageLenType messageType = iota
 
 	objectMessageNoLenType messageType = iota + 1
-	subscribeMessageType
+	subscribeRequestMessageType
 	subscribeOkMessageType
 	subscribeErrorMessageType
 	announceMessageType
@@ -55,7 +62,7 @@ func (mt messageType) String() string {
 		return "ObjectLenMessage"
 	case objectMessageNoLenType:
 		return "ObjectNoLenMessage"
-	case subscribeMessageType:
+	case subscribeRequestMessageType:
 		return "SubscribeMessage"
 	case subscribeOkMessageType:
 		return "SubscribeOkMessage"
@@ -102,7 +109,7 @@ func readNext(reader messageReader) (message, error) {
 	case objectMessageNoLenType:
 		msg, err := parseObjectMessage(reader, mt)
 		return msg, err
-	case subscribeMessageType:
+	case subscribeRequestMessageType:
 		srm, err := parseSubscribeMessage(reader)
 		return srm, err
 	case subscribeOkMessageType:
@@ -313,31 +320,77 @@ func parseServerSetupMessage(r messageReader) (*serverSetupMessage, error) {
 	}, nil
 }
 
-type subscribeMessage struct {
-	trackNamespace string
-	trackName      string
-	parameters     parameters
+type location struct {
+	mode  uint64
+	value uint64
 }
 
-func (m subscribeMessage) String() string {
-	out := subscribeMessageType.String()
-	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
-	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
+func (l location) append(buf []byte) []byte {
+	if l.mode == 0 {
+		return append(buf, byte(l.mode))
+	}
+	buf = append(buf, byte(l.mode))
+	return append(buf, byte(l.value))
+}
+
+func parseLocation(r messageReader) (location, error) {
+	if r == nil {
+		return location{}, errInvalidMessageReader
+	}
+	mode, err := quicvarint.Read(r)
+	if err != nil {
+		return location{}, err
+	}
+	if mode == subscribeLocationModeNone {
+		return location{
+			mode:  mode,
+			value: 0,
+		}, nil
+	}
+	value, err := quicvarint.Read(r)
+	if err != nil {
+		return location{}, nil
+	}
+	return location{
+		mode:  mode,
+		value: value,
+	}, nil
+}
+
+type subscribeRequestMessage struct {
+	fullTrackName string
+	startGroup    location
+	startObject   location
+	endGroup      location
+	endObject     location
+	parameters    parameters
+}
+
+func (m subscribeRequestMessage) String() string {
+	out := subscribeRequestMessageType.String()
+	out += fmt.Sprintf("\tFullTrackName: %v\n", m.fullTrackName)
+	out += fmt.Sprintf("\tStartGroup: %v\n", m.startGroup)
+	out += fmt.Sprintf("\tStartObject: %v\n", m.startObject)
+	out += fmt.Sprintf("\tEndGroup: %v\n", m.endGroup)
+	out += fmt.Sprintf("\tEndObject: %v\n", m.endObject)
 	out += fmt.Sprintf("\tTrackRequestParameters: %v\n", m.parameters)
 	return out
 }
 
-func (m subscribeMessage) key() messageKey {
+func (m subscribeRequestMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeMessageType,
-		id: m.trackName,
+		mt: subscribeRequestMessageType,
+		id: m.fullTrackName,
 	}
 }
 
-func (m *subscribeMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeMessageType))
-	buf = appendVarIntString(buf, m.trackNamespace)
-	buf = appendVarIntString(buf, m.trackName)
+func (m *subscribeRequestMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(subscribeRequestMessageType))
+	buf = appendVarIntString(buf, m.fullTrackName)
+	buf = m.startGroup.append(buf)
+	buf = m.startObject.append(buf)
+	buf = m.endGroup.append(buf)
+	buf = m.endObject.append(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.parameters)))
 	for _, p := range m.parameters {
 		buf = p.append(buf)
@@ -345,15 +398,27 @@ func (m *subscribeMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeMessage(r messageReader) (*subscribeMessage, error) {
+func parseSubscribeMessage(r messageReader) (*subscribeRequestMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	fullTrackName, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
-	name, err := parseVarIntString(r)
+	startGroup, err := parseLocation(r)
+	if err != nil {
+		return nil, err
+	}
+	startObject, err := parseLocation(r)
+	if err != nil {
+		return nil, err
+	}
+	endGroup, err := parseLocation(r)
+	if err != nil {
+		return nil, err
+	}
+	endObject, err := parseLocation(r)
 	if err != nil {
 		return nil, err
 	}
@@ -361,10 +426,13 @@ func parseSubscribeMessage(r messageReader) (*subscribeMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &subscribeMessage{
-		trackNamespace: namespace,
-		trackName:      name,
-		parameters:     ps,
+	return &subscribeRequestMessage{
+		fullTrackName: fullTrackName,
+		startGroup:    startGroup,
+		startObject:   startObject,
+		endGroup:      endGroup,
+		endObject:     endObject,
+		parameters:    ps,
 	}, nil
 }
 
@@ -378,7 +446,7 @@ type subscribeOkMessage struct {
 func (m subscribeOkMessage) String() string {
 	out := subscribeOkMessageType.String()
 	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
-	out += fmt.Sprintf("\tFullTrackName: %v\n", m.trackName)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
 	out += fmt.Sprintf("\tTrackID: %v\n", m.trackID)
 	out += fmt.Sprintf("\tExpires: %v\n", m.expires)
 	return out
@@ -386,7 +454,7 @@ func (m subscribeOkMessage) String() string {
 
 func (m subscribeOkMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeMessageType,
+		mt: subscribeRequestMessageType,
 		id: m.trackName,
 	}
 }
@@ -446,7 +514,7 @@ func (m subscribeErrorMessage) String() string {
 
 func (m subscribeErrorMessage) key() messageKey {
 	return messageKey{
-		mt: subscribeMessageType,
+		mt: subscribeRequestMessageType,
 		id: m.trackName,
 	}
 }
@@ -468,7 +536,7 @@ func parseSubscribeErrorMessage(r messageReader) (*subscribeErrorMessage, error)
 	if err != nil {
 		return nil, err
 	}
-	fullTrackName, err := parseVarIntString(r)
+	trackName, err := parseVarIntString(r)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +547,7 @@ func parseSubscribeErrorMessage(r messageReader) (*subscribeErrorMessage, error)
 	reasonPhrase, err := parseVarIntString(r)
 	return &subscribeErrorMessage{
 		trackNamespace: namespace,
-		trackName:      fullTrackName,
+		trackName:      trackName,
 		errorCode:      errorCode,
 		reasonPhrase:   reasonPhrase,
 	}, err
