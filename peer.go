@@ -66,6 +66,10 @@ type Peer struct {
 	closeCh             chan struct{}
 }
 
+func (p *Peer) CloseWithError(code uint64, reason string) error {
+	return p.conn.CloseWithError(code, reason)
+}
+
 func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
@@ -231,11 +235,13 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
+			log.Printf("reading control message")
 			msg, err := readNext(quicvarint.NewReader(s))
 			if err != nil {
 				errCh <- err
 				return
 			}
+			log.Printf("read control message: %v", msg)
 			ch <- msg
 		}
 	}(p.ctrlStream, inCh, errCh)
@@ -274,6 +280,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 				return errUnexpectedMessage
 			}
 		case m := <-p.ctrlMessageCh:
+			log.Printf("sending control message")
 			if krh, ok := m.(keyedResponseHandler); ok {
 				transactions[krh.key()] = krh
 			}
@@ -295,6 +302,7 @@ func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		log.Println("accepted bidi stream")
 		go func() {
 			if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
 				panic(err)
@@ -309,6 +317,7 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		log.Println("accepted uni stream")
 		go func() {
 			if err := p.readMessages(quicvarint.NewReader(stream), stream); err != nil {
 				panic(err)

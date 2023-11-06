@@ -105,7 +105,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	l := &wtListener{
 		ch: make(chan *webtransport.Session),
 	}
-	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("upgrading to WebTransport")
 		conn, err := ws.Upgrade(w, r)
 		if err != nil {
