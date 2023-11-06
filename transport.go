@@ -1,6 +1,9 @@
 package moqtransport
 
-const DRAFT_IETF_MOQ_TRANSPORT_00 = 0
+const (
+	DRAFT_IETF_MOQ_TRANSPORT_00 = 0xff000000
+	DRAFT_IETF_MOQ_TRANSPORT_01 = 0xff000001
+)
 
 const (
 	SessionTerminatedErrorCode = 0x00
