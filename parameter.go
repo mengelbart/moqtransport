@@ -25,6 +25,7 @@ const (
 type parameter interface {
 	append([]byte) []byte
 	key() uint64
+	String() string
 }
 
 type parameters map[uint64]parameter

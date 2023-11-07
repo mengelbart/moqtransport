@@ -1,10 +1,16 @@
 package moqtransport
 
 import (
+	"fmt"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type version uint64
+
+func (v version) String() string {
+	return fmt.Sprintf("0x%x", uint64(v))
+}
 
 func (v version) Len() uint64 {
 	return uint64(quicvarint.Len(uint64(v)))

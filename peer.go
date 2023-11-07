@@ -49,7 +49,7 @@ type connection interface {
 	CloseWithError(uint64, string) error
 }
 
-type SubscriptionHandler func(string, *SendTrack) (uint64, time.Duration, error)
+type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
 
 type AnnouncementHandler func(string) error
 
@@ -235,20 +235,17 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
-			log.Printf("reading control message")
 			msg, err := readNext(quicvarint.NewReader(s))
 			if err != nil {
 				errCh <- err
 				return
 			}
-			log.Printf("read control message: %v", msg)
 			ch <- msg
 		}
 	}(p.ctrlStream, inCh, errCh)
 	for {
 		select {
 		case m := <-inCh:
-			log.Printf("handling %v\n", m)
 			switch v := m.(type) {
 			case *subscribeRequestMessage:
 				go func() {
@@ -280,7 +277,6 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 				return errUnexpectedMessage
 			}
 		case m := <-p.ctrlMessageCh:
-			log.Printf("sending control message")
 			if krh, ok := m.(keyedResponseHandler); ok {
 				transactions[krh.key()] = krh
 			}
@@ -352,30 +348,33 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 }
 
 func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
+	log.Printf("handling announce: namespace='%v', name='%v'\n", msg.trackNamespace, msg.trackName)
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
-	p.sendTracks[msg.fullTrackName] = t
-	id, expires, err := p.subscribeHandler(msg.fullTrackName, t)
+	p.sendTracks[msg.key().id] = t
+	id, expires, err := p.subscribeHandler(msg.trackNamespace, msg.trackName, t)
 	if err != nil {
 		log.Println(err)
 		return &subscribeErrorMessage{
-			trackNamespace: "",
-			trackName:      msg.fullTrackName,
+			trackNamespace: msg.trackNamespace,
+			trackName:      msg.trackName,
 			errorCode:      GenericErrorCode,
 			reasonPhrase:   "failed to handle subscription",
 		}
 	}
 	t.id = id
 	return &subscribeOkMessage{
-		trackName: msg.fullTrackName,
-		trackID:   id,
-		expires:   expires,
+		trackNamespace: msg.trackNamespace,
+		trackName:      msg.trackName,
+		trackID:        id,
+		expires:        expires,
 	}
 }
 
 func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
+	log.Printf("handling announce: %v\n", msg.trackNamespace)
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
@@ -438,10 +437,15 @@ func (p *Peer) Announce(namespace string) error {
 	return nil
 }
 
-func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
+func (p *Peer) Subscribe(namespace, trackname string) (*ReceiveTrack, error) {
 	sm := &subscribeRequestMessage{
-		fullTrackName: trackname,
-		parameters:    parameters{},
+		trackNamespace: namespace,
+		trackName:      trackname,
+		startGroup:     location{},
+		startObject:    location{},
+		endGroup:       location{},
+		endObject:      location{},
+		parameters:     parameters{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -464,7 +468,7 @@ func (p *Peer) Subscribe(trackname string) (*ReceiveTrack, error) {
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		if v.trackName != sm.fullTrackName {
+		if v.key().id != sm.key().id {
 			panic("TODO")
 		}
 		t := newReceiveTrack()

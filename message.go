@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -97,51 +98,47 @@ type messageReader interface {
 	io.ByteReader
 }
 
-func readNext(reader messageReader) (message, error) {
+func readNext(reader messageReader) (msg message, err error) {
 	mt, err := quicvarint.Read(reader)
 	if err != nil {
 		return nil, err
 	}
 	switch messageType(mt) {
 	case objectMessageLenType:
-		msg, err := parseObjectMessage(reader, mt)
-		return msg, err
+		msg, err = parseObjectMessage(reader, mt)
 	case objectMessageNoLenType:
-		msg, err := parseObjectMessage(reader, mt)
-		return msg, err
+		msg, err = parseObjectMessage(reader, mt)
 	case subscribeRequestMessageType:
-		srm, err := parseSubscribeMessage(reader)
-		return srm, err
+		msg, err = parseSubscribeRequestMessage(reader)
 	case subscribeOkMessageType:
-		som, err := parseSubscribeOkMessage(reader)
-		return som, err
+		msg, err = parseSubscribeOkMessage(reader)
 	case subscribeErrorMessageType:
-		sem, err := parseSubscribeErrorMessage(reader)
-		return sem, err
+		msg, err = parseSubscribeErrorMessage(reader)
 	case announceMessageType:
-		am, err := parseAnnounceMessage(reader)
-		return am, err
+		msg, err = parseAnnounceMessage(reader)
 	case announceOkMessageType:
-		aom, err := parseAnnounceOkMessage(reader)
-		return aom, err
+		msg, err = parseAnnounceOkMessage(reader)
 	case announceErrorMessageType:
-		return parseAnnounceErrorMessage(reader)
+		msg, err = parseAnnounceErrorMessage(reader)
 	case unannounceMessageType:
-		return parseUnannounceMessage(reader)
+		msg, err = parseUnannounceMessage(reader)
 	case unsubscribeMessageType:
-		return parseUnsubscribeMessage(reader)
+		msg, err = parseUnsubscribeMessage(reader)
 	case subscribeFinMessageType:
-		return parseSubscribeFinMessage(reader)
+		msg, err = parseSubscribeFinMessage(reader)
 	case subscribeRstMessageType:
-		return parseSubscribeRstMessage(reader)
+		msg, err = parseSubscribeRstMessage(reader)
 	case goAwayMessageType:
-		return parseGoAwayMessage(reader)
+		msg, err = parseGoAwayMessage(reader)
 	case clientSetupMessageType:
-		return parseClientSetupMessage(reader)
+		msg, err = parseClientSetupMessage(reader)
 	case serverSetupMessageType:
-		return parseServerSetupMessage(reader)
+		msg, err = parseServerSetupMessage(reader)
+	default:
+		return nil, errors.New("unknown message type")
 	}
-	return nil, errors.New("unknown message type")
+	log.Printf("parsed message: %v, err: %v", msg, err)
+	return
 }
 
 type objectMessage struct {
@@ -249,7 +246,10 @@ type clientSetupMessage struct {
 }
 
 func (m clientSetupMessage) String() string {
-	return clientSetupMessageType.String()
+	out := clientSetupMessageType.String()
+	out += fmt.Sprintf("\tSupportedVersions: %v\n", m.supportedVersions)
+	out += fmt.Sprintf("\tSetupParameters: %v\n", m.setupParameters)
+	return out
 }
 
 func (m *clientSetupMessage) append(buf []byte) []byte {
@@ -289,7 +289,10 @@ type serverSetupMessage struct {
 }
 
 func (m serverSetupMessage) String() string {
-	return serverSetupMessageType.String()
+	out := serverSetupMessageType.String()
+	out += fmt.Sprintf("\tSelectedVersions: %v\n", m.selectedVersion)
+	out += fmt.Sprintf("\tSetupParameters: %v\n", m.setupParameters)
+	return out
 }
 
 func (m *serverSetupMessage) append(buf []byte) []byte {
@@ -358,17 +361,19 @@ func parseLocation(r messageReader) (location, error) {
 }
 
 type subscribeRequestMessage struct {
-	fullTrackName string
-	startGroup    location
-	startObject   location
-	endGroup      location
-	endObject     location
-	parameters    parameters
+	trackNamespace string
+	trackName      string
+	startGroup     location
+	startObject    location
+	endGroup       location
+	endObject      location
+	parameters     parameters
 }
 
 func (m subscribeRequestMessage) String() string {
 	out := subscribeRequestMessageType.String()
-	out += fmt.Sprintf("\tFullTrackName: %v\n", m.fullTrackName)
+	out += fmt.Sprintf("\tTrackNamespace: %v\n", m.trackNamespace)
+	out += fmt.Sprintf("\tTrackName: %v\n", m.trackName)
 	out += fmt.Sprintf("\tStartGroup: %v\n", m.startGroup)
 	out += fmt.Sprintf("\tStartObject: %v\n", m.startObject)
 	out += fmt.Sprintf("\tEndGroup: %v\n", m.endGroup)
@@ -380,13 +385,14 @@ func (m subscribeRequestMessage) String() string {
 func (m subscribeRequestMessage) key() messageKey {
 	return messageKey{
 		mt: subscribeRequestMessageType,
-		id: m.fullTrackName,
+		id: fmt.Sprintf("%v/%v", m.trackNamespace, m.trackName),
 	}
 }
 
 func (m *subscribeRequestMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeRequestMessageType))
-	buf = appendVarIntString(buf, m.fullTrackName)
+	buf = appendVarIntString(buf, m.trackNamespace)
+	buf = appendVarIntString(buf, m.trackName)
 	buf = m.startGroup.append(buf)
 	buf = m.startObject.append(buf)
 	buf = m.endGroup.append(buf)
@@ -398,9 +404,13 @@ func (m *subscribeRequestMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeMessage(r messageReader) (*subscribeRequestMessage, error) {
+func parseSubscribeRequestMessage(r messageReader) (*subscribeRequestMessage, error) {
 	if r == nil {
 		return nil, errInvalidMessageReader
+	}
+	trackNamespace, err := parseVarIntString(r)
+	if err != nil {
+		return nil, err
 	}
 	fullTrackName, err := parseVarIntString(r)
 	if err != nil {
@@ -427,12 +437,13 @@ func parseSubscribeMessage(r messageReader) (*subscribeRequestMessage, error) {
 		return nil, err
 	}
 	return &subscribeRequestMessage{
-		fullTrackName: fullTrackName,
-		startGroup:    startGroup,
-		startObject:   startObject,
-		endGroup:      endGroup,
-		endObject:     endObject,
-		parameters:    ps,
+		trackNamespace: trackNamespace,
+		trackName:      fullTrackName,
+		startGroup:     startGroup,
+		startObject:    startObject,
+		endGroup:       endGroup,
+		endObject:      endObject,
+		parameters:     ps,
 	}, nil
 }
 
@@ -455,7 +466,7 @@ func (m subscribeOkMessage) String() string {
 func (m subscribeOkMessage) key() messageKey {
 	return messageKey{
 		mt: subscribeRequestMessageType,
-		id: m.trackName,
+		id: fmt.Sprintf("%v/%v", m.trackNamespace, m.trackName),
 	}
 }
 
@@ -515,7 +526,7 @@ func (m subscribeErrorMessage) String() string {
 func (m subscribeErrorMessage) key() messageKey {
 	return messageKey{
 		mt: subscribeRequestMessageType,
-		id: m.trackName,
+		id: fmt.Sprintf("%v/%v", m.trackNamespace, m.trackName),
 	}
 }
 

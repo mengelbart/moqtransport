@@ -33,8 +33,8 @@ func run(addr string) error {
 		log.Printf("got announcement: %v", s)
 		return nil
 	})
-	p.OnSubscription(func(s string, _ *moqtransport.SendTrack) (uint64, time.Duration, error) {
-		log.Printf("got subscription attempt: %v", s)
+	p.OnSubscription(func(namespace, name string, _ *moqtransport.SendTrack) (uint64, time.Duration, error) {
+		log.Printf("got subscription attempt: %v/%v", namespace, name)
 		return 0, time.Duration(0), nil
 	})
 	go func() {
@@ -43,7 +43,7 @@ func run(addr string) error {
 		}
 	}()
 	log.Println("subscribing")
-	rt, err := p.Subscribe("clock/second")
+	rt, err := p.Subscribe("clock", "second")
 	if err != nil {
 		panic(err)
 	}
