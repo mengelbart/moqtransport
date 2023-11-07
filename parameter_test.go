@@ -117,9 +117,9 @@ func TestParseParameter(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			buf:    []byte{0x05},
+			buf:    []byte{0x05, 0x01, 0x00},
 			expect: nil,
-			err:    errUnknownParameter,
+			err:    nil,
 		},
 	}
 	for i, tc := range cases {
@@ -133,6 +133,7 @@ func TestParseParameter(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expect, res)
+			assert.Zero(t, r.Len())
 		})
 	}
 }
@@ -196,9 +197,12 @@ func TestParseParameters(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x02, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02}),
-			expect: nil,
-			err:    errUnknownParameter,
+			r: bytes.NewReader([]byte{0x02, 0x02, 0x01, 0x00, 0x01, 0x01, 'A'}),
+			expect: parameters{pathParameterKey: stringParameter{
+				k: pathParameterKey,
+				v: "A",
+			}},
+			err: nil,
 		},
 		{
 			r:      bytes.NewReader([]byte{0x02, 0x00, 0x01, 0x01, 0x00, 0x01, 0x02}),

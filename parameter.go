@@ -8,7 +8,6 @@ import (
 )
 
 var (
-	errUnknownParameter   = errors.New("unknown parameter")
 	errDuplicateParameter = errors.New("duplicated parameter")
 )
 
@@ -42,7 +41,17 @@ func parseParameter(r messageReader) (parameter, error) {
 	case pathParameterKey:
 		return parseStringParameter(r, key)
 	}
-	return nil, errUnknownParameter
+	length, err := quicvarint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("skipping %v byte param", length)
+	buf := make([]byte, length)
+	_, err = r.Read(buf)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 func parseParameters(r messageReader) (parameters, error) {
@@ -58,6 +67,9 @@ func parseParameters(r messageReader) (parameters, error) {
 		p, err := parseParameter(r)
 		if err != nil {
 			return nil, err
+		}
+		if p == nil {
+			continue
 		}
 		if _, ok := ps[p.key()]; ok {
 			return nil, errDuplicateParameter
