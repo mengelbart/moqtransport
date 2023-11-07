@@ -23,7 +23,7 @@ func TestVersionsLen(t *testing.T) {
 		},
 		{
 			versions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
-			expected: 1,
+			expected: 8,
 		},
 		{
 			versions: []version{version(1024)},
@@ -50,9 +50,9 @@ func TestVersionsAppend(t *testing.T) {
 			expected: []byte{0x00},
 		},
 		{
-			versions: []version{DRAFT_IETF_MOQ_TRANSPORT_00},
+			versions: []version{0},
 			buf:      []byte{},
-			expected: []byte{0x01, DRAFT_IETF_MOQ_TRANSPORT_00},
+			expected: []byte{0x01, 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -75,8 +75,8 @@ func TestParseVersions(t *testing.T) {
 			err:    errInvalidMessageReader,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x01, DRAFT_IETF_MOQ_TRANSPORT_00}),
-			expect: []version{DRAFT_IETF_MOQ_TRANSPORT_00},
+			r:      bytes.NewReader([]byte{0x01, 0x00}),
+			expect: []version{0},
 			err:    nil,
 		},
 	}
