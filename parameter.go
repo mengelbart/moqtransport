@@ -2,7 +2,6 @@ package moqtransport
 
 import (
 	"errors"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -35,7 +34,6 @@ func parseParameter(r messageReader) (parameter, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("reading param: %v", key)
 	switch key {
 	case roleParameterKey:
 		return parseVarintParameter(r, key)
@@ -46,7 +44,6 @@ func parseParameter(r messageReader) (parameter, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("skipping %v byte param", length)
 	buf := make([]byte, length)
 	_, err = r.Read(buf)
 	if err != nil {

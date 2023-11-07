@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"log"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "https://localhost:1909", "address to connect to")
+	addr := flag.String("addr", "https://localhost:8080/moq", "address to connect to")
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
 	flag.Parse()
 
@@ -19,6 +18,7 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
 func run(addr string, wt bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -62,6 +62,6 @@ func run(addr string, wt bool) error {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("got object: %v\n", string(buf[:n]))
+		log.Printf("got object: %v\n", string(buf[:n]))
 	}
 }

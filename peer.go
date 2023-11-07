@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -58,12 +59,13 @@ type Peer struct {
 	inMsgCh             chan message
 	ctrlMessageCh       chan message
 	ctrlStream          stream
-	role                role
 	receiveTracks       map[uint64]*ReceiveTrack
 	sendTracks          map[string]*SendTrack
 	subscribeHandler    SubscriptionHandler
 	announcementHandler AnnouncementHandler
 	closeCh             chan struct{}
+
+	logger *log.Logger
 }
 
 func (p *Peer) CloseWithError(code uint64, reason string) error {
@@ -75,7 +77,19 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, err := readNext(quicvarint.NewReader(s))
+	p := &Peer{
+		conn:                conn,
+		inMsgCh:             make(chan message),
+		ctrlMessageCh:       make(chan message),
+		ctrlStream:          s,
+		receiveTracks:       map[uint64]*ReceiveTrack{},
+		sendTracks:          map[string]*SendTrack{},
+		subscribeHandler:    nil,
+		announcementHandler: nil,
+		closeCh:             make(chan struct{}),
+		logger:              log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
+	}
+	m, err := p.parseMessage(quicvarint.NewReader(s))
 	if err != nil {
 		return nil, err
 	}
@@ -84,34 +98,22 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		return nil, errUnexpectedMessage
 	}
 	// TODO: Algorithm to select best matching version
-	if !slices.Contains(msg.supportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
+	if !slices.Contains(msg.SupportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
 		return nil, errUnsupportedVersion
 	}
-	_, ok = msg.setupParameters[roleParameterKey]
+	_, ok = msg.SetupParameters[roleParameterKey]
 	if !ok {
 		return nil, errMissingRoleParameter
 	}
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
-		selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
-		setupParameters: map[uint64]parameter{},
+		SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
+		SetupParameters: map[uint64]parameter{},
 	}
 	buf := ssm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
 	if err != nil {
 		return nil, err
-	}
-	p := &Peer{
-		conn:                conn,
-		inMsgCh:             make(chan message),
-		ctrlMessageCh:       make(chan message),
-		ctrlStream:          s,
-		role:                serverRole,
-		receiveTracks:       map[uint64]*ReceiveTrack{},
-		sendTracks:          map[string]*SendTrack{},
-		subscribeHandler:    nil,
-		announcementHandler: nil,
-		closeCh:             make(chan struct{}),
 	}
 	return p, nil
 }
@@ -121,9 +123,21 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	p := &Peer{
+		conn:                conn,
+		inMsgCh:             make(chan message),
+		ctrlMessageCh:       make(chan message),
+		ctrlStream:          s,
+		receiveTracks:       map[uint64]*ReceiveTrack{},
+		sendTracks:          map[string]*SendTrack{},
+		subscribeHandler:    nil,
+		announcementHandler: nil,
+		closeCh:             make(chan struct{}),
+		logger:              log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
+	}
 	csm := clientSetupMessage{
-		supportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_01)},
-		setupParameters: map[uint64]parameter{
+		SupportedVersions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_01)},
+		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
 				v: ingestionDeliveryRole,
@@ -135,19 +149,7 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Peer{
-		conn:                conn,
-		inMsgCh:             make(chan message),
-		ctrlMessageCh:       make(chan message),
-		ctrlStream:          s,
-		role:                clientRole,
-		receiveTracks:       map[uint64]*ReceiveTrack{},
-		sendTracks:          map[string]*SendTrack{},
-		subscribeHandler:    nil,
-		announcementHandler: nil,
-		closeCh:             make(chan struct{}),
-	}
-	m, err := readNext(quicvarint.NewReader(s))
+	m, err := p.parseMessage(quicvarint.NewReader(s))
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +157,7 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if !ok {
 		return nil, errUnexpectedMessage
 	}
-	if !slices.Contains(csm.supportedVersions, ssm.selectedVersion) {
+	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
 	}
 	return p, nil
@@ -191,9 +193,19 @@ func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
 	}
 }
 
+func (p *Peer) parseMessage(r messageReader) (message, error) {
+	msg, err := readNext(r)
+	if err != nil {
+		p.logger.Printf("failed to parse message: %v", err)
+		return nil, err
+	}
+	p.logger.Printf("parsed message: %v", msg)
+	return msg, nil
+}
+
 func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
 	for {
-		msg, err := readNext(r)
+		msg, err := p.parseMessage(r)
 		if err != nil {
 			return err
 		}
@@ -235,7 +247,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		for {
-			msg, err := readNext(quicvarint.NewReader(s))
+			msg, err := p.parseMessage(quicvarint.NewReader(s))
 			if err != nil {
 				errCh <- err
 				return
@@ -298,7 +310,6 @@ func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		log.Println("accepted bidi stream")
 		go func() {
 			if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
 				panic(err)
@@ -313,7 +324,6 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		log.Println("accepted uni stream")
 		go func() {
 			if err := p.readMessages(quicvarint.NewReader(stream), stream); err != nil {
 				panic(err)
@@ -338,7 +348,7 @@ func (p *Peer) acceptDatagrams(ctx context.Context) error {
 }
 
 func (p *Peer) handleObjectMessage(msg *objectMessage) error {
-	t, ok := p.receiveTracks[msg.trackID]
+	t, ok := p.receiveTracks[msg.TrackID]
 	if !ok {
 		// handle unknown track?
 		panic("TODO")
@@ -348,45 +358,42 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 }
 
 func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
-	log.Printf("handling subscribe: namespace='%v', name='%v'\n", msg.trackNamespace, msg.trackName)
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
 	t := newSendTrack(p.conn)
 	p.sendTracks[msg.key().id] = t
-	id, expires, err := p.subscribeHandler(msg.trackNamespace, msg.trackName, t)
+	id, expires, err := p.subscribeHandler(msg.TrackNamespace, msg.TrackName, t)
 	if err != nil {
-		log.Println(err)
 		return &subscribeErrorMessage{
-			trackNamespace: msg.trackNamespace,
-			trackName:      msg.trackName,
-			errorCode:      GenericErrorCode,
-			reasonPhrase:   "failed to handle subscription",
+			TrackNamespace: msg.TrackNamespace,
+			TrackName:      msg.TrackName,
+			ErrorCode:      GenericErrorCode,
+			ReasonPhrase:   "failed to handle subscription",
 		}
 	}
 	t.id = id
 	return &subscribeOkMessage{
-		trackNamespace: msg.trackNamespace,
-		trackName:      msg.trackName,
-		trackID:        id,
-		expires:        expires,
+		TrackNamespace: msg.TrackNamespace,
+		TrackName:      msg.TrackName,
+		TrackID:        id,
+		Expires:        expires,
 	}
 }
 
 func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
-	log.Printf("handling announce: %v\n", msg.trackNamespace)
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
-	if err := p.announcementHandler(msg.trackNamespace); err != nil {
+	if err := p.announcementHandler(msg.TrackNamespace); err != nil {
 		return &announceErrorMessage{
-			trackNamespace: msg.trackNamespace,
-			errorCode:      0,
-			reasonPhrase:   "failed to handle announcement",
+			TrackNamespace: msg.TrackNamespace,
+			ErrorCode:      0,
+			ReasonPhrase:   "failed to handle announcement",
 		}
 	}
 	return &announceOkMessage{
-		trackNamespace: msg.trackNamespace,
+		TrackNamespace: msg.TrackNamespace,
 	}
 }
 
@@ -404,8 +411,8 @@ func (p *Peer) Announce(namespace string) error {
 		return errInvalidTrackNamespace
 	}
 	am := &announceMessage{
-		trackNamespace:         namespace,
-		trackRequestParameters: map[uint64]parameter{},
+		TrackNamespace:         namespace,
+		TrackRequestParameters: map[uint64]parameter{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -426,11 +433,11 @@ func (p *Peer) Announce(namespace string) error {
 	}
 	switch v := resp.(type) {
 	case *announceOkMessage:
-		if v.trackNamespace != am.trackNamespace {
+		if v.TrackNamespace != am.TrackNamespace {
 			panic("TODO")
 		}
 	case *announceErrorMessage:
-		return errors.New(v.reasonPhrase) // TODO: Wrap error string?
+		return errors.New(v.ReasonPhrase) // TODO: Wrap error string?
 	default:
 		return errUnexpectedMessage
 	}
@@ -439,13 +446,13 @@ func (p *Peer) Announce(namespace string) error {
 
 func (p *Peer) Subscribe(namespace, trackname string) (*ReceiveTrack, error) {
 	sm := &subscribeRequestMessage{
-		trackNamespace: namespace,
-		trackName:      trackname,
-		startGroup:     location{},
-		startObject:    location{},
-		endGroup:       location{},
-		endObject:      location{},
-		parameters:     parameters{},
+		TrackNamespace: namespace,
+		TrackName:      trackname,
+		StartGroup:     location{},
+		StartObject:    location{},
+		EndGroup:       location{},
+		EndObject:      location{},
+		Parameters:     parameters{},
 	}
 	responseCh := make(chan message)
 	select {
@@ -472,11 +479,11 @@ func (p *Peer) Subscribe(namespace, trackname string) (*ReceiveTrack, error) {
 			panic("TODO")
 		}
 		t := newReceiveTrack()
-		p.receiveTracks[v.trackID] = t
+		p.receiveTracks[v.TrackID] = t
 		return t, nil
 
 	case *subscribeErrorMessage:
-		return nil, errors.New(v.reasonPhrase)
+		return nil, errors.New(v.ReasonPhrase)
 	}
 	return nil, errUnexpectedMessage
 }

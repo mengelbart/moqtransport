@@ -44,12 +44,12 @@ func (t *SendTrack) writeNewStream(b []byte) (int, error) {
 		return 0, err
 	}
 	om := &objectMessage{
-		hasLength:       false,
-		trackID:         t.id,
-		groupSequence:   0,
-		objectSequence:  0,
-		objectSendOrder: 0,
-		objectPayload:   b,
+		HasLength:       false,
+		TrackID:         t.id,
+		GroupSequence:   0,
+		ObjectSequence:  0,
+		ObjectSendOrder: 0,
+		ObjectPayload:   b,
 	}
 	buf := make([]byte, 0, 64_000)
 	buf = om.append(buf)
@@ -65,12 +65,12 @@ func (t *SendTrack) Write(b []byte) (n int, err error) {
 		// ...
 	case singleStream:
 		om := &objectMessage{
-			hasLength:       true,
-			trackID:         t.id,
-			groupSequence:   0,
-			objectSequence:  0,
-			objectSendOrder: 0,
-			objectPayload:   b,
+			HasLength:       true,
+			TrackID:         t.id,
+			GroupSequence:   0,
+			ObjectSequence:  0,
+			ObjectSendOrder: 0,
+			ObjectPayload:   b,
 		}
 		buf := make([]byte, 0, 64_000)
 		buf = om.append(buf)

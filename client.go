@@ -11,41 +11,14 @@ import (
 )
 
 func DialWebTransport(ctx context.Context, addr string) (*Peer, error) {
-	qc := &quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 1<<63 - 1,
-		RequireAddressValidation:       nil,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                false,
-		Tracer:                         nil,
-	}
 	d := webtransport.Dialer{
 		RoundTripper: &http3.RoundTripper{
 			DisableCompression: false,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
-			QuicConfig:             qc,
-			EnableDatagrams:        false,
-			AdditionalSettings:     nil,
-			StreamHijacker:         nil,
-			UniStreamHijacker:      nil,
-			Dial:                   nil,
-			MaxResponseHeaderBytes: 0,
+			EnableDatagrams: false,
 		},
-		StreamReorderingTimeout: 0,
 	}
 	// TODO: Handle response?
 	_, conn, err := d.Dial(ctx, addr, nil)
@@ -64,24 +37,7 @@ func DialQUIC(ctx context.Context, addr string) (*Peer, error) {
 		NextProtos:         []string{"moq-00"},
 	}
 	conn, err := quic.DialAddr(context.TODO(), addr, tlsConf, &quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 1<<63 - 1,
-		RequireAddressValidation:       nil,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                true,
-		Tracer:                         nil,
+		EnableDatagrams: true,
 	})
 	if err != nil {
 		return nil, err

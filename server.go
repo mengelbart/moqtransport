@@ -182,7 +182,6 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		}
 		peer, err := newServerPeer(ctx, conn)
 		if err != nil {
-			log.Printf("failed to create new server peer: %v", err)
 			switch {
 			case errors.Is(err, errUnsupportedVersion):
 				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
