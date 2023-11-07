@@ -68,17 +68,17 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			return s.chatRooms[id].join(name, p)
 		})
 
-		p.OnSubscription(func(_, trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
+		p.OnSubscription(func(namespace, username string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
 			if len(name) == 0 {
 				// Subscribe requires a username which has to be announced
 				// before subscribing
 				return 0, 0, errors.New("subscribe without prior announcement")
 			}
-			namespace := strings.SplitN(trackname, "/", 3)
-			if len(namespace) < 2 {
+			parts := strings.SplitN(namespace, "/", 2)
+			if len(parts) < 2 {
 				return 0, 0, errors.New("invalid trackname")
 			}
-			moq_chat, id := namespace[0], namespace[1]
+			moq_chat, id := parts[0], parts[1]
 			if moq_chat != "moq-chat" {
 				return 0, 0, errors.New("invalid moq-chat namespace")
 			}
@@ -86,7 +86,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			if !ok {
 				return 0, 0, errUnknownChat
 			}
-			if len(namespace) == 2 {
+			if len(username) == 0 {
 				go func() {
 					// TODO: Improve synchronization (buffer objects before
 					// subscription finished)
@@ -96,7 +96,6 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 				return 0, 0, nil
 			}
 
-			username := namespace[2]
 			r.lock.Lock()
 			defer r.lock.Unlock()
 			log.Printf("subscribing user %v to publisher %v", name, username)
