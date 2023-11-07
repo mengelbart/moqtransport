@@ -18,6 +18,8 @@ func (r varintParameter) append(buf []byte) []byte {
 	return buf
 }
 
+// TODO: Compare varint length with parameter length and skip if it doesn't
+// match.
 func parseVarintParameter(r messageReader, key uint64) (varintParameter, error) {
 	_, err := quicvarint.Read(r)
 	if err != nil {
