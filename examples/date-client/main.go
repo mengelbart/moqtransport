@@ -12,20 +12,29 @@ import (
 
 func main() {
 	addr := flag.String("addr", "https://localhost:1909", "address to connect to")
+	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
 	flag.Parse()
 
-	if err := run(*addr); err != nil {
+	if err := run(*addr, *wt); err != nil {
 		log.Fatal(err)
 	}
 }
-func run(addr string) error {
+func run(addr string, wt bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	p, err := moqtransport.DialWebTransport(ctx, addr)
+	var p *moqtransport.Peer
+	var err error
+
+	if wt {
+		p, err = moqtransport.DialWebTransport(ctx, addr)
+	} else {
+		p, err = moqtransport.DialQUIC(ctx, addr)
+	}
 	if err != nil {
 		return err
 	}
+
 	defer p.CloseWithError(0, "closing conn")
 
 	log.Println("webtransport connected")
