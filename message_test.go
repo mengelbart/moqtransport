@@ -296,7 +296,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(clientSetupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x00,
+				0x40, byte(clientSetupMessageType), 0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -309,7 +309,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(clientSetupMessageType), 0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x01, 0x01, 0x01, 'A',
+				0x40, byte(clientSetupMessageType), 0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A',
 			},
 		},
 	}
@@ -339,7 +339,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x01, DRAFT_IETF_MOQ_TRANSPORT_00,
+				0x01, 0x00,
 			}),
 			expect: nil,
 			err:    io.EOF,
@@ -353,34 +353,34 @@ func TestParseClientSetupMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x02, DRAFT_IETF_MOQ_TRANSPORT_00, DRAFT_IETF_MOQ_TRANSPORT_00 + 1,
+				0x02, 0x00, 0x00 + 1,
 			}),
 			expect: nil,
 			err:    io.EOF,
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x02, DRAFT_IETF_MOQ_TRANSPORT_00, DRAFT_IETF_MOQ_TRANSPORT_00 + 1, 0x00,
+				0x02, 0x00, 0x00 + 1, 0x00,
 			}),
 			expect: &clientSetupMessage{
-				supportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_00, DRAFT_IETF_MOQ_TRANSPORT_00 + 1},
+				supportedVersions: []version{0, 0 + 1},
 				setupParameters:   parameters{},
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x01, DRAFT_IETF_MOQ_TRANSPORT_00, 0x00,
+				0x01, 0x00, 0x00,
 			}),
 			expect: &clientSetupMessage{
-				supportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_00},
+				supportedVersions: []version{0},
 				setupParameters:   parameters{},
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x01, DRAFT_IETF_MOQ_TRANSPORT_00,
+				0x01, 0x00,
 			}),
 			expect: nil,
 			err:    io.EOF,
@@ -418,7 +418,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		},
 		{
 			ssm: serverSetupMessage{
-				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+				selectedVersion: 0,
 				setupParameters: parameters{},
 			},
 			buf: []byte{},
@@ -428,7 +428,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		},
 		{
 			ssm: serverSetupMessage{
-				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+				selectedVersion: 0,
 				setupParameters: parameters{roleParameterKey: varintParameter{
 					k: roleParameterKey,
 					v: ingestionRole,
@@ -441,7 +441,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		},
 		{
 			ssm: serverSetupMessage{
-				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+				selectedVersion: 0,
 				setupParameters: parameters{pathParameterKey: stringParameter{
 					k: pathParameterKey,
 					v: "A",
@@ -479,14 +479,14 @@ func TestParseServerSetupMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				DRAFT_IETF_MOQ_TRANSPORT_00, 0x01,
+				0x00, 0x01,
 			}),
 			expect: nil,
 			err:    io.EOF,
 		},
 		{
 			r: bytes.NewReader([]byte{
-				DRAFT_IETF_MOQ_TRANSPORT_00, 0x00,
+				0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00,
 			}),
 			expect: &serverSetupMessage{
 				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
@@ -496,10 +496,10 @@ func TestParseServerSetupMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				DRAFT_IETF_MOQ_TRANSPORT_00, 0x01, 0x01, 0x01, 'A',
+				0x00, 0x01, 0x01, 0x01, 'A',
 			}),
 			expect: &serverSetupMessage{
-				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+				selectedVersion: 0,
 				setupParameters: parameters{pathParameterKey: stringParameter{
 					k: pathParameterKey,
 					v: "A",
@@ -509,10 +509,10 @@ func TestParseServerSetupMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				DRAFT_IETF_MOQ_TRANSPORT_00, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c, 0x0d,
+				0x00, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c, 0x0d,
 			}),
 			expect: &serverSetupMessage{
-				selectedVersion: DRAFT_IETF_MOQ_TRANSPORT_00,
+				selectedVersion: 0,
 				setupParameters: parameters{pathParameterKey: stringParameter{
 					k: pathParameterKey,
 					v: "A",
