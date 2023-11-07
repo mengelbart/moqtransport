@@ -348,7 +348,7 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 }
 
 func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
-	log.Printf("handling announce: namespace='%v', name='%v'\n", msg.trackNamespace, msg.trackName)
+	log.Printf("handling subscribe: namespace='%v', name='%v'\n", msg.trackNamespace, msg.trackName)
 	if p.subscribeHandler == nil {
 		panic("TODO")
 	}
