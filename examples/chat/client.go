@@ -55,7 +55,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 	c.peer.OnAnnouncement(func(s string) error {
 		return nil
 	})
-	c.peer.OnSubscription(func(trackname string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
+	c.peer.OnSubscription(func(_, trackname string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
 		namespace := strings.SplitN(trackname, "/", 3)
 		if len(namespace) < 2 {
 			return 0, 0, errors.New("invalid trackname")
@@ -89,7 +89,8 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 			if p == username {
 				continue
 			}
-			t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v/%v", roomID, p))
+			fullname := fmt.Sprintf("moq-chat/%v/%v", roomID, p)
+			t, err := c.peer.Subscribe(fullname, fullname)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -120,7 +121,7 @@ func (c *Client) joinRoom(roomID, username string) {
 	if err := c.peer.Announce(fmt.Sprintf("moq-chat/%v/%v", roomID, username)); err != nil {
 		log.Fatal(err)
 	}
-	catalogTrack, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID))
+	catalogTrack, err := c.peer.Subscribe("", fmt.Sprintf("moq-chat/%v", roomID))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +140,8 @@ func (c *Client) joinRoom(roomID, username string) {
 		if p == username {
 			continue
 		}
-		t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v/%v", roomID, p))
+		fullname := fmt.Sprintf("moq-chat/%v/%v", roomID, p)
+		t, err := c.peer.Subscribe(fullname, fullname)
 		if err != nil {
 			log.Fatal(err)
 		}

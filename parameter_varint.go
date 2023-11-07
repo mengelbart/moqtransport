@@ -1,10 +1,18 @@
 package moqtransport
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"fmt"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type varintParameter struct {
 	k uint64
 	v uint64
+}
+
+func (r varintParameter) String() string {
+	return fmt.Sprintf("key: %v, value: %v", r.k, r.v)
 }
 
 func (r varintParameter) key() uint64 {

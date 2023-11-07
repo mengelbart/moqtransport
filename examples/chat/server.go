@@ -68,7 +68,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			return s.chatRooms[id].join(name, p)
 		})
 
-		p.OnSubscription(func(trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
+		p.OnSubscription(func(_, trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
 			if len(name) == 0 {
 				// Subscribe requires a username which has to be announced
 				// before subscribing
