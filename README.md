@@ -55,5 +55,5 @@ go run examples/server/main.go -webtransport
 Client:
 
 ```shell
-go run examples/client/main.go -webtransport -addr https://localhost:8080/chat
+go run examples/client/main.go -webtransport -addr https://localhost:8080/moq
 ```
