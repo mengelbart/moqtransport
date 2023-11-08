@@ -3,8 +3,8 @@ module github.com/mengelbart/moqtransport
 go 1.21.1
 
 require (
-	github.com/quic-go/quic-go v0.40.0
-	github.com/quic-go/webtransport-go v0.6.0
+	github.com/quic-go/quic-go v0.40.1-0.20231105142906-f5ce4e34f4d7
+	github.com/quic-go/webtransport-go v0.6.1-0.20231105134933-9074577ba782
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
 )
@@ -27,6 +27,3 @@ require (
 	golang.org/x/tools v0.12.1-0.20230815132531-74c255bcf846 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/quic-go/webtransport-go v0.6.0 => ../../quic-go/webtransport-go
-replace github.com/quic-go/quic-go v0.40.0 => ../../quic-go/quic-go/
