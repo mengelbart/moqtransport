@@ -29,7 +29,7 @@ type Client struct {
 }
 
 func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
-	p, err := moqtransport.DialQUIC(ctx, addr)
+	p, err := moqtransport.DialQUIC(ctx, addr, 3)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,7 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 }
 
 func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
-	p, err := moqtransport.DialWebTransport(ctx, addr)
+	p, err := moqtransport.DialWebTransport(ctx, addr, 3)
 	if err != nil {
 		return nil, err
 	}

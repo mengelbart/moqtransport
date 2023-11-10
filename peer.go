@@ -118,7 +118,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	return p, nil
 }
 
-func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
+func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Peer, error) {
 	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func newClientPeer(ctx context.Context, conn connection) (*Peer, error) {
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
-				v: ingestionDeliveryRole,
+				v: clientRole,
 			},
 		},
 	}
