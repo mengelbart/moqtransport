@@ -27,9 +27,9 @@ func run(addr string, wt bool) error {
 	var err error
 
 	if wt {
-		p, err = moqtransport.DialWebTransport(ctx, addr)
+		p, err = moqtransport.DialWebTransport(ctx, addr, 3)
 	} else {
-		p, err = moqtransport.DialQUIC(ctx, addr)
+		p, err = moqtransport.DialQUIC(ctx, addr, 3)
 	}
 	if err != nil {
 		return err
