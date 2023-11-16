@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slices"
 )
@@ -249,6 +250,7 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 	transactions := make(map[messageKey]keyedMessage)
 
 	go func(s stream, ch chan<- message, errCh chan<- error) {
+		defer s.Close()
 		for {
 			msg, err := p.parseMessage(quicvarint.NewReader(s))
 			if err != nil {
@@ -314,8 +316,13 @@ func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 			return err
 		}
 		go func() {
-			if err := p.readMessages(quicvarint.NewReader(stream), stream); err != nil {
-				panic(err)
+			err := p.readMessages(quicvarint.NewReader(stream), stream)
+			if err != nil {
+				log.Printf("read message from uni stream err: %v", err)
+				if streamErr, ok := err.(*quic.StreamError); ok {
+					log.Printf("stream err: %v", streamErr)
+				}
+				return
 			}
 		}()
 	}
@@ -340,7 +347,8 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 	t, ok := p.receiveTracks[msg.TrackID]
 	if !ok {
 		// handle unknown track?
-		panic("TODO")
+		p.logger.Printf("got message for unknown track: %v", msg)
+		return nil
 	}
 	t.push(msg)
 	return nil
