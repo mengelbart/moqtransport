@@ -93,7 +93,7 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 			if p == username {
 				continue
 			}
-			t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p)
+			t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p, username)
 			if err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 	if err := c.peer.Announce(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)); err != nil {
 		return err
 	}
-	catalogTrack, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), "/catalog")
+	catalogTrack, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 		if p == username {
 			continue
 		}
-		t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p)
+		t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p, username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}
