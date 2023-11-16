@@ -58,12 +58,18 @@ func handler() moqtransport.PeerHandlerFunc {
 				for ts := range ticker.C {
 					if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
 						log.Println(err)
+						return
 					}
 				}
 			}()
 			return 0, 0, nil
 		})
-		go p.Run(context.Background(), false)
+		go func() {
+			defer p.CloseWithError(0, "error")
+			if err := p.Run(context.Background(), false); err != nil {
+				log.Printf("Run terminated, closing peer connection: %v", err)
+			}
+		}()
 		p.Announce("clock")
 	}
 }
