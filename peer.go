@@ -194,7 +194,11 @@ func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
 }
 
 func (p *Peer) parseMessage(r messageReader) (message, error) {
-	msg, err := readNext(r)
+	ps := &parser{
+		logger: p.logger,
+		reader: r,
+	}
+	msg, err := ps.readNext()
 	if err != nil {
 		p.logger.Printf("failed to parse message: %v", err)
 		return nil, err
