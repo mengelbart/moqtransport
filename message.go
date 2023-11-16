@@ -98,46 +98,55 @@ type messageReader interface {
 	io.ByteReader
 }
 
-func readNext(reader messageReader) (msg message, err error) {
-	mt, err := quicvarint.Read(reader)
+type parser struct {
+	logger *log.Logger
+	reader messageReader
+}
+
+func (p *parser) readNext() (msg message, err error) {
+	mt, err := quicvarint.Read(p.reader)
 	if err != nil {
+		p.logger.Printf("got error when trying to find next message: %v", err)
 		return nil, err
 	}
+	p.logger.Printf("parsing message of type: %v", messageType(mt))
 	switch messageType(mt) {
 	case objectMessageLenType:
-		msg, err = parseObjectMessage(reader, mt)
+		msg, err = p.parseObjectMessage(mt)
 	case objectMessageNoLenType:
-		msg, err = parseObjectMessage(reader, mt)
+		msg, err = p.parseObjectMessage(mt)
 	case subscribeRequestMessageType:
-		msg, err = parseSubscribeRequestMessage(reader)
+		msg, err = p.parseSubscribeRequestMessage()
 	case subscribeOkMessageType:
-		msg, err = parseSubscribeOkMessage(reader)
+		msg, err = p.parseSubscribeOkMessage()
 	case subscribeErrorMessageType:
-		msg, err = parseSubscribeErrorMessage(reader)
+		msg, err = p.parseSubscribeErrorMessage()
 	case announceMessageType:
-		msg, err = parseAnnounceMessage(reader)
+		msg, err = p.parseAnnounceMessage()
 	case announceOkMessageType:
-		msg, err = parseAnnounceOkMessage(reader)
+		msg, err = p.parseAnnounceOkMessage()
 	case announceErrorMessageType:
-		msg, err = parseAnnounceErrorMessage(reader)
+		msg, err = p.parseAnnounceErrorMessage()
 	case unannounceMessageType:
-		msg, err = parseUnannounceMessage(reader)
+		msg, err = p.parseUnannounceMessage()
 	case unsubscribeMessageType:
-		msg, err = parseUnsubscribeMessage(reader)
+		msg, err = p.parseUnsubscribeMessage()
 	case subscribeFinMessageType:
-		msg, err = parseSubscribeFinMessage(reader)
+		msg, err = p.parseSubscribeFinMessage()
 	case subscribeRstMessageType:
-		msg, err = parseSubscribeRstMessage(reader)
+		msg, err = p.parseSubscribeRstMessage()
 	case goAwayMessageType:
-		msg, err = parseGoAwayMessage(reader)
+		msg, err = p.parseGoAwayMessage()
 	case clientSetupMessageType:
-		msg, err = parseClientSetupMessage(reader)
+		msg, err = p.parseClientSetupMessage()
 	case serverSetupMessageType:
-		msg, err = parseServerSetupMessage(reader)
+		msg, err = p.parseServerSetupMessage()
 	default:
 		return nil, errors.New("unknown message type")
 	}
-	log.Printf("parsed message: %v, err: %v", msg, err)
+	if err != nil {
+		log.Printf("parsing message of type %v failed: %v", messageType(mt), err)
+	}
 	return
 }
 
@@ -179,33 +188,33 @@ func (m *objectMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseObjectMessage(r messageReader, typ uint64) (*objectMessage, error) {
-	if r == nil {
+func (p *parser) parseObjectMessage(typ uint64) (*objectMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
 	if typ != uint64(objectMessageLenType) && typ != uint64(objectMessageNoLenType) {
 		return nil, errInvalidMessageEncoding
 	}
 	hasLen := typ == 0x00
-	trackID, err := quicvarint.Read(r)
+	trackID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	groupSequence, err := quicvarint.Read(r)
+	groupSequence, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	objectSequence, err := quicvarint.Read(r)
+	objectSequence, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	objectSendOrder, err := quicvarint.Read(r)
+	objectSendOrder, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
 	if !hasLen {
 		var objectPayload []byte
-		objectPayload, err = io.ReadAll(r)
+		objectPayload, err = io.ReadAll(p.reader)
 		return &objectMessage{
 			HasLength:       hasLen,
 			TrackID:         trackID,
@@ -215,13 +224,13 @@ func parseObjectMessage(r messageReader, typ uint64) (*objectMessage, error) {
 			ObjectPayload:   objectPayload,
 		}, err
 	}
-	length, err := quicvarint.Read(r)
+	length, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
 	if length > 0 {
 		objectPayload := make([]byte, length)
-		_, err = io.ReadFull(r, objectPayload)
+		_, err = io.ReadFull(p.reader, objectPayload)
 		if err != nil {
 			return nil, err
 		}
@@ -270,15 +279,15 @@ func (m *clientSetupMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseClientSetupMessage(r messageReader) (*clientSetupMessage, error) {
-	if r == nil {
+func (p *parser) parseClientSetupMessage() (*clientSetupMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	vs, err := parseVersions(r)
+	vs, err := parseVersions(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r)
+	ps, err := parseParameters(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -311,15 +320,15 @@ func (m *serverSetupMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseServerSetupMessage(r messageReader) (*serverSetupMessage, error) {
-	if r == nil {
+func (p *parser) parseServerSetupMessage() (*serverSetupMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	sv, err := quicvarint.Read(r)
+	sv, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r)
+	ps, err := parseParameters(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -342,11 +351,11 @@ func (l location) append(buf []byte) []byte {
 	return append(buf, byte(l.value))
 }
 
-func parseLocation(r messageReader) (location, error) {
-	if r == nil {
+func (p *parser) parseLocation() (location, error) {
+	if p.reader == nil {
 		return location{}, errInvalidMessageReader
 	}
-	mode, err := quicvarint.Read(r)
+	mode, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return location{}, err
 	}
@@ -356,7 +365,7 @@ func parseLocation(r messageReader) (location, error) {
 			value: 0,
 		}, nil
 	}
-	value, err := quicvarint.Read(r)
+	value, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return location{}, nil
 	}
@@ -406,35 +415,35 @@ func (m *subscribeRequestMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeRequestMessage(r messageReader) (*subscribeRequestMessage, error) {
-	if r == nil {
+func (p *parser) parseSubscribeRequestMessage() (*subscribeRequestMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	trackNamespace, err := parseVarIntString(r)
+	trackNamespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	fullTrackName, err := parseVarIntString(r)
+	fullTrackName, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	startGroup, err := parseLocation(r)
+	startGroup, err := p.parseLocation()
 	if err != nil {
 		return nil, err
 	}
-	startObject, err := parseLocation(r)
+	startObject, err := p.parseLocation()
 	if err != nil {
 		return nil, err
 	}
-	endGroup, err := parseLocation(r)
+	endGroup, err := p.parseLocation()
 	if err != nil {
 		return nil, err
 	}
-	endObject, err := parseLocation(r)
+	endObject, err := p.parseLocation()
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r)
+	ps, err := parseParameters(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -480,23 +489,23 @@ func (m *subscribeOkMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeOkMessage(r messageReader) (*subscribeOkMessage, error) {
-	if r == nil {
+func (p *parser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	trackName, err := parseVarIntString(r)
+	trackName, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	trackID, err := quicvarint.Read(r)
+	trackID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	e, err := quicvarint.Read(r)
+	expires, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +513,7 @@ func parseSubscribeOkMessage(r messageReader) (*subscribeOkMessage, error) {
 		TrackNamespace: namespace,
 		TrackName:      trackName,
 		TrackID:        trackID,
-		Expires:        time.Duration(e) * time.Millisecond,
+		Expires:        time.Duration(expires) * time.Millisecond,
 	}, nil
 }
 
@@ -539,23 +548,23 @@ func (m *subscribeErrorMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeErrorMessage(r messageReader) (*subscribeErrorMessage, error) {
-	if r == nil {
+func (p *parser) parseSubscribeErrorMessage() (*subscribeErrorMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	trackName, err := parseVarIntString(r)
+	trackName, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	errorCode, err := quicvarint.Read(r)
+	errorCode, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	reasonPhrase, err := parseVarIntString(r)
+	reasonPhrase, err := parseVarIntString(p.reader)
 	return &subscribeErrorMessage{
 		TrackNamespace: namespace,
 		TrackName:      trackName,
@@ -584,15 +593,15 @@ func (m *unsubscribeMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseUnsubscribeMessage(r messageReader) (*unsubscribeMessage, error) {
-	if r == nil {
+func (p *parser) parseUnsubscribeMessage() (*unsubscribeMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	trackName, err := parseVarIntString(r)
+	trackName, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -626,23 +635,23 @@ func (m *subscribeFinMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeFinMessage(r messageReader) (*subscribeFinMessage, error) {
-	if r == nil {
+func (p *parser) parseSubscribeFinMessage() (*subscribeFinMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	name, err := parseVarIntString(r)
+	name, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	finalGroup, err := quicvarint.Read(r)
+	finalGroup, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	finalObject, err := quicvarint.Read(r)
+	finalObject, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -682,31 +691,31 @@ func (m *subscribeRstMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseSubscribeRstMessage(r messageReader) (*subscribeRstMessage, error) {
-	if r == nil {
+func (p *parser) parseSubscribeRstMessage() (*subscribeRstMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	name, err := parseVarIntString(r)
+	name, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	errCode, err := quicvarint.Read(r)
+	errCode, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	reasonPhrase, err := parseVarIntString(r)
+	reasonPhrase, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	finalGroup, err := quicvarint.Read(r)
+	finalGroup, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	finalObject, err := quicvarint.Read(r)
+	finalObject, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -750,15 +759,15 @@ func (m *announceMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseAnnounceMessage(r messageReader) (*announceMessage, error) {
-	if r == nil {
+func (p *parser) parseAnnounceMessage() (*announceMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	trackNamspace, err := parseVarIntString(r)
+	trackNamspace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	ps, err := parseParameters(r)
+	ps, err := parseParameters(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -793,11 +802,11 @@ func (m *announceOkMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseAnnounceOkMessage(r messageReader) (*announceOkMessage, error) {
-	if r == nil {
+func (p *parser) parseAnnounceOkMessage() (*announceOkMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -835,19 +844,19 @@ func (m *announceErrorMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseAnnounceErrorMessage(r messageReader) (*announceErrorMessage, error) {
-	if r == nil {
+func (p *parser) parseAnnounceErrorMessage() (*announceErrorMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	trackNamspace, err := parseVarIntString(r)
+	trackNamspace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	errorCode, err := quicvarint.Read(r)
+	errorCode, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	reasonPhrase, err := parseVarIntString(r)
+	reasonPhrase, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -876,11 +885,11 @@ func (m *unannounceMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseUnannounceMessage(r messageReader) (*unannounceMessage, error) {
-	if r == nil {
+func (p *parser) parseUnannounceMessage() (*unannounceMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(r)
+	namespace, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -907,11 +916,11 @@ func (m *goAwayMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func parseGoAwayMessage(r messageReader) (*goAwayMessage, error) {
-	if r == nil {
+func (p *parser) parseGoAwayMessage() (*goAwayMessage, error) {
+	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	uri, err := parseVarIntString(r)
+	uri, err := parseVarIntString(p.reader)
 	if err != nil {
 		return nil, err
 	}

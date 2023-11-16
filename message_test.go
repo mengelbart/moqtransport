@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"testing"
 	"time"
 
@@ -261,7 +262,11 @@ func TestParseObjectMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseObjectMessage(tc.r, tc.msgTyp)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseObjectMessage(tc.msgTyp)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -388,7 +393,11 @@ func TestParseClientSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseClientSetupMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseClientSetupMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -523,7 +532,11 @@ func TestParseServerSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseServerSetupMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseServerSetupMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -614,7 +627,11 @@ func TestParseLocation(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseLocation(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseLocation()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -780,7 +797,11 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseSubscribeRequestMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseSubscribeRequestMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -883,7 +904,11 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseSubscribeOkMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseSubscribeOkMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -974,7 +999,11 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseSubscribeErrorMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseSubscribeErrorMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1046,7 +1075,11 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseUnsubscribeMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseUnsubscribeMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1149,7 +1182,11 @@ func TestParseSubscribeFinMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseSubscribeFinMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseSubscribeFinMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1279,7 +1316,11 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseSubscribeRstMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseSubscribeRstMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1353,7 +1394,11 @@ func TestParseAnnounceMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseAnnounceMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseAnnounceMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1429,7 +1474,11 @@ func TestParseAnnounceOkMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseAnnounceOkMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseAnnounceOkMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1515,7 +1564,11 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseAnnounceErrorMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseAnnounceErrorMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1591,7 +1644,11 @@ func TestParseUnannounceMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseUnannounceMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseUnannounceMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -1657,7 +1714,11 @@ func TestParseGoAwayMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseGoAwayMessage(tc.r)
+			p := parser{
+				logger: &log.Logger{},
+				reader: tc.r,
+			}
+			res, err := p.parseGoAwayMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
