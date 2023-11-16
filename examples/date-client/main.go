@@ -52,7 +52,7 @@ func run(addr string, wt bool) error {
 		}
 	}()
 	log.Println("subscribing")
-	rt, err := p.Subscribe("clock", "second")
+	rt, err := p.Subscribe("clock", "second", "")
 	if err != nil {
 		panic(err)
 	}

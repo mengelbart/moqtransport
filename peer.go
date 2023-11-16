@@ -456,7 +456,7 @@ func (p *Peer) Announce(namespace string) error {
 	return nil
 }
 
-func (p *Peer) Subscribe(namespace, trackname string) (*ReceiveTrack, error) {
+func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, error) {
 	sm := &subscribeRequestMessage{
 		TrackNamespace: namespace,
 		TrackName:      trackname,
@@ -464,7 +464,12 @@ func (p *Peer) Subscribe(namespace, trackname string) (*ReceiveTrack, error) {
 		StartObject:    location{},
 		EndGroup:       location{},
 		EndObject:      location{},
-		Parameters:     parameters{},
+		Parameters: parameters{
+			authorizationParameterKey: stringParameter{
+				k: authorizationParameterKey,
+				v: auth,
+			},
+		},
 	}
 	responseCh := make(chan message)
 	select {

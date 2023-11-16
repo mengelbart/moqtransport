@@ -13,6 +13,7 @@ var (
 const (
 	roleParameterKey uint64 = iota
 	pathParameterKey
+	authorizationParameterKey
 )
 
 const (
