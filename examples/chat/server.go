@@ -86,7 +86,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			if !ok {
 				return 0, 0, errUnknownChat
 			}
-			if len(username) == 0 {
+			if username == "/catalog" {
 				go func() {
 					// TODO: Improve synchronization (buffer objects before
 					// subscription finished)
