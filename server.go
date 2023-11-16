@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
@@ -66,36 +67,8 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	ws := &webtransport.Server{
 		H3: http3.Server{
 			Addr:      addr,
-			Port:      0,
 			TLSConfig: s.TLSConfig,
-			QuicConfig: &quic.Config{
-				GetConfigForClient:             nil,
-				Versions:                       nil,
-				HandshakeIdleTimeout:           0,
-				MaxIdleTimeout:                 1<<63 - 1,
-				RequireAddressValidation:       nil,
-				TokenStore:                     nil,
-				InitialStreamReceiveWindow:     0,
-				MaxStreamReceiveWindow:         0,
-				InitialConnectionReceiveWindow: 0,
-				MaxConnectionReceiveWindow:     0,
-				AllowConnectionWindowIncrease:  nil,
-				MaxIncomingStreams:             0,
-				MaxIncomingUniStreams:          0,
-				KeepAlivePeriod:                0,
-				DisablePathMTUDiscovery:        false,
-				Allow0RTT:                      false,
-				EnableDatagrams:                false,
-				Tracer:                         nil,
-			},
-			Handler:            nil,
-			EnableDatagrams:    false,
-			MaxHeaderBytes:     0,
-			AdditionalSettings: map[uint64]uint64{},
-			StreamHijacker:     nil,
-			UniStreamHijacker:  nil,
 		},
-		StreamReorderingTimeout: 0,
 		CheckOrigin: func(r *http.Request) bool {
 			// TODO: Make configurable
 			return true
@@ -146,24 +119,8 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 
 func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
-		GetConfigForClient:             nil,
-		Versions:                       nil,
-		HandshakeIdleTimeout:           0,
-		MaxIdleTimeout:                 1<<63 - 1,
-		RequireAddressValidation:       nil,
-		TokenStore:                     nil,
-		InitialStreamReceiveWindow:     0,
-		MaxStreamReceiveWindow:         0,
-		InitialConnectionReceiveWindow: 0,
-		MaxConnectionReceiveWindow:     0,
-		AllowConnectionWindowIncrease:  nil,
-		MaxIncomingStreams:             0,
-		MaxIncomingUniStreams:          0,
-		KeepAlivePeriod:                0,
-		DisablePathMTUDiscovery:        false,
-		Allow0RTT:                      false,
-		EnableDatagrams:                true,
-		Tracer:                         nil,
+		MaxIdleTimeout:  3 * time.Second,
+		EnableDatagrams: true,
 	})
 	if err != nil {
 		return err
