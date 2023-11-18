@@ -28,10 +28,10 @@ func DialWebTransport(ctx context.Context, addr string, role uint64) (*Peer, err
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientPeer(ctx, wc, role)
+	return newClientPeer(ctx, wc, role, "")
 }
 
-func DialQUIC(ctx context.Context, addr string, role uint64) (*Peer, error) {
+func DialQUIC(ctx context.Context, addr string, role uint64, path string) (*Peer, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
@@ -45,7 +45,7 @@ func DialQUIC(ctx context.Context, addr string, role uint64) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientPeer(ctx, qc, role)
+	p, err := newClientPeer(ctx, qc, role, path)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
