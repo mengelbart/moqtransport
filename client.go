@@ -50,6 +50,9 @@ func DialQUIC(ctx context.Context, addr string, role uint64, path string) (*Peer
 		if errors.Is(err, errUnsupportedVersion) {
 			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
 		}
+		if errors.Is(err, errPathParamFromServer) {
+			conn.CloseWithError(SessionTerminatedErrorCode, errPathParamFromServer.Error())
+		}
 		conn.CloseWithError(GenericErrorCode, "internal server error")
 		return nil, err
 	}
