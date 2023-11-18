@@ -16,9 +16,9 @@ const (
 )
 
 const (
-	ingestionRole uint64 = iota + 1
-	deliveryRole
-	ingestionDeliveryRole
+	IngestionRole uint64 = iota + 1
+	DeliveryRole
+	IngestionDeliveryRole
 )
 
 type parameter interface {

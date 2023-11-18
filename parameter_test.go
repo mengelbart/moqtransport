@@ -51,7 +51,7 @@ func TestParameterAppend(t *testing.T) {
 		{
 			p: varintParameter{
 				k: 0,
-				v: ingestionRole,
+				v: IngestionRole,
 			},
 			buf:    nil,
 			expect: []byte{0x00, 0x01, 0x01},
@@ -59,7 +59,7 @@ func TestParameterAppend(t *testing.T) {
 		{
 			p: varintParameter{
 				k: 0,
-				v: deliveryRole,
+				v: DeliveryRole,
 			},
 			buf:    nil,
 			expect: []byte{0x00, 0x01, 0x02},
@@ -67,7 +67,7 @@ func TestParameterAppend(t *testing.T) {
 		{
 			p: varintParameter{
 				k: 0,
-				v: ingestionDeliveryRole,
+				v: IngestionDeliveryRole,
 			},
 			buf:    []byte{},
 			expect: []byte{0x00, 0x01, 0x03},
@@ -75,7 +75,7 @@ func TestParameterAppend(t *testing.T) {
 		{
 			p: varintParameter{
 				k: 0,
-				v: ingestionDeliveryRole,
+				v: IngestionDeliveryRole,
 			},
 			buf:    []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02, 0x00, 0x01, 0x03},
@@ -96,10 +96,10 @@ func TestParseParameter(t *testing.T) {
 		err    error
 	}{
 		{
-			buf: []byte{byte(roleParameterKey), 0x01, byte(ingestionRole)},
+			buf: []byte{byte(roleParameterKey), 0x01, byte(IngestionRole)},
 			expect: varintParameter{
 				k: 0,
-				v: ingestionRole,
+				v: IngestionRole,
 			},
 			err: nil,
 		},
@@ -174,7 +174,7 @@ func TestParseParameters(t *testing.T) {
 			expect: parameters{
 				roleParameterKey: varintParameter{
 					k: 0,
-					v: ingestionRole,
+					v: IngestionRole,
 				},
 				pathParameterKey: stringParameter{
 					k: 1,

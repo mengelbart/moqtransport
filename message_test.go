@@ -431,7 +431,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 				SelectedVersion: 0,
 				SetupParameters: parameters{roleParameterKey: varintParameter{
 					k: roleParameterKey,
-					v: ingestionRole,
+					v: IngestionRole,
 				}},
 			},
 			buf: []byte{},
