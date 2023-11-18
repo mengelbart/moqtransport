@@ -20,6 +20,7 @@ var (
 	errUnsupportedVersion    = errors.New("unsupported version")
 	errMissingRoleParameter  = errors.New("missing role parameter")
 	errGoAway                = errors.New("received go away from peer")
+	errPathParamFromServer   = errors.New("received path parameter from server")
 )
 
 // TODO: Streams must be wrapped properly for quic and webtransport The
@@ -63,6 +64,7 @@ type Peer struct {
 	sendTracks          map[string]*SendTrack
 	subscribeHandler    SubscriptionHandler
 	announcementHandler AnnouncementHandler
+	peerSetupParams     map[uint64]string
 	closeCh             chan struct{}
 
 	logger *log.Logger
@@ -86,6 +88,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 		sendTracks:          map[string]*SendTrack{},
 		subscribeHandler:    nil,
 		announcementHandler: nil,
+		peerSetupParams:     make(map[uint64]string),
 		closeCh:             make(chan struct{}),
 		logger:              log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
 	}
@@ -105,7 +108,15 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	if !ok {
 		return nil, errMissingRoleParameter
 	}
-	// TODO: save role parameter
+	// saving Role paramater in String representation
+	p.peerSetupParams[roleParameterKey] = msg.SetupParameters[roleParameterKey].String()
+
+	_, ok = msg.SetupParameters[pathParameterKey]
+	if ok {
+		// saving Path parameter in String representation
+		p.peerSetupParams[pathParameterKey] = msg.SetupParameters[pathParameterKey].String()
+	}
+
 	ssm := serverSetupMessage{
 		SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
 		SetupParameters: map[uint64]parameter{},
@@ -118,7 +129,7 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	return p, nil
 }
 
-func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Peer, error) {
+func newClientPeer(ctx context.Context, conn connection, clientRole uint64, path string) (*Peer, error) {
 	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -132,6 +143,7 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 		sendTracks:          map[string]*SendTrack{},
 		subscribeHandler:    nil,
 		announcementHandler: nil,
+		peerSetupParams:     nil,
 		closeCh:             make(chan struct{}),
 		logger:              log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
 	}
@@ -141,6 +153,10 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
 				v: clientRole,
+			},
+			pathParameterKey: stringParameter{
+				k: pathParameterKey,
+				v: path,
 			},
 		},
 	}
@@ -160,6 +176,11 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
 	}
+	_, ok = ssm.SetupParameters[pathParameterKey]
+	if ok {
+		return nil, errPathParamFromServer
+	}
+
 	return p, nil
 }
 
