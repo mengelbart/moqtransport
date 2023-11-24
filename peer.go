@@ -171,7 +171,6 @@ func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
 	fs := []func(context.Context) error{
 		p.controlStreamLoop,
 		p.acceptUnidirectionalStreams,
-		p.acceptBidirectionalStreams,
 	}
 	if enableDatagrams {
 		fs = append(fs, p.acceptDatagrams)
@@ -301,20 +300,6 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 		case err := <-errCh:
 			return err
 		}
-	}
-}
-
-func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
-	for {
-		s, err := p.conn.AcceptStream(ctx)
-		if err != nil {
-			return err
-		}
-		go func() {
-			if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
-				panic(err)
-			}
-		}()
 	}
 }
 
