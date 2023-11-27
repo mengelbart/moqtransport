@@ -41,7 +41,7 @@ func NewServer(tlsConfig *tls.Config) *Server {
 }
 
 func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
-	return s.moq.ListenQUIC(ctx, addr)
+	return s.moq.ListenQUIC(ctx, addr, false)
 }
 
 func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {

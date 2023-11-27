@@ -14,13 +14,14 @@ import (
 )
 
 var (
-	errUnexpectedMessage     = errors.New("got unexpected message")
-	errInvalidTrackNamespace = errors.New("got invalid tracknamespace")
-	errClosed                = errors.New("connection was closed")
-	errUnsupportedVersion    = errors.New("unsupported version")
-	errMissingRoleParameter  = errors.New("missing role parameter")
-	errGoAway                = errors.New("received go away from peer")
-	errPathParamFromServer   = errors.New("received path parameter from server")
+	errUnexpectedMessage       = errors.New("got unexpected message")
+	errInvalidTrackNamespace   = errors.New("got invalid tracknamespace")
+	errClosed                  = errors.New("connection was closed")
+	errUnsupportedVersion      = errors.New("unsupported version")
+	errMissingRoleParameter    = errors.New("missing role parameter")
+	errMissingPathParameter    = errors.New("missing path parameter")
+	errGoAway                  = errors.New("received go away from peer")
+	errUnexpectedPathParameter = errors.New("received unexpected path parameter")
 )
 
 // TODO: Streams must be wrapped properly for quic and webtransport The
@@ -74,7 +75,7 @@ func (p *Peer) CloseWithError(code uint64, reason string) error {
 	return p.conn.CloseWithError(code, reason)
 }
 
-func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
+func newServerPeer(ctx context.Context, conn connection, checkPathParam bool) (*Peer, error) {
 	s, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -112,9 +113,16 @@ func newServerPeer(ctx context.Context, conn connection) (*Peer, error) {
 	p.peerSetupParams[roleParameterKey] = msg.SetupParameters[roleParameterKey].String()
 
 	_, ok = msg.SetupParameters[pathParameterKey]
-	if ok {
+	if checkPathParam {
+		if !ok {
+			return nil, errMissingPathParameter
+		}
 		// saving Path parameter in String representation
 		p.peerSetupParams[pathParameterKey] = msg.SetupParameters[pathParameterKey].String()
+	} else {
+		if ok {
+			return nil, errUnexpectedPathParameter
+		}
 	}
 
 	ssm := serverSetupMessage{
@@ -154,12 +162,15 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64, path
 				k: roleParameterKey,
 				v: clientRole,
 			},
-			pathParameterKey: stringParameter{
-				k: pathParameterKey,
-				v: path,
-			},
 		},
 	}
+	if len(path) > 0 {
+		csm.SetupParameters[pathParameterKey] = stringParameter{
+			k: pathParameterKey,
+			v: path,
+		}
+	}
+
 	buf := csm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
 	if err != nil {
@@ -178,7 +189,7 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64, path
 	}
 	_, ok = ssm.SetupParameters[pathParameterKey]
 	if ok {
-		return nil, errPathParamFromServer
+		return nil, errUnexpectedPathParameter
 	}
 
 	return p, nil

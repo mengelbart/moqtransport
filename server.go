@@ -132,7 +132,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 		}
 	}()
 	go func() {
-		if err := s.Listen(ctx, l); err != nil {
+		if err := s.Listen(ctx, l, false); err != nil {
 			errCh <- err
 		}
 	}()
@@ -144,7 +144,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
+func (s *Server) ListenQUIC(ctx context.Context, addr string, checkPathParam bool) error {
 	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
 		GetConfigForClient:             nil,
 		Versions:                       nil,
@@ -171,21 +171,25 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 	l := &quicListener{
 		ql: ql,
 	}
-	return s.Listen(ctx, l)
+	return s.Listen(ctx, l, checkPathParam)
 }
 
-func (s *Server) Listen(ctx context.Context, l listener) error {
+func (s *Server) Listen(ctx context.Context, l listener, checkPathParam bool) error {
 	for {
 		conn, err := l.Accept(context.TODO())
 		if err != nil {
 			return err
 		}
-		peer, err := newServerPeer(ctx, conn)
+		peer, err := newServerPeer(ctx, conn, checkPathParam)
 		if err != nil {
 			switch {
 			case errors.Is(err, errUnsupportedVersion):
 				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
 			case errors.Is(err, errMissingRoleParameter):
+				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+			case errors.Is(err, errMissingPathParameter):
+				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+			case errors.Is(err, errUnexpectedPathParameter):
 				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
 			default:
 				conn.CloseWithError(GenericErrorCode, "internal server error")
