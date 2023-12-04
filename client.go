@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"time"
 
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
 
-func DialWebTransport(ctx context.Context, addr string, role uint64) (*Peer, error) {
+func DialWebTransport(addr string, role uint64) (*Peer, error) {
 	d := webtransport.Dialer{
 		RoundTripper: &http3.RoundTripper{
 			DisableCompression: false,
@@ -21,22 +22,23 @@ func DialWebTransport(ctx context.Context, addr string, role uint64) (*Peer, err
 		},
 	}
 	// TODO: Handle response?
-	_, conn, err := d.Dial(ctx, addr, nil)
+	_, conn, err := d.Dial(context.Background(), addr, nil)
 	if err != nil {
 		return nil, err
 	}
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientPeer(ctx, wc, role)
+	return newClientPeer(wc, nil, role)
 }
 
-func DialQUIC(ctx context.Context, addr string, role uint64) (*Peer, error) {
+func DialQUIC(addr string, role uint64) (*Peer, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
 	}
 	conn, err := quic.DialAddr(context.TODO(), addr, tlsConf, &quic.Config{
+		MaxIdleTimeout:  60 * time.Second,
 		EnableDatagrams: true,
 	})
 	if err != nil {
@@ -45,7 +47,7 @@ func DialQUIC(ctx context.Context, addr string, role uint64) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientPeer(ctx, qc, role)
+	p, err := newClientPeer(qc, nil, role)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())

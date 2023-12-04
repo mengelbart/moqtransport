@@ -14,6 +14,7 @@ import (
 var (
 	errInvalidMessageReader   = errors.New("invalid message reader")
 	errInvalidMessageEncoding = errors.New("invalid message encoding")
+	errUnknownMessage         = errors.New("unknown message type")
 )
 
 const (
@@ -109,7 +110,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 		p.logger.Printf("got error when trying to find next message: %v", err)
 		return nil, err
 	}
-	p.logger.Printf("parsing message of type: %v", messageType(mt))
+	p.logger.Printf("parsing message of type: %v (%v)", messageType(mt), mt)
 	switch messageType(mt) {
 	case objectMessageLenType:
 		msg, err = p.parseObjectMessage(mt)
@@ -142,10 +143,11 @@ func (p *loggingParser) parse() (msg message, err error) {
 	case serverSetupMessageType:
 		msg, err = p.parseServerSetupMessage()
 	default:
-		return nil, errors.New("unknown message type")
+		p.logger.Printf("failed to parse message of type %v", mt)
+		return nil, errUnknownMessage
 	}
 	if err != nil {
-		log.Printf("parsing message of type %v failed: %v", messageType(mt), err)
+		p.logger.Printf("parsing message of type %v failed: %v", messageType(mt), err)
 	}
 	return
 }

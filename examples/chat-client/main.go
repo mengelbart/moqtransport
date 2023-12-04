@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -17,9 +16,9 @@ func main() {
 	var c *chat.Client
 	var err error
 	if *wt {
-		c, err = chat.NewWebTransportClient(context.Background(), *addr)
+		c, err = chat.NewWebTransportClient(*addr)
 	} else {
-		c, err = chat.NewQUICClient(context.Background(), *addr)
+		c, err = chat.NewQUICClient(*addr)
 	}
 	if err != nil {
 		log.Fatal(err)

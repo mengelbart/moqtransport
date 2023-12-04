@@ -2,7 +2,6 @@ package chat
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,16 +27,16 @@ type Client struct {
 	nextTrackID uint64
 }
 
-func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
-	p, err := moqtransport.DialQUIC(ctx, addr, 3)
+func NewQUICClient(addr string) (*Client, error) {
+	p, err := moqtransport.DialQUIC(addr, 3)
 	if err != nil {
 		return nil, err
 	}
 	return NewClient(p)
 }
 
-func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
-	p, err := moqtransport.DialWebTransport(ctx, addr, 3)
+func NewWebTransportClient(addr string) (*Client, error) {
+	p, err := moqtransport.DialWebTransport(addr, 3)
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +69,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		c.rooms[id].st = st
 		return c.rooms[id].trackID, 0, nil
 	})
-	go func() {
-		if err := c.peer.Run(context.Background(), false); err != nil {
-			log.Fatalf("peer.Run error: %v", err)
-		}
-	}()
+	go c.peer.Run(false)
 	return c, nil
 }
 

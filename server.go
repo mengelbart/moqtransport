@@ -119,7 +119,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 
 func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
-		MaxIdleTimeout:  3 * time.Second,
+		MaxIdleTimeout:  60 * time.Second,
 		EnableDatagrams: true,
 	})
 	if err != nil {
@@ -137,12 +137,7 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		if err != nil {
 			return err
 		}
-		peer, err := newServerPeer(ctx, conn, func(r messageReader, l *log.Logger) parser {
-			return &loggingParser{
-				logger: &log.Logger{},
-				reader: r,
-			}
-		})
+		peer, err := newServerPeer(conn, nil)
 		if err != nil {
 			switch {
 			case errors.Is(err, errUnsupportedVersion):
