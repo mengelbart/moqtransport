@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"log"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slices"
 )
@@ -28,16 +27,19 @@ type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (ui
 type AnnouncementHandler func(string) error
 
 type Peer struct {
-	conn                connection
-	inMsgCh             chan message
-	ctrlMessageCh       chan message
-	ctrlStream          stream
-	receiveTracks       map[uint64]*ReceiveTrack
-	sendTracks          map[string]*SendTrack
-	subscribeHandler    SubscriptionHandler
-	announcementHandler AnnouncementHandler
-	closeCh             chan struct{}
-	newParser           parserFactory
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
+	conn                  connection
+	outgoingCtrlMessageCh chan message
+	incomingCtrlMessageCh chan message
+	receiveTracks         map[uint64]*ReceiveTrack
+	sendTracks            map[string]*SendTrack
+	subscribeHandler      SubscriptionHandler
+	announcementHandler   AnnouncementHandler
+	closeCh               chan struct{}
+	closeOnce             sync.Once
+	newParser             parserFactory
 
 	logger *log.Logger
 }
@@ -52,26 +54,40 @@ type parser interface {
 
 type parserFactory func(messageReader, *log.Logger) parser
 
-func newServerPeer(ctx context.Context, conn connection, newParser parserFactory) (*Peer, error) {
+func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
 	if conn == nil {
-		return nil, errors.New("nil connection")
+		return nil, errClosed
 	}
-	s, err := conn.AcceptStream(ctx)
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := conn.AcceptStream(sctx)
 	if err != nil {
 		return nil, err
 	}
+	if newParser == nil {
+		newParser = func(mr messageReader, l *log.Logger) parser {
+			return &loggingParser{
+				logger: l,
+				reader: mr,
+			}
+		}
+	}
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	p := &Peer{
-		conn:                conn,
-		inMsgCh:             make(chan message),
-		ctrlMessageCh:       make(chan message),
-		ctrlStream:          s,
-		receiveTracks:       map[uint64]*ReceiveTrack{},
-		sendTracks:          map[string]*SendTrack{},
-		subscribeHandler:    nil,
-		announcementHandler: nil,
-		closeCh:             make(chan struct{}),
-		newParser:           newParser,
-		logger:              log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
+		ctx:                   ctx,
+		ctxCancel:             cancelFunc,
+		conn:                  conn,
+		outgoingCtrlMessageCh: make(chan message),
+		incomingCtrlMessageCh: make(chan message),
+		receiveTracks:         map[uint64]*ReceiveTrack{},
+		sendTracks:            map[string]*SendTrack{},
+		subscribeHandler:      nil,
+		announcementHandler:   nil,
+		closeCh:               make(chan struct{}),
+		closeOnce:             sync.Once{},
+		newParser:             newParser,
+		logger:                log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
 	}
 	m, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
 	if err != nil {
@@ -99,25 +115,40 @@ func newServerPeer(ctx context.Context, conn connection, newParser parserFactory
 	if err != nil {
 		return nil, err
 	}
+	go p.controlStreamLoop(s)
 	return p, nil
 }
 
-func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Peer, error) {
-	s, err := conn.OpenStreamSync(ctx)
+func newClientPeer(conn connection, newParser parserFactory, clientRole uint64) (*Peer, error) {
+	if newParser == nil {
+		newParser = func(mr messageReader, l *log.Logger) parser {
+			return &loggingParser{
+				logger: l,
+				reader: mr,
+			}
+		}
+	}
+	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	s, err := conn.OpenStreamSync(sctx)
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	p := &Peer{
-		conn:                conn,
-		inMsgCh:             make(chan message),
-		ctrlMessageCh:       make(chan message),
-		ctrlStream:          s,
-		receiveTracks:       map[uint64]*ReceiveTrack{},
-		sendTracks:          map[string]*SendTrack{},
-		subscribeHandler:    nil,
-		announcementHandler: nil,
-		closeCh:             make(chan struct{}),
-		logger:              log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
+		ctx:                   ctx,
+		ctxCancel:             cancelFunc,
+		conn:                  conn,
+		outgoingCtrlMessageCh: make(chan message),
+		incomingCtrlMessageCh: make(chan message),
+		receiveTracks:         map[uint64]*ReceiveTrack{},
+		sendTracks:            map[string]*SendTrack{},
+		subscribeHandler:      nil,
+		announcementHandler:   nil,
+		closeCh:               make(chan struct{}),
+		closeOnce:             sync.Once{},
+		newParser:             newParser,
+		logger:                log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
 	}
 	csm := clientSetupMessage{
 		SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
@@ -144,49 +175,79 @@ func newClientPeer(ctx context.Context, conn connection, clientRole uint64) (*Pe
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
 	}
+	go p.controlStreamLoop(s)
 	return p, nil
 }
 
-func (p *Peer) Run(ctx context.Context, enableDatagrams bool) error {
-	errCh := make(chan error)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	fs := []func(context.Context) error{
-		p.controlStreamLoop,
-		p.acceptUnidirectionalStreams,
-	}
+func (p *Peer) Run(enableDatagrams bool) {
+	go p.acceptUnidirectionalStreams()
 	if enableDatagrams {
-		fs = append(fs, p.acceptDatagrams)
-	}
-
-	for _, f := range fs {
-		go func(ctx context.Context, f func(context.Context) error, ch chan<- error) {
-			if err := f(ctx); err != nil {
-				ch <- err
-			}
-		}(ctx, f, errCh)
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-errCh:
-		return err
+		go p.acceptDatagrams()
 	}
 }
 
-func (p *Peer) readMessages(r messageReader, stream io.Reader) error {
+func (p *Peer) Close() error {
+	p.closeOnce.Do(func() {
+		close(p.closeCh)
+	})
+	<-p.ctx.Done()
+	return nil
+}
+
+func (p *Peer) remoteClose(err error) {
+	p.closeOnce.Do(func() {
+		close(p.closeCh)
+	})
+}
+
+func (p *Peer) readControlMessages(r messageReader) {
+	p.logger.Println("readControlMessages")
+	defer p.logger.Println("exit readControlMessages")
 	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		default:
+		}
 		msg, err := p.newParser(r, p.logger).parse()
 		if err != nil {
-			return err
+			p.logger.Printf("got parsing error: %v", err)
+			p.remoteClose(err)
+			return
 		}
-		object, ok := msg.(*objectMessage)
-		if !ok {
-			return errUnexpectedMessage
+		switch v := msg.(type) {
+		case *subscribeRequestMessage, *subscribeOkMessage,
+			*subscribeErrorMessage, *announceMessage, *announceOkMessage,
+			*announceErrorMessage, *unannounceMessage, *unsubscribeMessage,
+			*subscribeFinMessage, *subscribeRstMessage, *goAwayMessage,
+			*clientSetupMessage, *serverSetupMessage:
+
+			p.incomingCtrlMessageCh <- v
+		default:
+			panic(errUnexpectedMessage)
 		}
-		p.handleObjectMessage(object)
+	}
+}
+
+func (p *Peer) readMessages(r messageReader) {
+	p.logger.Println("readControlMessages")
+	defer p.logger.Println("exit readMessages")
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		default:
+		}
+		msg, err := p.newParser(r, p.logger).parse()
+		if err != nil {
+			panic(err)
+		}
+		switch v := msg.(type) {
+		case *objectMessage:
+			p.handleObjectMessage(v)
+		default:
+			panic(errUnexpectedMessage)
+		}
 	}
 }
 
@@ -213,36 +274,34 @@ type keyedResponseHandler interface {
 	responseHandler
 }
 
-func (p *Peer) controlStreamLoop(ctx context.Context) error {
-	inCh := make(chan message)
-	errCh := make(chan error)
-	transactions := make(map[messageKey]keyedMessage)
+func (p *Peer) controlStreamLoop(ctrlStream stream) {
+	defer p.logger.Println("exit controlStreamLoop")
+	defer p.ctxCancel()
+	defer ctrlStream.Close()
 
-	go func(s stream, ch chan<- message, errCh chan<- error) {
-		defer s.Close()
-		for {
-			msg, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
-			if err != nil {
-				errCh <- err
-				return
-			}
-			ch <- msg
-		}
-	}(p.ctrlStream, inCh, errCh)
+	go p.readControlMessages(quicvarint.NewReader(ctrlStream))
+
+	transactions := make(map[messageKey]keyedMessage)
 	for {
 		select {
-		case m := <-inCh:
+		case <-p.closeCh:
+			return
+		case m := <-p.incomingCtrlMessageCh:
 			switch v := m.(type) {
 			case *subscribeRequestMessage:
 				go func() {
-					p.ctrlMessageCh <- p.handleSubscribeRequest(v)
+					res := p.handleSubscribeRequest(v)
+					p.logger.Printf("sending subscribe request response: %v", res)
+					p.outgoingCtrlMessageCh <- res
 				}()
 			case *announceMessage:
 				go func() {
-					p.ctrlMessageCh <- p.handleAnnounceMessage(v)
+					res := p.handleAnnounceMessage(v)
+					p.logger.Printf("sending announce response: %v", res)
+					p.outgoingCtrlMessageCh <- res
 				}()
 			case *goAwayMessage:
-				return errGoAway
+				p.handleGoAwayMessage(v)
 			case keyedMessage:
 				t, ok := transactions[v.key()]
 				if !ok {
@@ -252,63 +311,62 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 					// an Ok or Error for Announce or subscribe, that should
 					// only happen when we also stored an associated transaction
 					// earlier.
-					return errors.New("unexpected unkeyed message")
+					p.logger.Printf("unexpected unkeyed message")
+					return
 				}
 				rh, ok := t.(responseHandler)
 				if !ok {
-					return errors.New("unexpected message without responseHandler")
+					p.logger.Printf("unexpected message without responseHandler")
 				}
 				rh.handle(v)
 			default:
-				return errUnexpectedMessage
+				return
 			}
-		case m := <-p.ctrlMessageCh:
+		case m := <-p.outgoingCtrlMessageCh:
 			if krh, ok := m.(keyedResponseHandler); ok {
 				transactions[krh.key()] = krh
 			}
 			buf := make([]byte, 0, 1500)
 			buf = m.append(buf)
-			_, err := p.ctrlStream.Write(buf)
+			_, err := ctrlStream.Write(buf)
 			if err != nil {
-				return err
-			}
-		case err := <-errCh:
-			return err
-		}
-	}
-}
-
-func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
-	for {
-		stream, err := p.conn.AcceptUniStream(ctx)
-		if err != nil {
-			return err
-		}
-		go func() {
-			err := p.readMessages(quicvarint.NewReader(stream), stream)
-			if err != nil {
-				log.Printf("read message from uni stream err: %v", err)
-				if streamErr, ok := err.(*quic.StreamError); ok {
-					log.Printf("stream err: %v", streamErr)
-				}
+				p.logger.Println(err)
 				return
 			}
-		}()
+		}
 	}
 }
 
-func (p *Peer) acceptDatagrams(ctx context.Context) error {
+func (p *Peer) acceptUnidirectionalStreams() error {
+	defer p.logger.Println("accept uni stream loop exit")
 	for {
-		dgram, err := p.conn.ReceiveMessage(ctx)
+		select {
+		case <-p.ctx.Done():
+			return nil
+		default:
+		}
+		stream, err := p.conn.AcceptUniStream(context.TODO())
 		if err != nil {
 			return err
 		}
-		r := bytes.NewReader(dgram)
-		go func() {
-			if err := p.readMessages(r, nil); err != nil {
-				panic(err)
-			}
-		}()
+		p.logger.Println("GOT UNI STREAM")
+		go p.readMessages(quicvarint.NewReader(stream))
+	}
+}
+
+func (p *Peer) acceptDatagrams() {
+	defer p.logger.Println("exit acceptDatagrams loop")
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		default:
+		}
+		dgram, err := p.conn.ReceiveMessage(context.TODO())
+		if err != nil {
+			panic(err)
+		}
+		go p.readMessages(bytes.NewReader(dgram))
 	}
 }
 
@@ -363,6 +421,10 @@ func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
 	}
 }
 
+func (p *Peer) handleGoAwayMessage(msg *goAwayMessage) {
+	panic("TODO")
+}
+
 type ctrlMessage struct {
 	keyedMessage
 	responseCh chan message
@@ -381,12 +443,13 @@ func (p *Peer) Announce(namespace string) error {
 		TrackRequestParameters: map[uint64]parameter{},
 	}
 	responseCh := make(chan message)
+	p.logger.Printf("sending announce: %v", am)
 	select {
-	case p.ctrlMessageCh <- &ctrlMessage{
+	case p.outgoingCtrlMessageCh <- &ctrlMessage{
 		keyedMessage: am,
 		responseCh:   responseCh,
 	}:
-	case <-p.closeCh:
+	case <-p.ctx.Done():
 		return errClosed
 	}
 	var resp message
@@ -394,7 +457,7 @@ func (p *Peer) Announce(namespace string) error {
 	case resp = <-responseCh:
 	case <-time.After(time.Second): // TODO: Make timeout configurable?
 		panic("TODO: timeout error")
-	case <-p.closeCh:
+	case <-p.ctx.Done():
 		return errClosed
 	}
 	switch v := resp.(type) {
@@ -426,12 +489,13 @@ func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, erro
 		},
 	}
 	responseCh := make(chan message)
+	p.logger.Printf("sending subscribeRequest: %v", sm)
 	select {
-	case p.ctrlMessageCh <- &ctrlMessage{
+	case p.outgoingCtrlMessageCh <- &ctrlMessage{
 		keyedMessage: sm,
 		responseCh:   responseCh,
 	}:
-	case <-p.closeCh:
+	case <-p.ctx.Done():
 		return nil, errClosed
 	case <-time.After(time.Second):
 		panic("TODO: timeout error")
@@ -441,7 +505,7 @@ func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, erro
 	case resp = <-responseCh:
 	case <-time.After(time.Second): // TODO: Make timeout configurable?
 		panic("TODO: timeout error")
-	case <-p.closeCh:
+	case <-p.ctx.Done():
 		return nil, errClosed
 	}
 	switch v := resp.(type) {

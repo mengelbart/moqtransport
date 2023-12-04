@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"time"
@@ -20,16 +19,13 @@ func main() {
 }
 
 func run(addr string, wt bool) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	var p *moqtransport.Peer
 	var err error
 
 	if wt {
-		p, err = moqtransport.DialWebTransport(ctx, addr, moqtransport.IngestionDeliveryRole)
+		p, err = moqtransport.DialWebTransport(addr, moqtransport.IngestionDeliveryRole)
 	} else {
-		p, err = moqtransport.DialQUIC(ctx, addr, moqtransport.IngestionDeliveryRole)
+		p, err = moqtransport.DialQUIC(addr, moqtransport.IngestionDeliveryRole)
 	}
 	if err != nil {
 		return err
@@ -46,11 +42,7 @@ func run(addr string, wt bool) error {
 		log.Printf("got subscription attempt: %v/%v", namespace, name)
 		return 0, time.Duration(0), nil
 	})
-	go func() {
-		if err1 := p.Run(ctx, false); err1 != nil {
-			panic(err1)
-		}
-	}()
+	go p.Run(false)
 	log.Println("subscribing")
 	rt, err := p.Subscribe("clock", "second", "")
 	if err != nil {

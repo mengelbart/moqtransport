@@ -24,7 +24,9 @@ func main() {
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
 	flag.Parse()
 
-	run(*addr, *wt, *certFile, *keyFile)
+	if err := run(*addr, *wt, *certFile, *keyFile); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func run(addr string, wt bool, certFile, keyFile string) error {
@@ -64,12 +66,7 @@ func handler() moqtransport.PeerHandlerFunc {
 			}()
 			return 0, 0, nil
 		})
-		go func() {
-			defer p.CloseWithError(0, "error")
-			if err := p.Run(context.Background(), false); err != nil {
-				log.Printf("Run terminated, closing peer connection: %v", err)
-			}
-		}()
+		go p.Run(false)
 		p.Announce("clock")
 	}
 }
