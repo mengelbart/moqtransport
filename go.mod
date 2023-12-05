@@ -1,6 +1,6 @@
 module github.com/mengelbart/moqtransport
 
-go 1.21.1
+go 1.21
 
 require (
 	github.com/quic-go/quic-go v0.40.1-0.20231105142906-f5ce4e34f4d7
@@ -19,7 +19,7 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.4.1 // indirect
 	go.uber.org/goleak v1.2.1
-	go.uber.org/mock v0.3.0 // indirect
+	go.uber.org/mock v0.3.0
 	golang.org/x/crypto v0.12.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.14.0 // indirect

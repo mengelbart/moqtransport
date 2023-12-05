@@ -141,11 +141,11 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		if err != nil {
 			switch {
 			case errors.Is(err, errUnsupportedVersion):
-				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
 			case errors.Is(err, errMissingRoleParameter):
-				conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
 			default:
-				conn.CloseWithError(GenericErrorCode, "internal server error")
+				_ = conn.CloseWithError(GenericErrorCode, "internal server error")
 			}
 			continue
 		}
