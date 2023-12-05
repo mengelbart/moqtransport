@@ -11,7 +11,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-func DialWebTransport(addr string, role uint64) (*Peer, error) {
+func DialWebTransport(addr string, role Role) (*Peer, error) {
 	d := webtransport.Dialer{
 		RoundTripper: &http3.RoundTripper{
 			DisableCompression: false,
@@ -32,7 +32,7 @@ func DialWebTransport(addr string, role uint64) (*Peer, error) {
 	return newClientPeer(wc, nil, role)
 }
 
-func DialQUIC(addr string, role uint64) (*Peer, error) {
+func DialQUIC(addr string, role Role) (*Peer, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},

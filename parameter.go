@@ -16,12 +16,6 @@ const (
 	authorizationParameterKey
 )
 
-const (
-	IngestionRole uint64 = iota + 1
-	DeliveryRole
-	IngestionDeliveryRole
-)
-
 type parameter interface {
 	append([]byte) []byte
 	key() uint64

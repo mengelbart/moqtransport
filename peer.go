@@ -119,7 +119,7 @@ func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
 	return p, nil
 }
 
-func newClientPeer(conn connection, newParser parserFactory, clientRole uint64) (*Peer, error) {
+func newClientPeer(conn connection, newParser parserFactory, clientRole Role) (*Peer, error) {
 	if conn == nil {
 		return nil, errClosed
 	}
@@ -158,7 +158,7 @@ func newClientPeer(conn connection, newParser parserFactory, clientRole uint64) 
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
-				v: clientRole,
+				v: uint64(clientRole),
 			},
 		},
 	}

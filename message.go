@@ -24,13 +24,6 @@ const (
 	subscribeLocationModeRelativeNext
 )
 
-type role int
-
-const (
-	serverRole role = iota
-	clientRole
-)
-
 type message interface {
 	append([]byte) []byte
 }
