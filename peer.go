@@ -16,10 +16,10 @@ import (
 var (
 	errUnexpectedMessage     = errors.New("got unexpected message")
 	errInvalidTrackNamespace = errors.New("got invalid tracknamespace")
+	errUnknownTrack          = errors.New("received object for unknown track")
 	errClosed                = errors.New("connection was closed")
 	errUnsupportedVersion    = errors.New("unsupported version")
 	errMissingRoleParameter  = errors.New("missing role parameter")
-	errGoAway                = errors.New("received go away from peer")
 )
 
 type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
@@ -244,7 +244,9 @@ func (p *Peer) readMessages(r messageReader) {
 		}
 		switch v := msg.(type) {
 		case *objectMessage:
-			p.handleObjectMessage(v)
+			if err := p.handleObjectMessage(v); err != nil {
+				panic(err)
+			}
 		default:
 			panic(errUnexpectedMessage)
 		}
@@ -337,17 +339,18 @@ func (p *Peer) controlStreamLoop(ctrlStream stream) {
 	}
 }
 
-func (p *Peer) acceptUnidirectionalStreams() error {
+func (p *Peer) acceptUnidirectionalStreams() {
 	defer p.logger.Println("accept uni stream loop exit")
 	for {
 		select {
 		case <-p.ctx.Done():
-			return nil
+			return
 		default:
 		}
 		stream, err := p.conn.AcceptUniStream(context.TODO())
 		if err != nil {
-			return err
+			p.logger.Print(err)
+			return
 		}
 		p.logger.Println("GOT UNI STREAM")
 		go p.readMessages(quicvarint.NewReader(stream))
@@ -375,10 +378,9 @@ func (p *Peer) handleObjectMessage(msg *objectMessage) error {
 	if !ok {
 		// handle unknown track?
 		p.logger.Printf("got message for unknown track: %v", msg)
-		return nil
+		return errUnknownTrack
 	}
-	t.push(msg)
-	return nil
+	return t.push(msg)
 }
 
 func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {

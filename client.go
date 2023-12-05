@@ -50,9 +50,9 @@ func DialQUIC(addr string, role uint64) (*Peer, error) {
 	p, err := newClientPeer(qc, nil, role)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
-			conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
+			_ = conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
 		}
-		conn.CloseWithError(GenericErrorCode, "internal server error")
+		_ = conn.CloseWithError(GenericErrorCode, "internal server error")
 		return nil, err
 	}
 	return p, nil
