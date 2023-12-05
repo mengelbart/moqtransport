@@ -120,6 +120,9 @@ func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
 }
 
 func newClientPeer(conn connection, newParser parserFactory, clientRole uint64) (*Peer, error) {
+	if conn == nil {
+		return nil, errClosed
+	}
 	if newParser == nil {
 		newParser = func(mr messageReader, l *log.Logger) parser {
 			return &loggingParser{
