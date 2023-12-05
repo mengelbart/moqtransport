@@ -48,7 +48,7 @@ func TestServerPeer(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					k: roleParameterKey,
-					v: uint64(clientRole),
+					v: uint64(IngestionDeliveryRole),
 				},
 			},
 		}, nil)
