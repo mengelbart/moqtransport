@@ -97,6 +97,15 @@ type loggingParser struct {
 	reader messageReader
 }
 
+func newLoggingParserFactory(l *log.Logger) parserFactory {
+	return parserFactoryFn(func(r messageReader) parser {
+		return &loggingParser{
+			logger: l,
+			reader: r,
+		}
+	})
+}
+
 func (p *loggingParser) parse() (msg message, err error) {
 	mt, err := quicvarint.Read(p.reader)
 	if err != nil {

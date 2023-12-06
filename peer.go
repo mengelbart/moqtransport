@@ -22,15 +22,47 @@ var (
 	errMissingRoleParameter  = errors.New("missing role parameter")
 )
 
-type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
+type parser interface {
+	parse() (message, error)
+}
 
-type AnnouncementHandler func(string) error
+type parserFactory interface {
+	new(messageReader) parser
+}
+
+type parserFactoryFn func(messageReader) parser
+
+func (f parserFactoryFn) new(r messageReader) parser {
+	return f(r)
+}
+
+type SubscriptionHandler interface {
+	handle(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
+}
+
+type SubscriptionHandlerFunc func(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error)
+
+func (f SubscriptionHandlerFunc) handle(namespace, trackname string, track *SendTrack) (uint64, time.Duration, error) {
+	return f(namespace, trackname, track)
+}
+
+type AnnouncementHandler interface {
+	handle(string) error
+}
+
+type AnnouncementHandlerFunc func(string) error
+
+func (f AnnouncementHandlerFunc) handle(s string) error {
+	return f(s)
+}
 
 type Peer struct {
 	ctx       context.Context
 	ctxCancel context.CancelFunc
 
 	conn                  connection
+	parserFactory         parserFactory
+	outgoingTransactionCh chan keyedResponseHandler
 	outgoingCtrlMessageCh chan message
 	incomingCtrlMessageCh chan message
 	receiveTracks         map[uint64]*ReceiveTrack
@@ -39,7 +71,6 @@ type Peer struct {
 	announcementHandler   AnnouncementHandler
 	closeCh               chan struct{}
 	closeOnce             sync.Once
-	newParser             parserFactory
 
 	logger *log.Logger
 }
@@ -48,36 +79,21 @@ func (p *Peer) CloseWithError(code uint64, reason string) error {
 	return p.conn.CloseWithError(code, reason)
 }
 
-type parser interface {
-	parse() (message, error)
-}
-
-type parserFactory func(messageReader, *log.Logger) parser
-
-func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
+func newServerPeer(conn connection, pf parserFactory) (*Peer, error) {
 	if conn == nil {
 		return nil, errClosed
 	}
-	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	s, err := conn.AcceptStream(sctx)
-	if err != nil {
-		return nil, err
+	logger := log.New(os.Stdout, "MOQ_SERVER", log.LstdFlags)
+	if pf == nil {
+		pf = newLoggingParserFactory(logger)
 	}
-	if newParser == nil {
-		newParser = func(mr messageReader, l *log.Logger) parser {
-			return &loggingParser{
-				logger: l,
-				reader: mr,
-			}
-		}
-	}
-
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	p := &Peer{
 		ctx:                   ctx,
 		ctxCancel:             cancelFunc,
 		conn:                  conn,
+		parserFactory:         pf,
+		outgoingTransactionCh: make(chan keyedResponseHandler),
 		outgoingCtrlMessageCh: make(chan message),
 		incomingCtrlMessageCh: make(chan message),
 		receiveTracks:         map[uint64]*ReceiveTrack{},
@@ -86,24 +102,60 @@ func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
 		announcementHandler:   nil,
 		closeCh:               make(chan struct{}),
 		closeOnce:             sync.Once{},
-		newParser:             newParser,
-		logger:                log.New(os.Stdout, "MOQ_SERVER: ", log.LstdFlags),
+		logger:                logger,
 	}
-	m, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
+	return p, p.runServerHandshake()
+}
+
+func newClientPeer(conn connection, role Role, pf parserFactory) (*Peer, error) {
+	if conn == nil {
+		return nil, errClosed
+	}
+	logger := log.New(os.Stdout, "MOQ_SERVER", log.LstdFlags)
+	if pf == nil {
+		pf = newLoggingParserFactory(logger)
+	}
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	p := &Peer{
+		ctx:                   ctx,
+		ctxCancel:             cancelFunc,
+		conn:                  conn,
+		parserFactory:         pf,
+		outgoingTransactionCh: make(chan keyedResponseHandler),
+		outgoingCtrlMessageCh: make(chan message),
+		incomingCtrlMessageCh: make(chan message),
+		receiveTracks:         map[uint64]*ReceiveTrack{},
+		sendTracks:            map[string]*SendTrack{},
+		subscribeHandler:      nil,
+		announcementHandler:   nil,
+		closeCh:               make(chan struct{}),
+		closeOnce:             sync.Once{},
+		logger:                logger,
+	}
+	return p, p.runClientHandshake(role)
+}
+
+func (p *Peer) runServerHandshake() error {
+	s, err := p.conn.AcceptStream(p.ctx)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	pa := p.parserFactory.new(quicvarint.NewReader(s))
+	m, err := pa.parse()
+	if err != nil {
+		return err
 	}
 	msg, ok := m.(*clientSetupMessage)
 	if !ok {
-		return nil, errUnexpectedMessage
+		return errUnexpectedMessage
 	}
 	// TODO: Algorithm to select best matching version
 	if !slices.Contains(msg.SupportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
-		return nil, errUnsupportedVersion
+		return errUnsupportedVersion
 	}
 	_, ok = msg.SetupParameters[roleParameterKey]
 	if !ok {
-		return nil, errMissingRoleParameter
+		return errMissingRoleParameter
 	}
 	// TODO: save role parameter
 	ssm := serverSetupMessage{
@@ -113,45 +165,18 @@ func newServerPeer(conn connection, newParser parserFactory) (*Peer, error) {
 	buf := ssm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	go p.controlStreamLoop(s)
-	return p, nil
+	go p.controlLoop(s)
+	go p.ctrlStreamReadLoop(s)
+	go p.ctrlStreamWriteLoop(s)
+	return nil
 }
 
-func newClientPeer(conn connection, newParser parserFactory, clientRole Role) (*Peer, error) {
-	if conn == nil {
-		return nil, errClosed
-	}
-	if newParser == nil {
-		newParser = func(mr messageReader, l *log.Logger) parser {
-			return &loggingParser{
-				logger: l,
-				reader: mr,
-			}
-		}
-	}
-	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	s, err := conn.OpenStreamSync(sctx)
+func (p *Peer) runClientHandshake(clientRole Role) error {
+	s, err := p.conn.OpenStreamSync(p.ctx)
 	if err != nil {
-		return nil, err
-	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	p := &Peer{
-		ctx:                   ctx,
-		ctxCancel:             cancelFunc,
-		conn:                  conn,
-		outgoingCtrlMessageCh: make(chan message),
-		incomingCtrlMessageCh: make(chan message),
-		receiveTracks:         map[uint64]*ReceiveTrack{},
-		sendTracks:            map[string]*SendTrack{},
-		subscribeHandler:      nil,
-		announcementHandler:   nil,
-		closeCh:               make(chan struct{}),
-		closeOnce:             sync.Once{},
-		newParser:             newParser,
-		logger:                log.New(os.Stdout, "MOQ_CLIENT: ", log.LstdFlags),
+		return err
 	}
 	csm := clientSetupMessage{
 		SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
@@ -165,21 +190,24 @@ func newClientPeer(conn connection, newParser parserFactory, clientRole Role) (*
 	buf := csm.append(make([]byte, 0, 1500))
 	_, err = s.Write(buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	msg, err := p.newParser(quicvarint.NewReader(s), p.logger).parse()
+	msgParser := p.parserFactory.new(quicvarint.NewReader(s))
+	msg, err := msgParser.parse()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ssm, ok := msg.(*serverSetupMessage)
 	if !ok {
-		return nil, errUnexpectedMessage
+		return errUnexpectedMessage
 	}
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
-		return nil, errUnsupportedVersion
+		return errUnsupportedVersion
 	}
-	go p.controlStreamLoop(s)
-	return p, nil
+	go p.controlLoop(s)
+	go p.ctrlStreamReadLoop(s)
+	go p.ctrlStreamWriteLoop(s)
+	return nil
 }
 
 func (p *Peer) Run(enableDatagrams bool) {
@@ -203,16 +231,34 @@ func (p *Peer) remoteClose(err error) {
 	})
 }
 
-func (p *Peer) readControlMessages(r messageReader) {
+func (p *Peer) ctrlStreamWriteLoop(s sendStream) {
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case msg := <-p.outgoingCtrlMessageCh:
+			buf := make([]byte, 0, 1500)
+			buf = msg.append(buf)
+			_, err := s.Write(buf)
+			if err != nil {
+				p.logger.Println(err)
+				return
+			}
+		}
+	}
+}
+
+func (p *Peer) ctrlStreamReadLoop(s receiveStream) {
 	p.logger.Println("readControlMessages")
 	defer p.logger.Println("exit readControlMessages")
+	msgParser := p.parserFactory.new(quicvarint.NewReader(s))
 	for {
 		select {
 		case <-p.ctx.Done():
 			return
 		default:
 		}
-		msg, err := p.newParser(r, p.logger).parse()
+		msg, err := msgParser.parse()
 		if err != nil {
 			p.logger.Printf("got parsing error: %v", err)
 			p.remoteClose(err)
@@ -227,6 +273,7 @@ func (p *Peer) readControlMessages(r messageReader) {
 
 			p.incomingCtrlMessageCh <- v
 		default:
+			p.logger.Printf("got unexpected message: %v", v)
 			panic(errUnexpectedMessage)
 		}
 	}
@@ -235,13 +282,14 @@ func (p *Peer) readControlMessages(r messageReader) {
 func (p *Peer) readMessages(r messageReader) {
 	p.logger.Println("readControlMessages")
 	defer p.logger.Println("exit readMessages")
+	msgParser := p.parserFactory.new(quicvarint.NewReader(r))
 	for {
 		select {
 		case <-p.ctx.Done():
 			return
 		default:
 		}
-		msg, err := p.newParser(r, p.logger).parse()
+		msg, err := msgParser.parse()
 		if err != nil {
 			panic(err)
 		}
@@ -251,6 +299,7 @@ func (p *Peer) readMessages(r messageReader) {
 				panic(err)
 			}
 		default:
+			p.logger.Printf("got unexpected message: %v", v)
 			panic(errUnexpectedMessage)
 		}
 	}
@@ -279,12 +328,9 @@ type keyedResponseHandler interface {
 	responseHandler
 }
 
-func (p *Peer) controlStreamLoop(ctrlStream stream) {
+func (p *Peer) controlLoop(ctrlStream stream) {
 	defer p.logger.Println("exit controlStreamLoop")
 	defer p.ctxCancel()
-	defer ctrlStream.Close()
-
-	go p.readControlMessages(quicvarint.NewReader(ctrlStream))
 
 	transactions := make(map[messageKey]keyedMessage)
 	for {
@@ -292,19 +338,17 @@ func (p *Peer) controlStreamLoop(ctrlStream stream) {
 		case <-p.closeCh:
 			return
 		case m := <-p.incomingCtrlMessageCh:
+			p.logger.Printf("got control stream message")
 			switch v := m.(type) {
 			case *subscribeRequestMessage:
-				go func() {
-					res := p.handleSubscribeRequest(v)
-					p.logger.Printf("sending subscribe request response: %v", res)
-					p.outgoingCtrlMessageCh <- res
-				}()
+				res := p.handleSubscribeRequest(v)
+				p.logger.Printf("sending subscribe request response: %v", res)
+				p.outgoingCtrlMessageCh <- res
+				p.logger.Printf("sent subscribe request response: %v", res)
 			case *announceMessage:
-				go func() {
-					res := p.handleAnnounceMessage(v)
-					p.logger.Printf("sending announce response: %v", res)
-					p.outgoingCtrlMessageCh <- res
-				}()
+				res := p.handleAnnounceMessage(v)
+				p.logger.Printf("sending announce response: %v", res)
+				p.outgoingCtrlMessageCh <- res
 			case *goAwayMessage:
 				p.handleGoAwayMessage(v)
 			case keyedMessage:
@@ -317,27 +361,22 @@ func (p *Peer) controlStreamLoop(ctrlStream stream) {
 					// only happen when we also stored an associated transaction
 					// earlier.
 					p.logger.Printf("unexpected unkeyed message")
-					return
+					continue
 				}
 				rh, ok := t.(responseHandler)
 				if !ok {
 					p.logger.Printf("unexpected message without responseHandler")
+					continue
 				}
 				rh.handle(v)
 			default:
-				return
+				p.logger.Printf("got unexpected message: %v", v)
+				continue
 			}
-		case m := <-p.outgoingCtrlMessageCh:
-			if krh, ok := m.(keyedResponseHandler); ok {
-				transactions[krh.key()] = krh
-			}
-			buf := make([]byte, 0, 1500)
-			buf = m.append(buf)
-			_, err := ctrlStream.Write(buf)
-			if err != nil {
-				p.logger.Println(err)
-				return
-			}
+		case m := <-p.outgoingTransactionCh:
+			p.logger.Printf("got outgoing transaction: %v", m)
+			transactions[m.key()] = m
+			p.outgoingCtrlMessageCh <- m
 		}
 	}
 }
@@ -392,7 +431,7 @@ func (p *Peer) handleSubscribeRequest(msg *subscribeRequestMessage) message {
 	}
 	t := newSendTrack(p.conn)
 	p.sendTracks[msg.key().id] = t
-	id, expires, err := p.subscribeHandler(msg.TrackNamespace, msg.TrackName, t)
+	id, expires, err := p.subscribeHandler.handle(msg.TrackNamespace, msg.TrackName, t)
 	if err != nil {
 		return &subscribeErrorMessage{
 			TrackNamespace: msg.TrackNamespace,
@@ -414,7 +453,7 @@ func (p *Peer) handleAnnounceMessage(msg *announceMessage) message {
 	if p.announcementHandler == nil {
 		panic("TODO")
 	}
-	if err := p.announcementHandler(msg.TrackNamespace); err != nil {
+	if err := p.announcementHandler.handle(msg.TrackNamespace); err != nil {
 		return &announceErrorMessage{
 			TrackNamespace: msg.TrackNamespace,
 			ErrorCode:      0,
@@ -450,7 +489,7 @@ func (p *Peer) Announce(namespace string) error {
 	responseCh := make(chan message)
 	p.logger.Printf("sending announce: %v", am)
 	select {
-	case p.outgoingCtrlMessageCh <- &ctrlMessage{
+	case p.outgoingTransactionCh <- &ctrlMessage{
 		keyedMessage: am,
 		responseCh:   responseCh,
 	}:
@@ -486,17 +525,18 @@ func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, erro
 		StartObject:    location{},
 		EndGroup:       location{},
 		EndObject:      location{},
-		Parameters: parameters{
-			authorizationParameterKey: stringParameter{
-				k: authorizationParameterKey,
-				v: auth,
-			},
-		},
+		Parameters:     parameters{},
+	}
+	if len(auth) > 0 {
+		sm.Parameters[authorizationParameterKey] = stringParameter{
+			k: authorizationParameterKey,
+			v: auth,
+		}
 	}
 	responseCh := make(chan message)
 	p.logger.Printf("sending subscribeRequest: %v", sm)
 	select {
-	case p.outgoingCtrlMessageCh <- &ctrlMessage{
+	case p.outgoingTransactionCh <- &ctrlMessage{
 		keyedMessage: sm,
 		responseCh:   responseCh,
 	}:

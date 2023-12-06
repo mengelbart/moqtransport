@@ -52,7 +52,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 	return func(p *moqtransport.Peer) {
 		var name string
 
-		p.OnAnnouncement(func(namespace string) error {
+		p.OnAnnouncement(moqtransport.AnnouncementHandlerFunc(func(namespace string) error {
 			uri := strings.SplitN(namespace, "/", 3)
 			if len(uri) < 3 {
 				return errors.New("invalid announcement")
@@ -66,9 +66,9 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 				s.chatRooms[id] = newChat(id)
 			}
 			return s.chatRooms[id].join(name, p)
-		})
+		}))
 
-		p.OnSubscription(func(namespace, username string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
+		p.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, username string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
 			if len(name) == 0 {
 				// Subscribe requires a username which has to be announced
 				// before subscribing
@@ -104,7 +104,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			}
 			s.nextTrackID += 1
 			return s.nextTrackID, time.Duration(0), nil
-		})
+		}))
 		go p.Run(false)
 	}
 }
