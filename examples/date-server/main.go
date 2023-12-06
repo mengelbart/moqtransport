@@ -51,7 +51,7 @@ func run(addr string, wt bool, certFile, keyFile string) error {
 
 func handler() moqtransport.PeerHandlerFunc {
 	return func(p *moqtransport.Peer) {
-		p.OnSubscription(func(namespace, trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
+		p.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
 			if fmt.Sprintf("%v/%v", namespace, trackname) != "clock/second" {
 				return 0, 0, errors.New("unknown track ID")
 			}
@@ -65,7 +65,7 @@ func handler() moqtransport.PeerHandlerFunc {
 				}
 			}()
 			return 0, 0, nil
-		})
+		}))
 		go p.Run(false)
 		p.Announce("clock")
 	}

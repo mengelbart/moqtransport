@@ -51,10 +51,10 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		lock:        sync.Mutex{},
 		nextTrackID: 0,
 	}
-	c.peer.OnAnnouncement(func(s string) error {
+	c.peer.OnAnnouncement(moqtransport.AnnouncementHandlerFunc(func(s string) error {
 		return nil
-	})
-	c.peer.OnSubscription(func(namespace, _ string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
+	}))
+	c.peer.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, _ string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
 		parts := strings.SplitN(namespace, "/", 2)
 		if len(parts) < 2 {
 			return 0, 0, errors.New("invalid trackname")
@@ -68,7 +68,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		}
 		c.rooms[id].st = st
 		return c.rooms[id].trackID, 0, nil
-	})
+	}))
 	go c.peer.Run(false)
 	return c, nil
 }

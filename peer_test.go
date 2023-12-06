@@ -6,43 +6,30 @@ import (
 	"errors"
 	"log"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
 
-func TestServerPeer(t *testing.T) {
+func TestNewServerPeer(t *testing.T) {
 	t.Run("nil_connection", func(t *testing.T) {
 		_, err := newServerPeer(nil, nil)
 		assert.Error(t, err)
 	})
-	t.Run("AcceptStream_error", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mc := NewMockConnection(ctrl)
-		mc.EXPECT().AcceptStream(gomock.Any()).Times(1).Return(nil, errors.New("error"))
-		_, err := newServerPeer(mc, nil)
-		assert.Error(t, err)
-	})
-	t.Run("exchange_setup_messages", func(t *testing.T) {
-		acceptCalled := make(chan struct{})
-		parseCalled := make(chan struct{})
-
+	t.Run("run_handshake", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		ms1 := NewMockStream(ctrl)
-		ms2 := NewMockStream(ctrl)
+		ms := NewMockStream(ctrl)
+		mpf := NewMockParserFactory(ctrl)
 		mp := NewMockParser(ctrl)
-		mc.EXPECT().AcceptStream(gomock.Any()).Times(1).Return(ms1, nil)
-		mc.EXPECT().AcceptUniStream(gomock.Any()).Times(1).Do(func(context.Context) (receiveStream, error) {
-			close(acceptCalled)
-			<-ctx.Done()
-			return ms2, nil
-		})
+		mpf.EXPECT().new(gomock.Any()).AnyTimes().Return(mp)
+		mc.EXPECT().AcceptStream(gomock.Any()).Times(1).Return(ms, nil)
 		mp.EXPECT().parse().Times(1).Return(&clientSetupMessage{
 			SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
 			SetupParameters: map[uint64]parameter{
@@ -52,92 +39,187 @@ func TestServerPeer(t *testing.T) {
 				},
 			},
 		}, nil)
-		mp.EXPECT().parse().Times(1).DoAndReturn(func() (message, error) {
-			close(parseCalled)
-			<-ctx.Done()
-			return nil, errors.New("connection closed")
-		})
-		ms1.EXPECT().Write(gomock.Any()).DoAndReturn(func(buf []byte) (int, error) {
-			msg := parse(t, buf)
+		ms.EXPECT().Write(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+			msg := parse(t, b)
 			assert.Equal(t, &serverSetupMessage{
 				SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
 				SetupParameters: map[uint64]parameter{},
 			}, msg)
-			return len(buf), nil
+			return len(b), nil
 		})
-		ms1.EXPECT().Close()
+		mp.EXPECT().parse().AnyTimes().DoAndReturn(func() (message, error) {
+			<-ctx.Done()
+			return nil, errors.New("connection closed")
+		})
 
-		p, err := newServerPeer(mc, getParserFactory(mp))
+		p, err := newServerPeer(mc, mpf)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
-		p.Run(false)
-		<-parseCalled
-		<-acceptCalled
-		err = p.Close()
-		assert.NoError(t, err)
 	})
 }
 
-func TestClientPeer(t *testing.T) {
+func TestNewClientPeer(t *testing.T) {
 	t.Run("nil_connection", func(t *testing.T) {
-		_, err := newClientPeer(nil, nil, 0)
+		_, err := newClientPeer(nil, 0, nil)
 		assert.Error(t, err)
 	})
-	t.Run("open_control_stream", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mc := NewMockConnection(ctrl)
-		mc.EXPECT().OpenStreamSync(gomock.Any()).Times(1).Return(nil, errors.New("error"))
-		_, err := newClientPeer(mc, nil, 0)
-		assert.Error(t, err)
-	})
-	t.Run("exchange_setup_messages", func(t *testing.T) {
-		acceptCalled := make(chan struct{})
-		parseCalled := make(chan struct{})
+	t.Run("run_handshake", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		ms1 := NewMockStream(ctrl)
-		ms2 := NewMockStream(ctrl)
+		ms := NewMockStream(ctrl)
 		mp := NewMockParser(ctrl)
-		mc.EXPECT().OpenStreamSync(gomock.Any()).Times(1).Return(ms1, nil)
-		mc.EXPECT().AcceptUniStream(gomock.Any()).Times(1).Do(func(context.Context) (receiveStream, error) {
-			close(acceptCalled)
-			<-ctx.Done()
-			return ms2, nil
-		})
-		ms1.EXPECT().Write(gomock.Any()).DoAndReturn(func(buf []byte) (int, error) {
-			msg := parse(t, buf)
+		mpf := NewMockParserFactory(ctrl)
+		mpf.EXPECT().new(gomock.Any()).Return(mp)
+
+		mc.EXPECT().OpenStreamSync(gomock.Any()).Times(1).Return(ms, nil)
+		ms.EXPECT().Write(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
+			msg := parse(t, b)
 			assert.Equal(t, &clientSetupMessage{
 				SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
 				SetupParameters: map[uint64]parameter{
 					roleParameterKey: varintParameter{
 						k: roleParameterKey,
-						v: 0,
+						v: uint64(IngestionDeliveryRole),
 					},
 				},
 			}, msg)
-			return len(buf), nil
+			return len(b), nil
 		})
 		mp.EXPECT().parse().Times(1).Return(&serverSetupMessage{
 			SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
 			SetupParameters: map[uint64]parameter{},
 		}, nil)
-		mp.EXPECT().parse().Times(1).DoAndReturn(func() (message, error) {
-			close(parseCalled)
+		mp = NewMockParser(ctrl)
+		mpf.EXPECT().new(gomock.Any()).AnyTimes().Return(mp)
+		mp.EXPECT().parse().AnyTimes().DoAndReturn(func() (message, error) {
+			<-ctx.Done()
 			return nil, errors.New("connection closed")
 		})
-		ms1.EXPECT().Close()
-
-		p, err := newClientPeer(mc, getParserFactory(mp), 0)
+		p, err := newClientPeer(mc, IngestionDeliveryRole, mpf)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
-		p.Run(false)
-		<-acceptCalled
-		<-parseCalled
-		err = p.Close()
+	})
+}
+
+func TestPeer(t *testing.T) {
+	type env struct {
+		ctrl *gomock.Controller
+		peer *Peer
+		mc   *MockConnection
+	}
+	setup := func(t *testing.T) (*env, func()) {
+		ctx, cancel := context.WithCancel(context.Background())
+		ctrl := gomock.NewController(t)
+		mc := NewMockConnection(ctrl)
+		mc.EXPECT().AcceptUniStream(gomock.Any()).AnyTimes().DoAndReturn(func(_ context.Context) (stream, error) {
+			<-ctx.Done()
+			return nil, errors.New("connection closed")
+		})
+		mCtrlStream := NewMockStream(ctrl)
+		peer := &Peer{
+			ctx:                   ctx,
+			ctxCancel:             cancel,
+			conn:                  mc,
+			parserFactory:         nil,
+			outgoingTransactionCh: make(chan keyedResponseHandler),
+			outgoingCtrlMessageCh: make(chan message),
+			incomingCtrlMessageCh: make(chan message),
+			receiveTracks:         map[uint64]*ReceiveTrack{},
+			sendTracks:            map[string]*SendTrack{},
+			subscribeHandler:      nil,
+			announcementHandler:   nil,
+			closeCh:               make(chan struct{}),
+			closeOnce:             sync.Once{},
+			logger:                log.New(os.Stdout, "TEST_MOQ_PEER: ", log.LstdFlags),
+		}
+		go peer.controlLoop(mCtrlStream)
+		go peer.Run(false)
+		return &env{
+				ctrl: ctrl,
+				peer: peer,
+				mc:   mc,
+			}, func() {
+				t.Log("TEARDOWN")
+				assert.NoError(t, peer.Close())
+			}
+	}
+	t.Run("subscribe", func(t *testing.T) {
+		env, teardown := setup(t)
+		defer teardown()
+		go func() {
+			msg := <-env.peer.outgoingCtrlMessageCh
+			ctrlMsg, ok := msg.(*ctrlMessage)
+			assert.True(t, ok)
+			assert.Equal(t, &subscribeRequestMessage{
+				TrackNamespace: "",
+				TrackName:      "",
+				StartGroup:     location{},
+				StartObject:    location{},
+				EndGroup:       location{},
+				EndObject:      location{},
+				Parameters:     map[uint64]parameter{},
+			}, ctrlMsg.keyedMessage)
+			env.peer.incomingCtrlMessageCh <- &subscribeOkMessage{
+				TrackNamespace: "",
+				TrackName:      "",
+				TrackID:        0,
+				Expires:        0,
+			}
+		}()
+		rt, err := env.peer.Subscribe("", "", "")
 		assert.NoError(t, err)
+		assert.NotNil(t, rt)
+	})
+	t.Run("handle_subscribe", func(t *testing.T) {
+		env, teardown := setup(t)
+		defer teardown()
+		ms := NewMockSendStream(env.ctrl)
+		env.mc.EXPECT().OpenUniStream().Return(ms, nil)
+		msh := NewMockSubscriptionHandler(env.ctrl)
+		msh.EXPECT().handle(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(uint64(0), time.Duration(0), nil)
+		env.peer.OnSubscription(msh)
+		env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
+			TrackNamespace: "",
+			TrackName:      "",
+			StartGroup:     location{},
+			StartObject:    location{},
+			EndGroup:       location{},
+			EndObject:      location{},
+			Parameters:     map[uint64]parameter{},
+		}
+		res := <-env.peer.outgoingCtrlMessageCh
+		assert.Equal(t, &subscribeOkMessage{
+			TrackNamespace: "",
+			TrackName:      "",
+			TrackID:        0,
+			Expires:        0,
+		}, res)
+	})
+	t.Run("announce", func(t *testing.T) {
+		env, teardown := setup(t)
+		defer teardown()
+		go func() {
+			msg := <-env.peer.outgoingCtrlMessageCh
+			ctrlMsg, ok := msg.(*ctrlMessage)
+			assert.True(t, ok)
+			assert.Equal(t, &announceMessage{
+				TrackNamespace:         "namespace",
+				TrackRequestParameters: map[uint64]parameter{},
+			}, ctrlMsg.keyedMessage)
+			env.peer.incomingCtrlMessageCh <- &announceOkMessage{
+				TrackNamespace: "namespace",
+			}
+		}()
+		err := env.peer.Announce("namespace")
+		assert.NoError(t, err)
+	})
+	t.Run("announce_invalid_namespace", func(t *testing.T) {
+		env, teardown := setup(t)
+		defer teardown()
+		err := env.peer.Announce("")
+		assert.Error(t, err)
 	})
 }
 
@@ -152,10 +234,4 @@ func parse(t *testing.T, buf []byte) message {
 	m, err := parser.parse()
 	assert.NoError(t, err)
 	return m
-}
-
-func getParserFactory(p parser) func(messageReader, *log.Logger) parser {
-	return func(mr messageReader, l *log.Logger) parser {
-		return p
-	}
 }
