@@ -550,35 +550,35 @@ func TestParseServerSetupMessage(t *testing.T) {
 
 func TestLocationAppend(t *testing.T) {
 	cases := []struct {
-		loc    location
+		loc    Location
 		buf    []byte
 		expect []byte
 	}{
 		{
-			loc:    location{},
+			loc:    Location{},
 			buf:    []byte{},
 			expect: []byte{0x00},
 		},
 		{
-			loc: location{
-				mode:  1,
-				value: 0,
+			loc: Location{
+				Mode:  1,
+				Value: 0,
 			},
 			buf:    []byte{},
 			expect: []byte{0x01, 0x00},
 		},
 		{
-			loc: location{
-				mode:  2,
-				value: 10,
+			loc: Location{
+				Mode:  2,
+				Value: 10,
 			},
 			buf:    []byte{},
 			expect: []byte{0x02, 0x0A},
 		},
 		{
-			loc: location{
-				mode:  3,
-				value: 8,
+			loc: Location{
+				Mode:  3,
+				Value: 8,
 			},
 			buf:    []byte{0x0A, 0x0B},
 			expect: []byte{0x0A, 0x0B, 0x03, 0x08},
@@ -595,32 +595,32 @@ func TestLocationAppend(t *testing.T) {
 func TestParseLocation(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		expect location
+		expect Location
 		err    error
 	}{
 		{
 			r:      nil,
-			expect: location{},
+			expect: Location{},
 			err:    errInvalidMessageReader,
 		},
 		{
 			r:      bytes.NewReader([]byte{}),
-			expect: location{},
+			expect: Location{},
 			err:    io.EOF,
 		},
 		{
 			r: bytes.NewReader([]byte{0x00}),
-			expect: location{
-				mode:  0,
-				value: 0,
+			expect: Location{
+				Mode:  0,
+				Value: 0,
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader([]byte{0x01, 0x02}),
-			expect: location{
-				mode:  1,
-				value: 2,
+			expect: Location{
+				Mode:  1,
+				Value: 2,
 			},
 			err: nil,
 		},
@@ -653,10 +653,10 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 			srm: subscribeRequestMessage{
 				TrackNamespace: "",
 				TrackName:      "",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     parameters{},
 			},
 			buf: []byte{},
@@ -668,10 +668,10 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 			srm: subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{mode: 0, value: 0},
-				StartObject:    location{mode: 1, value: 0},
-				EndGroup:       location{mode: 2, value: 0},
-				EndObject:      location{mode: 3, value: 0},
+				StartGroup:     Location{Mode: 0, Value: 0},
+				StartObject:    Location{Mode: 1, Value: 0},
+				EndGroup:       Location{Mode: 2, Value: 0},
+				EndObject:      Location{Mode: 3, Value: 0},
 				Parameters:     parameters{},
 			},
 			buf:    []byte{},
@@ -681,10 +681,10 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 			srm: subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{},
@@ -694,10 +694,10 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 			srm: subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
@@ -742,10 +742,10 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 			expect: &subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     parameters{},
 			},
 			err: nil,
@@ -764,10 +764,10 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 			expect: &subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{mode: 1, value: 2},
-				StartObject:    location{mode: 1, value: 2},
-				EndGroup:       location{mode: 1, value: 2},
-				EndObject:      location{mode: 1, value: 2},
+				StartGroup:     Location{Mode: 1, Value: 2},
+				StartObject:    Location{Mode: 1, Value: 2},
+				EndGroup:       Location{Mode: 1, Value: 2},
+				EndObject:      Location{Mode: 1, Value: 2},
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			err: nil,
@@ -779,10 +779,10 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 			expect: &subscribeRequestMessage{
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			err: nil,

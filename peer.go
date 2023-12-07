@@ -567,10 +567,10 @@ func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, erro
 	sm := &subscribeRequestMessage{
 		TrackNamespace: namespace,
 		TrackName:      trackname,
-		StartGroup:     location{},
-		StartObject:    location{},
-		EndGroup:       location{},
-		EndObject:      location{},
+		StartGroup:     Location{},
+		StartObject:    Location{},
+		EndGroup:       Location{},
+		EndObject:      Location{},
 		Parameters:     parameters{},
 	}
 	if len(auth) > 0 {

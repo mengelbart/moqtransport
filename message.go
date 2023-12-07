@@ -17,13 +17,6 @@ var (
 	errUnknownMessage         = errors.New("unknown message type")
 )
 
-const (
-	subscribeLocationModeNone = iota
-	subscribeLocationModeAbsolute
-	subscribeLocationModeRelativePrevious
-	subscribeLocationModeRelativeNext
-)
-
 type message interface {
 	append([]byte) []byte
 }
@@ -167,7 +160,7 @@ type objectMessage struct {
 func (m objectMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of objectMessage failed"
 	}
 	if m.HasLength {
 		return fmt.Sprintf("%v:%v", objectMessageLenType, string(buf))
@@ -265,7 +258,7 @@ type clientSetupMessage struct {
 func (m clientSetupMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of clientSetupMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", clientSetupMessageType.String(), string(buf))
 }
@@ -309,7 +302,7 @@ type serverSetupMessage struct {
 func (m serverSetupMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of serverSetupMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", serverSetupMessageType.String(), string(buf))
 }
@@ -342,57 +335,20 @@ func (p *loggingParser) parseServerSetupMessage() (*serverSetupMessage, error) {
 	}, nil
 }
 
-type location struct {
-	mode  uint64
-	value uint64
-}
-
-func (l location) append(buf []byte) []byte {
-	if l.mode == 0 {
-		return append(buf, byte(l.mode))
-	}
-	buf = append(buf, byte(l.mode))
-	return append(buf, byte(l.value))
-}
-
-func (p *loggingParser) parseLocation() (location, error) {
-	if p.reader == nil {
-		return location{}, errInvalidMessageReader
-	}
-	mode, err := quicvarint.Read(p.reader)
-	if err != nil {
-		return location{}, err
-	}
-	if mode == subscribeLocationModeNone {
-		return location{
-			mode:  mode,
-			value: 0,
-		}, nil
-	}
-	value, err := quicvarint.Read(p.reader)
-	if err != nil {
-		return location{}, nil
-	}
-	return location{
-		mode:  mode,
-		value: value,
-	}, nil
-}
-
 type subscribeRequestMessage struct {
 	TrackNamespace string
 	TrackName      string
-	StartGroup     location
-	StartObject    location
-	EndGroup       location
-	EndObject      location
+	StartGroup     Location
+	StartObject    Location
+	EndGroup       Location
+	EndObject      Location
 	Parameters     parameters
 }
 
 func (m subscribeRequestMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of subscribeRequestMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeRequestMessageType.String(), string(buf))
 }
@@ -472,7 +428,7 @@ type subscribeOkMessage struct {
 func (m subscribeOkMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of subscribeOkMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeOkMessageType.String(), string(buf))
 }
@@ -531,7 +487,7 @@ type subscribeErrorMessage struct {
 func (m subscribeErrorMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of subscribeErrorMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeErrorMessageType.String(), string(buf))
 }
@@ -585,7 +541,7 @@ type unsubscribeMessage struct {
 func (m unsubscribeMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of unsubscribeMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", unsubscribeMessageType.String(), string(buf))
 }
@@ -625,7 +581,7 @@ type subscribeFinMessage struct {
 func (m subscribeFinMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of subscribeFinMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeFinMessageType.String(), string(buf))
 }
@@ -679,7 +635,7 @@ type subscribeRstMessage struct {
 func (m subscribeRstMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of subscribeRstMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeRstMessageType.String(), string(buf))
 }
@@ -741,7 +697,7 @@ type announceMessage struct {
 func (m announceMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of announceMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", announceMessageType.String(), string(buf))
 }
@@ -788,7 +744,7 @@ type announceOkMessage struct {
 func (m announceOkMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of announceOkMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", announceOkMessageType.String(), string(buf))
 }
@@ -828,7 +784,7 @@ type announceErrorMessage struct {
 func (m announceErrorMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of announceErrorMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", announceErrorMessageType.String(), string(buf))
 }
@@ -878,7 +834,7 @@ type unannounceMessage struct {
 func (m unannounceMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of unannounceMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", unannounceMessageType.String(), string(buf))
 }
@@ -909,7 +865,7 @@ type goAwayMessage struct {
 func (m goAwayMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		panic(err)
+		return "json.Marshal of goAwayMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", goAwayMessageType.String(), string(buf))
 }
