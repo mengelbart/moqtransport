@@ -125,8 +125,12 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
+	return s.ListenQUICListener(ctx, ql)
+}
+
+func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener) error {
 	l := &quicListener{
-		ql: ql,
+		ql: listener,
 	}
 	return s.Listen(ctx, l)
 }

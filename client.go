@@ -44,6 +44,10 @@ func DialQUIC(addr string, role Role) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	return DialQUICConn(conn, role)
+}
+
+func DialQUICConn(conn quic.Connection, role Role) (*Peer, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
