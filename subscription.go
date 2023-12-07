@@ -13,8 +13,8 @@ type Subscription struct {
 	expires    time.Duration
 
 	namespace, trackname    string
-	startGroup, startObject location
-	endGroup, endObject     location
+	startGroup, startObject Location
+	endGroup, endObject     Location
 	parameters              parameters
 }
 
@@ -55,4 +55,20 @@ func (s *Subscription) Trackname() string {
 
 func (s *Subscription) TrackID() uint64 {
 	return s.track.id
+}
+
+func (s *Subscription) StartGroup() Location {
+	return s.startGroup
+}
+
+func (s *Subscription) StartObject() Location {
+	return s.startObject
+}
+
+func (s *Subscription) EndGroup() Location {
+	return s.endGroup
+}
+
+func (s *Subscription) EndObject() Location {
+	return s.endObject
 }

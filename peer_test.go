@@ -165,10 +165,10 @@ func TestPeer(t *testing.T) {
 			assert.Equal(t, &subscribeRequestMessage{
 				TrackNamespace: "",
 				TrackName:      "",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     map[uint64]parameter{},
 			}, ctrlMsg.keyedMessage)
 			env.peer.incomingCtrlMessageCh <- &subscribeOkMessage{
@@ -195,10 +195,10 @@ func TestPeer(t *testing.T) {
 			env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
 				TrackNamespace: "namespace",
 				TrackName:      "track",
-				StartGroup:     location{},
-				StartObject:    location{},
-				EndGroup:       location{},
-				EndObject:      location{},
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
 				Parameters:     map[uint64]parameter{},
 			}
 			res := <-env.peer.outgoingCtrlMessageCh
@@ -212,6 +212,70 @@ func TestPeer(t *testing.T) {
 
 		s, err := env.peer.ReadSubscription(context.Background())
 		assert.NoError(t, err)
+		s.SetTrackID(17)
+		s.SetExpires(time.Second)
+		st := s.Accept()
+		assert.NotNil(t, st)
+		wg.Wait()
+	})
+	t.Run("handle_subscribe_hint", func(t *testing.T) {
+		env, teardown := setup(t)
+		defer teardown()
+		ms := NewMockSendStream(env.ctrl)
+		env.mc.EXPECT().OpenUniStream().Return(ms, nil)
+		var wg sync.WaitGroup
+		defer wg.Wait()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
+				TrackNamespace: "ns",
+				TrackName:      "track",
+				StartGroup: Location{
+					Mode:  LocationModeNone,
+					Value: 0,
+				},
+				StartObject: Location{
+					Mode:  LocationModeAbsolute,
+					Value: 10,
+				},
+				EndGroup: Location{
+					Mode:  LocationModeRelativePrevious,
+					Value: 20,
+				},
+				EndObject: Location{
+					Mode:  LocationModeRelativeNext,
+					Value: 30,
+				},
+				Parameters: map[uint64]parameter{},
+			}
+			res := <-env.peer.outgoingCtrlMessageCh
+			assert.Equal(t, &subscribeOkMessage{
+				TrackNamespace: "ns",
+				TrackName:      "track",
+				TrackID:        17,
+				Expires:        time.Second,
+			}, res)
+		}()
+
+		s, err := env.peer.ReadSubscription(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, s.startGroup, Location{
+			Mode:  LocationModeNone,
+			Value: 0,
+		})
+		assert.Equal(t, s.startObject, Location{
+			Mode:  LocationModeAbsolute,
+			Value: 10,
+		})
+		assert.Equal(t, s.endGroup, Location{
+			Mode:  LocationModeRelativePrevious,
+			Value: 20,
+		})
+		assert.Equal(t, s.endObject, Location{
+			Mode:  LocationModeRelativeNext,
+			Value: 30,
+		})
 		s.SetTrackID(17)
 		s.SetExpires(time.Second)
 		st := s.Accept()
