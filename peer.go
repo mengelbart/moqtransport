@@ -55,6 +55,8 @@ type SubscriptionHandler func(namespace, trackname string, track *SendTrack) (ui
 
 type AnnouncementHandler func(string) error
 
+type ClosePeerHandler func() error
+
 type Peer struct {
 	conn                connection
 	inMsgCh             chan message
@@ -64,6 +66,7 @@ type Peer struct {
 	sendTracks          map[string]*SendTrack
 	subscribeHandler    SubscriptionHandler
 	announcementHandler AnnouncementHandler
+	closePeerHandler    ClosePeerHandler
 	closeCh             chan struct{}
 
 	logger *log.Logger
@@ -253,12 +256,17 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 	go func(s stream, ch chan<- message, errCh chan<- error) {
 		defer s.Close()
 		for {
-			msg, err := p.parseMessage(quicvarint.NewReader(s))
-			if err != nil {
-				errCh <- err
+			select {
+			case <-p.closeCh:
 				return
+			default:
+				msg, err := p.parseMessage(quicvarint.NewReader(s))
+				if err != nil {
+					errCh <- err
+					return
+				}
+				ch <- msg
 			}
-			ch <- msg
 		}
 	}(p.ctrlStream, inCh, errCh)
 	for {
@@ -306,55 +314,74 @@ func (p *Peer) controlStreamLoop(ctx context.Context) error {
 			}
 		case err := <-errCh:
 			return err
+		case <-p.closeCh:
+			return errClosed
 		}
 	}
 }
 
 func (p *Peer) acceptBidirectionalStreams(ctx context.Context) error {
 	for {
-		s, err := p.conn.AcceptStream(ctx)
-		if err != nil {
-			return err
-		}
-		go func() {
-			if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
-				panic(err)
+		select {
+		case <-p.closeCh:
+			return errClosed
+		default:
+			s, err := p.conn.AcceptStream(ctx)
+			if err != nil {
+				return err
 			}
-		}()
+			go func() {
+				if err := p.readMessages(quicvarint.NewReader(s), s); err != nil {
+					panic(err)
+				}
+			}()
+		}
 	}
 }
 
 func (p *Peer) acceptUnidirectionalStreams(ctx context.Context) error {
 	for {
-		stream, err := p.conn.AcceptUniStream(ctx)
-		if err != nil {
-			return err
-		}
-		go func() {
-			err := p.readMessages(quicvarint.NewReader(stream), stream)
+		select {
+		case <-p.closeCh:
+			return errClosed
+		default:
+			stream, err := p.conn.AcceptUniStream(ctx)
 			if err != nil {
-				log.Printf("read message from uni stream err: %v", err)
-				if streamErr, ok := err.(*quic.StreamError); ok {
-					log.Printf("stream err: %v", streamErr)
-				}
-				return
+				return err
 			}
-		}()
+			go func() {
+				err := p.readMessages(quicvarint.NewReader(stream), stream)
+				if err != nil {
+					log.Printf("read message from uni stream err: %v", err)
+					if streamErr, ok := err.(*quic.StreamError); ok {
+						log.Printf("stream err: %v", streamErr)
+					}
+					return
+				}
+			}()
+		}
+
 	}
 }
 
 func (p *Peer) acceptDatagrams(ctx context.Context) error {
 	for {
-		dgram, err := p.conn.ReceiveMessage(ctx)
-		if err != nil {
-			return err
-		}
-		r := bytes.NewReader(dgram)
-		go func() {
-			if err := p.readMessages(r, nil); err != nil {
-				panic(err)
+		select {
+		case <-p.closeCh:
+			return errClosed
+		default:
+			dgram, err := p.conn.ReceiveMessage(ctx)
+			if err != nil {
+				return err
 			}
-		}()
+			r := bytes.NewReader(dgram)
+			go func() {
+				if err := p.readMessages(r, nil); err != nil {
+					panic(err)
+				}
+			}()
+		}
+
 	}
 }
 
@@ -505,10 +532,20 @@ func (p *Peer) Subscribe(namespace, trackname, auth string) (*ReceiveTrack, erro
 	return nil, errUnexpectedMessage
 }
 
+func (p *Peer) ClosePeerConnection() error {
+	var s struct{}
+	p.closeCh <- s
+	return p.CloseWithError(0, "error")
+}
+
 func (p *Peer) OnAnnouncement(callback AnnouncementHandler) {
 	p.announcementHandler = callback
 }
 
 func (p *Peer) OnSubscription(callback SubscriptionHandler) {
 	p.subscribeHandler = callback
+}
+
+func (p *Peer) OnClose(callback ClosePeerHandler) {
+	p.closePeerHandler = callback
 }

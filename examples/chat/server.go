@@ -106,6 +106,7 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 			return s.nextTrackID, time.Duration(0), nil
 		})
 		go p.Run(context.Background(), false)
+		p.OnClose(p.ClosePeerConnection)
 	}
 }
 
