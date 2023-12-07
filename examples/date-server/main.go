@@ -51,23 +51,24 @@ func run(addr string, wt bool, certFile, keyFile string) error {
 
 func handler() moqtransport.PeerHandlerFunc {
 	return func(p *moqtransport.Peer) {
-		p.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, trackname string, t *moqtransport.SendTrack) (uint64, time.Duration, error) {
-			if fmt.Sprintf("%v/%v", namespace, trackname) != "clock/second" {
-				return 0, 0, errors.New("unknown track ID")
-			}
-			go func() {
-				ticker := time.NewTicker(time.Second)
-				for ts := range ticker.C {
-					if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
-						log.Println(err)
-						return
-					}
-				}
-			}()
-			return 0, 0, nil
-		}))
-		go p.Run(false)
 		p.Announce("clock")
+		s, err := p.ReadSubscription(context.Background())
+		if err != nil {
+			panic(err)
+		}
+		if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
+			s.Reject(errors.New("unknown namespace/trackname"))
+		}
+		t := s.Accept()
+		go func() {
+			ticker := time.NewTicker(time.Second)
+			for ts := range ticker.C {
+				if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
+					log.Println(err)
+					return
+				}
+			}
+		}()
 	}
 }
 

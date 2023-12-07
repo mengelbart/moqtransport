@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
-	"time"
 
 	"github.com/mengelbart/moqtransport"
 )
@@ -30,19 +30,21 @@ func run(addr string, wt bool) error {
 	if err != nil {
 		return err
 	}
-
 	defer p.CloseWithError(0, "closing conn")
 
-	log.Println("webtransport connected")
-	p.OnAnnouncement(moqtransport.AnnouncementHandlerFunc(func(s string) error {
-		log.Printf("got announcement: %v", s)
-		return nil
-	}))
-	p.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, name string, _ *moqtransport.SendTrack) (uint64, time.Duration, error) {
-		log.Printf("got subscription attempt: %v/%v", namespace, name)
-		return 0, time.Duration(0), nil
-	}))
-	go p.Run(false)
+	for {
+		var a *moqtransport.Announcement
+		a, err = p.ReadAnnouncement(context.Background())
+		if err != nil {
+			panic(err)
+		}
+		log.Println("got Announcement")
+		if a.Namespace() == "clock" {
+			a.Accept()
+			break
+		}
+	}
+
 	log.Println("subscribing")
 	rt, err := p.Subscribe("clock", "second", "")
 	if err != nil {

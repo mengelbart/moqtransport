@@ -30,6 +30,10 @@ func TestNewServerPeer(t *testing.T) {
 		mp := NewMockParser(ctrl)
 		mpf.EXPECT().new(gomock.Any()).AnyTimes().Return(mp)
 		mc.EXPECT().AcceptStream(gomock.Any()).Times(1).Return(ms, nil)
+		mc.EXPECT().AcceptUniStream(gomock.Any()).AnyTimes().DoAndReturn(func(_ context.Context) (stream, error) {
+			<-ctx.Done()
+			return nil, errors.New("connection closed")
+		})
 		mp.EXPECT().parse().Times(1).Return(&clientSetupMessage{
 			SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
 			SetupParameters: map[uint64]parameter{
@@ -51,10 +55,10 @@ func TestNewServerPeer(t *testing.T) {
 			<-ctx.Done()
 			return nil, errors.New("connection closed")
 		})
-
 		p, err := newServerPeer(mc, mpf)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
+		assert.NoError(t, p.Close())
 	})
 }
 
@@ -72,8 +76,11 @@ func TestNewClientPeer(t *testing.T) {
 		mp := NewMockParser(ctrl)
 		mpf := NewMockParserFactory(ctrl)
 		mpf.EXPECT().new(gomock.Any()).Return(mp)
-
 		mc.EXPECT().OpenStreamSync(gomock.Any()).Times(1).Return(ms, nil)
+		mc.EXPECT().AcceptUniStream(gomock.Any()).AnyTimes().DoAndReturn(func(_ context.Context) (stream, error) {
+			<-ctx.Done()
+			return nil, errors.New("connection closed")
+		})
 		ms.EXPECT().Write(gomock.Any()).DoAndReturn(func(b []byte) (int, error) {
 			msg := parse(t, b)
 			assert.Equal(t, &clientSetupMessage{
@@ -100,6 +107,7 @@ func TestNewClientPeer(t *testing.T) {
 		p, err := newClientPeer(mc, IngestionDeliveryRole, mpf)
 		assert.NoError(t, err)
 		assert.NotNil(t, p)
+		assert.NoError(t, p.Close())
 	})
 }
 
@@ -126,16 +134,15 @@ func TestPeer(t *testing.T) {
 			outgoingTransactionCh: make(chan keyedResponseHandler),
 			outgoingCtrlMessageCh: make(chan message),
 			incomingCtrlMessageCh: make(chan message),
+			subscriptionCh:        make(chan *Subscription),
+			trackLock:             sync.RWMutex{},
 			receiveTracks:         map[uint64]*ReceiveTrack{},
 			sendTracks:            map[string]*SendTrack{},
-			subscribeHandler:      nil,
-			announcementHandler:   nil,
 			closeCh:               make(chan struct{}),
 			closeOnce:             sync.Once{},
 			logger:                log.New(os.Stdout, "TEST_MOQ_PEER: ", log.LstdFlags),
 		}
 		go peer.controlLoop(mCtrlStream)
-		go peer.Run(false)
 		return &env{
 				ctrl: ctrl,
 				peer: peer,
@@ -148,7 +155,10 @@ func TestPeer(t *testing.T) {
 	t.Run("subscribe", func(t *testing.T) {
 		env, teardown := setup(t)
 		defer teardown()
+		var wg sync.WaitGroup
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			msg := <-env.peer.outgoingCtrlMessageCh
 			ctrlMsg, ok := msg.(*ctrlMessage)
 			assert.True(t, ok)
@@ -171,31 +181,42 @@ func TestPeer(t *testing.T) {
 		rt, err := env.peer.Subscribe("", "", "")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
+		wg.Wait()
 	})
 	t.Run("handle_subscribe", func(t *testing.T) {
 		env, teardown := setup(t)
 		defer teardown()
 		ms := NewMockSendStream(env.ctrl)
 		env.mc.EXPECT().OpenUniStream().Return(ms, nil)
-		msh := NewMockSubscriptionHandler(env.ctrl)
-		msh.EXPECT().handle(gomock.Any(), gomock.Any(), gomock.Any()).Times(1).Return(uint64(0), time.Duration(0), nil)
-		env.peer.OnSubscription(msh)
-		env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
-			TrackNamespace: "",
-			TrackName:      "",
-			StartGroup:     location{},
-			StartObject:    location{},
-			EndGroup:       location{},
-			EndObject:      location{},
-			Parameters:     map[uint64]parameter{},
-		}
-		res := <-env.peer.outgoingCtrlMessageCh
-		assert.Equal(t, &subscribeOkMessage{
-			TrackNamespace: "",
-			TrackName:      "",
-			TrackID:        0,
-			Expires:        0,
-		}, res)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
+				TrackNamespace: "namespace",
+				TrackName:      "track",
+				StartGroup:     location{},
+				StartObject:    location{},
+				EndGroup:       location{},
+				EndObject:      location{},
+				Parameters:     map[uint64]parameter{},
+			}
+			res := <-env.peer.outgoingCtrlMessageCh
+			assert.Equal(t, &subscribeOkMessage{
+				TrackNamespace: "namespace",
+				TrackName:      "track",
+				TrackID:        17,
+				Expires:        time.Second,
+			}, res)
+		}()
+
+		s, err := env.peer.ReadSubscription(context.Background())
+		assert.NoError(t, err)
+		s.SetTrackID(17)
+		s.SetExpires(time.Second)
+		st := s.Accept()
+		assert.NotNil(t, st)
+		wg.Wait()
 	})
 	t.Run("announce", func(t *testing.T) {
 		env, teardown := setup(t)

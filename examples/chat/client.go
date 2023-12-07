@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/mengelbart/moqtransport"
 )
@@ -51,25 +51,41 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 		lock:        sync.Mutex{},
 		nextTrackID: 0,
 	}
-	c.peer.OnAnnouncement(moqtransport.AnnouncementHandlerFunc(func(s string) error {
-		return nil
-	}))
-	c.peer.OnSubscription(moqtransport.SubscriptionHandlerFunc(func(namespace, _ string, st *moqtransport.SendTrack) (uint64, time.Duration, error) {
-		parts := strings.SplitN(namespace, "/", 2)
-		if len(parts) < 2 {
-			return 0, 0, errors.New("invalid trackname")
+	go func() {
+		for {
+			var a *moqtransport.Announcement
+			a, err := c.peer.ReadAnnouncement(context.Background())
+			if err != nil {
+				panic(err)
+			}
+			log.Printf("got Announcement: %v", a.Namespace())
+			a.Accept()
 		}
-		moq_chat, id := parts[0], parts[1]
-		if moq_chat != "moq-chat" {
-			return 0, 0, errors.New("invalid moq-chat namespace")
+	}()
+	go func() {
+		for {
+			s, err := c.peer.ReadSubscription(context.Background())
+			if err != nil {
+				panic(err)
+			}
+			parts := strings.SplitN(s.Namespace(), "/", 2)
+			if len(parts) < 2 {
+				s.Reject(errors.New("invalid trackname"))
+				continue
+			}
+			moq_chat, id := parts[0], parts[1]
+			if moq_chat != "moq-chat" {
+				s.Reject(errors.New("invalid moq-chat namespace"))
+				continue
+			}
+			if _, ok := c.rooms[id]; !ok {
+				s.Reject(errors.New("invalid subscribe request"))
+				continue
+			}
+			s.SetTrackID(c.rooms[id].trackID)
+			c.rooms[id].st = s.Accept()
 		}
-		if _, ok := c.rooms[id]; !ok {
-			return 0, 0, errors.New("invalid subscribe request")
-		}
-		c.rooms[id].st = st
-		return c.rooms[id].trackID, 0, nil
-	}))
-	go c.peer.Run(false)
+	}()
 	return c, nil
 }
 

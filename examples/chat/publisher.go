@@ -32,15 +32,14 @@ func (p *publisher) close() {
 	p.closeWG.Wait()
 }
 
-func (p *publisher) subscribe(username string, track *moqtransport.SendTrack) error {
+func (p *publisher) subscribe(username string, sub *moqtransport.Subscription) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	_, ok := p.subscribers[username]
 	if ok {
-		return errDuplicateSubscriber
+		sub.Reject(errDuplicateSubscriber)
 	}
-	p.subscribers[username] = track
-	return nil
+	p.subscribers[username] = sub.Accept()
 }
 
 func (p *publisher) broadcastMsg(msg []byte) error {
