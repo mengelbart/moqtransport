@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -53,10 +52,7 @@ func DialQUICConn(conn quic.Connection, role Role) (*Peer, error) {
 	}
 	p, err := newClientPeer(qc, role, nil)
 	if err != nil {
-		if errors.Is(err, errUnsupportedVersion) {
-			_ = conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
-		}
-		_ = conn.CloseWithError(GenericErrorCode, "internal server error")
+		_ = conn.CloseWithError(ErrorCodeGeneric, err.Error())
 		return nil, err
 	}
 	return p, nil

@@ -39,7 +39,7 @@ func (f parserFactoryFn) new(r messageReader) parser {
 
 type Peer struct {
 	ctx       context.Context
-	ctxCancel context.CancelFunc
+	ctxCancel context.CancelCauseFunc
 
 	conn                  connection
 	parserFactory         parserFactory
@@ -51,14 +51,9 @@ type Peer struct {
 	trackLock             sync.RWMutex // TODO: Ensure lock is used for all tracks
 	receiveTracks         map[uint64]*ReceiveTrack
 	sendTracks            map[string]*SendTrack
-	closeCh               chan struct{}
 	closeOnce             sync.Once
-
-	logger *log.Logger
-}
-
-func (p *Peer) CloseWithError(code uint64, reason string) error {
-	return p.conn.CloseWithError(code, reason)
+	connClosedCh          chan struct{}
+	logger                *log.Logger
 }
 
 func newServerPeer(conn connection, pf parserFactory) (*Peer, error) {
@@ -69,7 +64,7 @@ func newServerPeer(conn connection, pf parserFactory) (*Peer, error) {
 	if pf == nil {
 		pf = newLoggingParserFactory(logger)
 	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	ctx, cancelFunc := context.WithCancelCause(context.Background())
 	p := &Peer{
 		ctx:                   ctx,
 		ctxCancel:             cancelFunc,
@@ -83,8 +78,8 @@ func newServerPeer(conn connection, pf parserFactory) (*Peer, error) {
 		trackLock:             sync.RWMutex{},
 		receiveTracks:         map[uint64]*ReceiveTrack{},
 		sendTracks:            map[string]*SendTrack{},
-		closeCh:               make(chan struct{}),
 		closeOnce:             sync.Once{},
+		connClosedCh:          make(chan struct{}),
 		logger:                logger,
 	}
 	return p, p.runServerHandshake()
@@ -98,7 +93,7 @@ func newClientPeer(conn connection, role Role, pf parserFactory) (*Peer, error) 
 	if pf == nil {
 		pf = newLoggingParserFactory(logger)
 	}
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	ctx, cancelFunc := context.WithCancelCause(context.Background())
 	p := &Peer{
 		ctx:                   ctx,
 		ctxCancel:             cancelFunc,
@@ -112,8 +107,8 @@ func newClientPeer(conn connection, role Role, pf parserFactory) (*Peer, error) 
 		trackLock:             sync.RWMutex{},
 		receiveTracks:         map[uint64]*ReceiveTrack{},
 		sendTracks:            map[string]*SendTrack{},
-		closeCh:               make(chan struct{}),
 		closeOnce:             sync.Once{},
+		connClosedCh:          make(chan struct{}),
 		logger:                logger,
 	}
 	return p, p.runClientHandshake(role)
@@ -192,6 +187,7 @@ func (p *Peer) runClientHandshake(clientRole Role) error {
 
 func (p *Peer) run(s stream, enableDatagrams bool) {
 	go p.controlLoop(s)
+	go p.close()
 	go p.ctrlStreamReadLoop(s)
 	go p.ctrlStreamWriteLoop(s)
 	go p.acceptUnidirectionalStreams()
@@ -200,18 +196,35 @@ func (p *Peer) run(s stream, enableDatagrams bool) {
 	}
 }
 
-func (p *Peer) Close() error {
-	p.closeOnce.Do(func() {
-		close(p.closeCh)
-	})
-	<-p.ctx.Done()
-	return nil
+type peerError struct {
+	Err  error
+	code uint64
 }
 
-func (p *Peer) remoteClose(err error) {
+func (p *peerError) Error() string {
+	return p.Err.Error()
+}
+
+func (p *Peer) close() {
+	defer close(p.connClosedCh)
+	<-p.ctx.Done()
+	err := context.Cause(p.ctx)
 	p.closeOnce.Do(func() {
-		close(p.closeCh)
+		if pe, ok := err.(*peerError); ok {
+			_ = p.conn.CloseWithError(pe.code, pe.Error())
+		} else {
+			_ = p.conn.CloseWithError(0, "")
+		}
 	})
+}
+
+func (p *Peer) CloseWithError(code uint64, reason string) error {
+	p.ctxCancel(&peerError{
+		Err:  errors.New(reason),
+		code: code,
+	})
+	<-p.connClosedCh
+	return nil
 }
 
 func (p *Peer) ctrlStreamWriteLoop(s sendStream) {
@@ -241,9 +254,11 @@ func (p *Peer) ctrlStreamReadLoop(s receiveStream) {
 		}
 		msg, err := msgParser.parse()
 		if err != nil {
-			p.logger.Printf("got parsing error: %v", err)
-			p.remoteClose(err)
-			return
+			p.ctxCancel(&peerError{
+				Err:  errInvalidMessageEncoding,
+				code: ErrorCodeProtocolViolation,
+			})
+			continue
 		}
 		switch v := msg.(type) {
 		case *subscribeRequestMessage, *subscribeOkMessage,
@@ -254,8 +269,10 @@ func (p *Peer) ctrlStreamReadLoop(s receiveStream) {
 
 			p.incomingCtrlMessageCh <- v
 		default:
-			p.logger.Printf("got unexpected message: %v", v)
-			panic(errUnexpectedMessage)
+			p.ctxCancel(&peerError{
+				Err:  errUnexpectedMessage,
+				code: ErrorCodeProtocolViolation,
+			})
 		}
 	}
 }
@@ -308,13 +325,10 @@ type keyedResponseHandler interface {
 }
 
 func (p *Peer) controlLoop(ctrlStream stream) {
-	defer p.logger.Println("exit controlStreamLoop")
-	defer p.ctxCancel()
-
 	transactions := make(map[messageKey]keyedMessage)
 	for {
 		select {
-		case <-p.closeCh:
+		case <-p.ctx.Done():
 			return
 		case m := <-p.incomingCtrlMessageCh:
 			switch v := m.(type) {
@@ -342,17 +356,28 @@ func (p *Peer) controlLoop(ctrlStream stream) {
 					// only happen when we also stored an associated transaction
 					// earlier.
 					p.logger.Printf("unexpected unkeyed message")
+					p.ctxCancel(&peerError{
+						Err:  errUnexpectedMessage,
+						code: ErrorCodeProtocolViolation,
+					})
 					continue
 				}
 				rh, ok := t.(responseHandler)
 				if !ok {
 					p.logger.Printf("unexpected message without responseHandler")
+					p.ctxCancel(&peerError{
+						Err:  errUnexpectedMessage,
+						code: ErrorCodeProtocolViolation,
+					})
 					continue
 				}
 				rh.handle(v)
 			default:
 				p.logger.Printf("got unexpected message: %v", v)
-				continue
+				p.ctxCancel(&peerError{
+					Err:  errUnexpectedMessage,
+					code: ErrorCodeProtocolViolation,
+				})
 			}
 		case m := <-p.outgoingTransactionCh:
 			transactions[m.key()] = m
@@ -362,7 +387,6 @@ func (p *Peer) controlLoop(ctrlStream stream) {
 }
 
 func (p *Peer) acceptUnidirectionalStreams() {
-	defer p.logger.Println("accept uni stream loop exit")
 	for {
 		select {
 		case <-p.ctx.Done():
@@ -507,7 +531,7 @@ func (p *Peer) ReadSubscription(ctx context.Context) (*Subscription, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-p.ctx.Done():
-		return nil, errors.New("peer closed") // TODO: Better error message including a reason?
+		return nil, context.Cause(p.ctx)
 	case s := <-p.subscriptionCh:
 		return s, nil
 	}
@@ -518,7 +542,7 @@ func (p *Peer) ReadAnnouncement(ctx context.Context) (*Announcement, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-p.ctx.Done():
-		return nil, errors.New("peer closed") // TODO: Better error message including a reason?
+		return nil, context.Cause(p.ctx)
 	case a := <-p.announcementCh:
 		return a, nil
 	}

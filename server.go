@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -143,14 +142,7 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 		}
 		peer, err := newServerPeer(conn, nil)
 		if err != nil {
-			switch {
-			case errors.Is(err, errUnsupportedVersion):
-				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			case errors.Is(err, errMissingRoleParameter):
-				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			default:
-				_ = conn.CloseWithError(GenericErrorCode, "internal server error")
-			}
+			_ = conn.CloseWithError(ErrorCodeGeneric, err.Error())
 			continue
 		}
 		if s.Handler != nil {
