@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"sync"
@@ -348,6 +349,63 @@ func TestPeer(t *testing.T) {
 		wg.Wait()
 	})
 	t.Run("handle_subscribe_while_announcing", func(t *testing.T) {
+		var wg sync.WaitGroup
+		wg.Add(3)
+		env, teardown := setup(t)
+		defer teardown()
+		ms := NewMockSendStream(env.ctrl)
+		env.mc.EXPECT().OpenUniStream().Return(ms, nil)
+		go func() {
+			defer wg.Done()
+			gotAnnounce := false
+			gotSubscribeOk := false
+			for msg := range env.peer.outgoingCtrlMessageCh {
+				if ctrlMsg, ok := msg.(*ctrlMessage); ok && ctrlMsg.keyedMessage != nil {
+					assert.Equal(t, &announceMessage{
+						TrackNamespace:         "namespace",
+						TrackRequestParameters: map[uint64]parameter{},
+					}, ctrlMsg.keyedMessage)
+					env.peer.incomingCtrlMessageCh <- &announceOkMessage{
+						TrackNamespace: "namespace",
+					}
+					gotAnnounce = true
+					fmt.Println("got announce message")
+				} else {
+					assert.Equal(t, &subscribeOkMessage{
+						TrackNamespace: "other_namespace",
+						TrackName:      "track",
+						TrackID:        0,
+						Expires:        0,
+					}, msg)
+					gotSubscribeOk = true
+				}
+				if gotAnnounce && gotSubscribeOk {
+					break
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			env.peer.incomingCtrlMessageCh <- &subscribeRequestMessage{
+				TrackNamespace: "other_namespace",
+				TrackName:      "track",
+				StartGroup:     Location{},
+				StartObject:    Location{},
+				EndGroup:       Location{},
+				EndObject:      Location{},
+				Parameters:     map[uint64]parameter{},
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			s, err := env.peer.ReadSubscription(context.Background())
+			assert.NoError(t, err)
+			assert.NotNil(t, s)
+			assert.NotNil(t, s.Accept())
+		}()
+		err := env.peer.Announce("namespace")
+		assert.NoError(t, err)
+		wg.Wait()
 	})
 	t.Run("announce", func(t *testing.T) {
 		env, teardown := setup(t)
