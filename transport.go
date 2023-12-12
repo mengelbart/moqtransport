@@ -6,8 +6,9 @@ const (
 )
 
 const (
-	SessionTerminatedErrorCode = 0x00
-	GenericErrorCode           = 0x01
-	UnauthorizedErrorCode      = 0x02
-	GoAwayErrorCode            = 0x10
+	ErrorCodeNoError           = 0x00
+	ErrorCodeGeneric           = 0x01
+	ErrorCodeUnauthorized      = 0x02
+	ErrorCodeProtocolViolation = 0x03
+	ErrorCodeGoAwayTimeout     = 0x10
 )
