@@ -25,16 +25,11 @@ type SendTrack struct {
 }
 
 func newSendTrack(conn connection) *SendTrack {
-	s, err := conn.OpenUniStream()
-	if err != nil {
-		// TODO
-		panic(err)
-	}
 	return &SendTrack{
 		conn:   conn,
 		mode:   singleStream,
 		id:     0,
-		stream: s,
+		stream: nil,
 	}
 }
 
@@ -64,6 +59,14 @@ func (t *SendTrack) Write(b []byte) (n int, err error) {
 	case streamPerGroup:
 		// ...
 	case singleStream:
+		if t.stream == nil {
+			s, err := t.conn.OpenUniStream()
+			if err != nil {
+				// TODO
+				panic(err)
+			}
+			t.stream = s
+		}
 		om := &objectMessage{
 			HasLength:       true,
 			TrackID:         t.id,

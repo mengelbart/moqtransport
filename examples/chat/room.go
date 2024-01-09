@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding"
 	"errors"
 	"fmt"
@@ -41,13 +42,13 @@ func newChat(id string) *room {
 	return c
 }
 
-func (r *room) join(username string, p *moqtransport.Peer) error {
+func (r *room) join(username string, p *moqtransport.Session) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if _, ok := r.publishers[username]; ok {
 		return errors.New("username already taken")
 	}
-	t, err := p.Subscribe(fmt.Sprintf("moq-chat/%v", r.id), username, "")
+	t, err := p.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", r.id), username, "")
 	if err != nil {
 		return err
 	}

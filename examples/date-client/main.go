@@ -19,7 +19,7 @@ func main() {
 }
 
 func run(addr string, wt bool) error {
-	var p *moqtransport.Peer
+	var p *moqtransport.Session
 	var err error
 
 	if wt {
@@ -46,7 +46,7 @@ func run(addr string, wt bool) error {
 	}
 
 	log.Println("subscribing")
-	rt, err := p.Subscribe("clock", "second", "")
+	rt, err := p.Subscribe(context.Background(), "clock", "second", "")
 	if err != nil {
 		panic(err)
 	}
