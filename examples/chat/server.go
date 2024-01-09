@@ -19,7 +19,7 @@ var (
 
 type Server struct {
 	chatRooms   map[string]*room
-	peers       map[*moqtransport.Peer]string
+	peers       map[*moqtransport.Session]string
 	nextTrackID uint64
 	lock        sync.Mutex
 	moq         *moqtransport.Server
@@ -28,7 +28,7 @@ type Server struct {
 func NewServer(tlsConfig *tls.Config) *Server {
 	s := &Server{
 		chatRooms:   map[string]*room{},
-		peers:       map[*moqtransport.Peer]string{},
+		peers:       map[*moqtransport.Session]string{},
 		nextTrackID: 1,
 		lock:        sync.Mutex{},
 		moq: &moqtransport.Server{
@@ -36,7 +36,7 @@ func NewServer(tlsConfig *tls.Config) *Server {
 			TLSConfig: tlsConfig,
 		},
 	}
-	s.moq.Handler = moqtransport.PeerHandler(moqtransport.PeerHandlerFunc(s.peerHandler()))
+	s.moq.Handler = moqtransport.SessionHandler(moqtransport.SessionHandlerFunc(s.sessionHandler()))
 	return s
 }
 
@@ -48,8 +48,8 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	return s.moq.ListenWebTransport(ctx, addr)
 }
 
-func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
-	return func(p *moqtransport.Peer) {
+func (s *Server) sessionHandler() moqtransport.SessionHandlerFunc {
+	return func(p *moqtransport.Session) {
 		var name string
 
 		go func() {
@@ -68,14 +68,15 @@ func (s *Server) peerHandler() moqtransport.PeerHandlerFunc {
 					a.Reject(errors.New("invalid moq-chat namespace"))
 					continue
 				}
+				a.Accept()
 				name = username
 				if _, ok := s.chatRooms[id]; !ok {
 					s.chatRooms[id] = newChat(id)
 				}
 				if err := s.chatRooms[id].join(name, p); err != nil {
-					a.Reject(err)
+					log.Println(err)
 				}
-				a.Accept()
+				log.Printf("announcement accepted: %v", a.Namespace())
 			}
 		}()
 		go func() {

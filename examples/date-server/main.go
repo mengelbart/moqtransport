@@ -40,7 +40,7 @@ func run(addr string, wt bool, certFile, keyFile string) error {
 	}
 
 	s := moqtransport.Server{
-		Handler:   moqtransport.PeerHandlerFunc(handler()),
+		Handler:   moqtransport.SessionHandlerFunc(handler()),
 		TLSConfig: tlsConfig,
 	}
 	if wt {
@@ -49,26 +49,30 @@ func run(addr string, wt bool, certFile, keyFile string) error {
 	return s.ListenQUIC(ctx, addr)
 }
 
-func handler() moqtransport.PeerHandlerFunc {
-	return func(p *moqtransport.Peer) {
-		p.Announce("clock")
-		s, err := p.ReadSubscription(context.Background())
-		if err != nil {
+func handler() moqtransport.SessionHandlerFunc {
+	return func(p *moqtransport.Session) {
+		go func() {
+			s, err := p.ReadSubscription(context.Background())
+			if err != nil {
+				panic(err)
+			}
+			if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
+				s.Reject(errors.New("unknown namespace/trackname"))
+			}
+			t := s.Accept()
+			go func() {
+				ticker := time.NewTicker(time.Second)
+				for ts := range ticker.C {
+					if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
+						log.Println(err)
+						return
+					}
+				}
+			}()
+		}()
+		if err := p.Announce(context.Background(), "clock"); err != nil {
 			panic(err)
 		}
-		if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
-			s.Reject(errors.New("unknown namespace/trackname"))
-		}
-		t := s.Accept()
-		go func() {
-			ticker := time.NewTicker(time.Second)
-			for ts := range ticker.C {
-				if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
-					log.Println(err)
-					return
-				}
-			}
-		}()
 	}
 }
 

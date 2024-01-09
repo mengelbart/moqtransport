@@ -21,7 +21,7 @@ type joinedRooms struct {
 }
 
 type Client struct {
-	peer        *moqtransport.Peer
+	session     *moqtransport.Session
 	rooms       map[string]*joinedRooms
 	lock        sync.Mutex
 	nextTrackID uint64
@@ -43,10 +43,10 @@ func NewWebTransportClient(addr string) (*Client, error) {
 	return NewClient(p)
 }
 
-func NewClient(p *moqtransport.Peer) (*Client, error) {
+func NewClient(p *moqtransport.Session) (*Client, error) {
 	log.SetOutput(io.Discard)
 	c := &Client{
-		peer:        p,
+		session:     p,
 		rooms:       map[string]*joinedRooms{},
 		lock:        sync.Mutex{},
 		nextTrackID: 0,
@@ -54,7 +54,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 	go func() {
 		for {
 			var a *moqtransport.Announcement
-			a, err := c.peer.ReadAnnouncement(context.Background())
+			a, err := c.session.ReadAnnouncement(context.Background())
 			if err != nil {
 				panic(err)
 			}
@@ -64,7 +64,7 @@ func NewClient(p *moqtransport.Peer) (*Client, error) {
 	}()
 	go func() {
 		for {
-			s, err := c.peer.ReadSubscription(context.Background())
+			s, err := c.session.ReadSubscription(context.Background())
 			if err != nil {
 				panic(err)
 			}
@@ -104,7 +104,7 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 			if p == username {
 				continue
 			}
-			t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p, username)
+			t, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), p, username)
 			if err != nil {
 				return err
 			}
@@ -132,10 +132,10 @@ func (c *Client) joinRoom(roomID, username string) error {
 		st:      nil,
 		rts:     []*moqtransport.ReceiveTrack{},
 	}
-	if err := c.peer.Announce(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)); err != nil {
+	if err := c.session.Announce(context.Background(), fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)); err != nil {
 		return err
 	}
-	catalogTrack, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
+	catalogTrack, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
 	if err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 		if p == username {
 			continue
 		}
-		t, err := c.peer.Subscribe(fmt.Sprintf("moq-chat/%v", roomID), p, username)
+		t, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), p, username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}

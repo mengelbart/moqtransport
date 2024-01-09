@@ -11,7 +11,7 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-func DialWebTransport(addr string, role Role) (*Peer, error) {
+func DialWebTransport(addr string, role Role) (*Session, error) {
 	d := webtransport.Dialer{
 		RoundTripper: &http3.RoundTripper{
 			DisableCompression: false,
@@ -29,10 +29,10 @@ func DialWebTransport(addr string, role Role) (*Peer, error) {
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientPeer(wc, role, nil)
+	return newClientSession(context.Background(), wc, role)
 }
 
-func DialQUIC(addr string, role Role) (*Peer, error) {
+func DialQUIC(addr string, role Role) (*Session, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
@@ -47,11 +47,11 @@ func DialQUIC(addr string, role Role) (*Peer, error) {
 	return DialQUICConn(conn, role)
 }
 
-func DialQUICConn(conn quic.Connection, role Role) (*Peer, error) {
+func DialQUICConn(conn quic.Connection, role Role) (*Session, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientPeer(qc, role, nil)
+	p, err := newClientSession(context.Background(), qc, role)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			_ = conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())

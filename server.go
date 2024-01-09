@@ -13,18 +13,18 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-type PeerHandlerFunc func(*Peer)
+type SessionHandlerFunc func(*Session)
 
-func (h PeerHandlerFunc) Handle(p *Peer) {
+func (h SessionHandlerFunc) Handle(p *Session) {
 	h(p)
 }
 
-type PeerHandler interface {
-	Handle(*Peer)
+type SessionHandler interface {
+	Handle(*Session)
 }
 
 type Server struct {
-	Handler   PeerHandler
+	Handler   SessionHandler
 	TLSConfig *tls.Config
 }
 
@@ -137,11 +137,11 @@ func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
 	for {
-		conn, err := l.Accept(context.TODO())
+		conn, err := l.Accept(ctx)
 		if err != nil {
 			return err
 		}
-		peer, err := newServerPeer(conn, nil)
+		session, err := newServerSession(ctx, conn)
 		if err != nil {
 			switch {
 			case errors.Is(err, errUnsupportedVersion):
@@ -154,7 +154,7 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 			continue
 		}
 		if s.Handler != nil {
-			s.Handler.Handle(peer)
+			s.Handler.Handle(session)
 		}
 	}
 }
