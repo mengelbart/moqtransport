@@ -34,6 +34,10 @@ func (c *quicConn) AcceptUniStream(ctx context.Context) (receiveStream, error) {
 	return c.conn.AcceptUniStream(ctx)
 }
 
+func (c *quicConn) SendMessage(b []byte) error {
+	return c.conn.SendDatagram(b)
+}
+
 func (c *quicConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
 	return c.conn.ReceiveDatagram(ctx)
 }

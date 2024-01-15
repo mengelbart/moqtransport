@@ -29,6 +29,7 @@ type connection interface {
 	OpenUniStreamSync(context.Context) (sendStream, error)
 	AcceptStream(context.Context) (stream, error)
 	AcceptUniStream(context.Context) (receiveStream, error)
+	SendMessage([]byte) error
 	ReceiveMessage(context.Context) ([]byte, error)
 	CloseWithError(uint64, string) error
 }

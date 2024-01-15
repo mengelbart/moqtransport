@@ -34,6 +34,10 @@ func (c *webTransportConn) AcceptUniStream(ctx context.Context) (receiveStream, 
 	return c.sess.AcceptUniStream(ctx)
 }
 
+func (c *webTransportConn) SendMessage(b []byte) error {
+	panic("SendMessage is not implemented for WebTransport")
+}
+
 func (c *webTransportConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
 	panic("ReceiveMessage is not implemented for WebTransport")
 }

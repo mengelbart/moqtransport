@@ -14,7 +14,7 @@ func TestMessageRouter(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
 		sink := NewMockSink(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		s.receiveTracks[0] = sink
 		object := &objectMessage{}
@@ -25,7 +25,7 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_client_setup", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		s.controlMsgSender = c
 		csm := &clientSetupMessage{
@@ -44,7 +44,7 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_subscribe_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		done := make(chan struct{})
 		c.EXPECT().send(&subscribeOkMessage{
@@ -85,7 +85,7 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_announcement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		s.controlMsgSender = c
 		done := make(chan struct{})
@@ -116,7 +116,7 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		s.controlMsgSender = c
 		c.EXPECT().send(&subscribeRequestMessage{
@@ -152,7 +152,7 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("announce", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlStreamHandler(ctrl)
+		c := NewMockControlMsgSender(ctrl)
 		s := newMessageRouter(mc, c)
 		s.controlMsgSender = c
 		c.EXPECT().send(&announceMessage{

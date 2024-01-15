@@ -203,7 +203,12 @@ func (c *Client) Run() error {
 				fmt.Println("invalid msg command, usage: 'msg <room id> <msg>'")
 				continue
 			}
-			_, err = c.rooms[fields[1]].st.Write([]byte(strings.TrimSpace(msg)))
+			w, err := c.rooms[fields[1]].st.StartReliableObject()
+			if err != nil {
+				fmt.Printf("failed to send object: %v", err)
+				continue
+			}
+			_, err = w.Write([]byte(strings.TrimSpace(msg)))
 			if err != nil {
 				return fmt.Errorf("failed to write to room: %v", err)
 			}

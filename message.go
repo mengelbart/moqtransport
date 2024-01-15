@@ -102,7 +102,6 @@ func newLoggingParserFactory(l *log.Logger) parserFactory {
 func (p *loggingParser) parse() (msg message, err error) {
 	mt, err := quicvarint.Read(p.reader)
 	if err != nil {
-		p.logger.Printf("got error when trying to find next message: %v", err)
 		return nil, err
 	}
 	p.logger.Printf("parsing message of type: %v (%v)", messageType(mt), mt)

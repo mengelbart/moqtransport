@@ -64,7 +64,11 @@ func (r *room) join(username string, p *moqtransport.Session) error {
 }
 
 func (r *room) subscribe(name string, t *moqtransport.SendTrack) error {
-	_, err := t.Write([]byte(r.participants.serialize()))
+	w, err := t.StartReliableObject()
+	if err != nil {
+		return err
+	}
+	_, err = w.Write([]byte(r.participants.serialize()))
 	if err != nil {
 		return err
 	}
@@ -91,7 +95,12 @@ func (r *room) broadcast() {
 				log.Println(err)
 			}
 			for _, s := range r.subscribers {
-				_, err = s.Write(data)
+				w, err := s.StartReliableObject()
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				_, err = w.Write(data)
 				if err != nil {
 					log.Println(err)
 				}

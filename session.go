@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"os"
 
@@ -178,10 +180,14 @@ func (s *Session) readMessages(r messageReader) {
 	for {
 		msg, err := msgParser.parse()
 		if err != nil {
-			panic("TODO")
+			if err == io.EOF {
+				return
+			}
+			log.Printf("TODO: %v", err)
+			return
 		}
 		if err = s.mr.handleMessage(msg); err != nil {
-			panic("TODO")
+			panic(fmt.Sprintf("TODO: %v", err))
 		}
 
 	}
