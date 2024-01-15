@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"io"
+	"sync"
 
 	"github.com/quic-go/quic-go"
 )
@@ -100,6 +101,7 @@ type SendTrack struct {
 	mode   sendMode
 	id     uint64
 	stream sendStream
+	lock   sync.Mutex
 }
 
 func newSendTrack(conn connection) *SendTrack {
