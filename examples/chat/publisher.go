@@ -47,7 +47,11 @@ func (p *publisher) broadcastMsg(msg []byte) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for _, s := range p.subscribers {
-		_, err := s.Write(msg)
+		w, err := s.StartReliableObject()
+		if err != nil {
+			log.Printf("failed to start new object: %v", err)
+		}
+		_, err = w.Write(msg)
 		if err != nil {
 			log.Printf("error sending message to subscriber: %v", err)
 			// TODO: Remove subscriber?

@@ -63,7 +63,12 @@ func handler() moqtransport.SessionHandlerFunc {
 			go func() {
 				ticker := time.NewTicker(time.Second)
 				for ts := range ticker.C {
-					if _, err := fmt.Fprintf(t, "%v", ts); err != nil {
+					w, err := t.StartCancellableObject()
+					if err != nil {
+						log.Println(err)
+						return
+					}
+					if _, err := fmt.Fprintf(w, "%v", ts); err != nil {
 						log.Println(err)
 						return
 					}

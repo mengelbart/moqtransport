@@ -82,7 +82,7 @@ func (s *messageRouter) handleMessage(msg message) error {
 	case *goAwayMessage:
 		panic("TODO")
 	default:
-		return errUnexpectedMessage
+		return fmt.Errorf("%w: %v", errUnexpectedMessage, m)
 	}
 	return err
 }
