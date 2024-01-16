@@ -29,7 +29,7 @@ func DialWebTransport(addr string, role Role) (*Session, error) {
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientSession(context.Background(), wc, role)
+	return newClientSession(context.Background(), wc, role, false)
 }
 
 func DialQUIC(addr string, role Role) (*Session, error) {
@@ -51,7 +51,7 @@ func DialQUICConn(conn quic.Connection, role Role) (*Session, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientSession(context.Background(), qc, role)
+	p, err := newClientSession(context.Background(), qc, role, true)
 	if err != nil {
 		if errors.Is(err, errUnsupportedVersion) {
 			_ = conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())

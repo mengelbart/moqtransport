@@ -6,8 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
-	"os"
+	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slices"
@@ -19,6 +18,7 @@ var (
 	errUnknownTrack          = errors.New("received object for unknown track")
 	errUnsupportedVersion    = errors.New("unsupported version")
 	errMissingRoleParameter  = errors.New("missing role parameter")
+	errInternal              = errors.New("internal error occured")
 )
 
 type parser interface {
@@ -55,14 +55,15 @@ type Session struct {
 	mr         *messageRouter
 
 	parserFactory parserFactory
+
+	logger *slog.Logger
 }
 
-func newClientSession(ctx context.Context, conn connection, clientRole Role) (*Session, error) {
-	logger := log.New(os.Stdout, "MOQ_CLIENT_SESSION: ", log.LstdFlags)
-	pf := newLoggingParserFactory(logger)
+func newClientSession(ctx context.Context, conn connection, clientRole Role, enableDatagrams bool) (*Session, error) {
+	pf := newParserFactory()
 	ctrlStream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening control stream failed: %w", err)
 	}
 	csm := &clientSetupMessage{
 		SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
@@ -88,12 +89,11 @@ func newClientSession(ctx context.Context, conn connection, clientRole Role) (*S
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
 	}
-	return newSession(ctx, conn, ctrlStream, pf)
+	return newSession(ctx, conn, ctrlStream, pf, enableDatagrams), nil
 }
 
-func newServerSession(ctx context.Context, conn connection) (*Session, error) {
-	logger := log.New(os.Stdout, "MOQ_SERVER_SESSION: ", log.LstdFlags)
-	pf := newLoggingParserFactory(logger)
+func newServerSession(ctx context.Context, conn connection, enableDatagrams bool) (*Session, error) {
+	pf := newParserFactory()
 	ctrlStream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -123,22 +123,25 @@ func newServerSession(ctx context.Context, conn connection) (*Session, error) {
 	if err := sendOnStream(ctrlStream, ssm); err != nil {
 		return nil, err
 	}
-	return newSession(ctx, conn, ctrlStream, pf)
+	return newSession(ctx, conn, ctrlStream, pf, enableDatagrams), nil
 }
 
-func newSession(ctx context.Context, conn connection, ctrlStream stream, pf parserFactory) (*Session, error) {
+func newSession(ctx context.Context, conn connection, ctrlStream stream, pf parserFactory, enableDatagrams bool) *Session {
 	s := &Session{
 		conn:          conn,
 		ctrlStream:    ctrlStream,
 		mr:            nil,
 		parserFactory: pf,
+		logger:        defaultLogger.With(componentKey, "MOQ_SESSION"),
 	}
 	mr := newMessageRouter(conn, s)
 	s.mr = mr
 	go s.acceptUnidirectionalStreams(ctx)
-	go s.acceptDatagrams(ctx)
+	if enableDatagrams {
+		go s.acceptDatagrams(ctx)
+	}
 	go s.readMessages(quicvarint.NewReader(ctrlStream))
-	return s, nil
+	return s
 }
 
 func sendOnStream(stream sendStream, msg message) error {
@@ -159,6 +162,7 @@ func (s *Session) acceptUnidirectionalStreams(ctx context.Context) {
 	for {
 		stream, err := s.conn.AcceptUniStream(ctx)
 		if err != nil {
+			s.logger.Error("failed to accept uni stream", "error", err)
 			return
 		}
 		go s.readMessages(quicvarint.NewReader(stream))
@@ -169,7 +173,8 @@ func (s *Session) acceptDatagrams(ctx context.Context) {
 	for {
 		dgram, err := s.conn.ReceiveMessage(ctx)
 		if err != nil {
-			panic(err)
+			s.logger.Error("failed to receive datagram", "error", err)
+			return
 		}
 		go s.readMessages(bytes.NewReader(dgram))
 	}
@@ -183,7 +188,7 @@ func (s *Session) readMessages(r messageReader) {
 			if err == io.EOF {
 				return
 			}
-			log.Printf("TODO: %v", err)
+			s.logger.Error("TODO", "error", err)
 			return
 		}
 		if err = s.mr.handleMessage(msg); err != nil {

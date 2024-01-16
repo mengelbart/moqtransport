@@ -255,7 +255,7 @@ func (s *messageRouter) subscribe(ctx context.Context, namespace, trackname, aut
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
 		if v.key().id != sm.key().id {
-			panic("TODO")
+			return nil, errInternal
 		}
 		t := newReceiveTrack()
 		s.receiveTrackLock.Lock()
@@ -299,10 +299,10 @@ func (s *messageRouter) announce(ctx context.Context, namespace string) error {
 	switch v := resp.(type) {
 	case *announceOkMessage:
 		if v.TrackNamespace != am.TrackNamespace {
-			panic("TODO")
+			return errInternal
 		}
 	case *announceErrorMessage:
-		return errors.New(v.ReasonPhrase) // TODO: Wrap error string?
+		return errors.New(v.ReasonPhrase)
 	default:
 		return errUnexpectedMessage
 	}

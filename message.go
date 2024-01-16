@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -86,15 +86,15 @@ type messageReader interface {
 }
 
 type loggingParser struct {
-	logger *log.Logger
+	logger *slog.Logger
 	reader messageReader
 }
 
-func newLoggingParserFactory(l *log.Logger) parserFactory {
-	return parserFactoryFn(func(r messageReader) parser {
+func newParserFactory() parserFactory {
+	return parserFactoryFn(func(mr messageReader) parser {
 		return &loggingParser{
-			logger: l,
-			reader: r,
+			logger: defaultLogger.With(componentKey, "MOQ_PARSER"),
+			reader: mr,
 		}
 	})
 }
@@ -104,7 +104,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 	if err != nil {
 		return nil, err
 	}
-	p.logger.Printf("parsing message of type: %v (%v)", messageType(mt), mt)
+	p.logger.Info("parsing message", "message_type", messageType(mt), "message_type_uint64", mt)
 	switch messageType(mt) {
 	case objectMessageLenType:
 		msg, err = p.parseObjectMessage(mt)
@@ -137,11 +137,11 @@ func (p *loggingParser) parse() (msg message, err error) {
 	case serverSetupMessageType:
 		msg, err = p.parseServerSetupMessage()
 	default:
-		p.logger.Printf("failed to parse message of type %v", mt)
+		p.logger.Info("failed to parse message", "message_type", mt)
 		return nil, errUnknownMessage
 	}
 	if err != nil {
-		p.logger.Printf("parsing message of type %v failed: %v", messageType(mt), err)
+		p.logger.Info("failed to parse message", "message_type", messageType(mt), "error", err)
 	}
 	return
 }
