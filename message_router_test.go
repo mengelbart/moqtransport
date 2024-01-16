@@ -19,7 +19,7 @@ func TestMessageRouter(t *testing.T) {
 		s.receiveTracks[0] = sink
 		object := &objectMessage{}
 		sink.EXPECT().push(object)
-		err := s.handleMessage(object)
+		err := s.handleObjectMessage(object)
 		assert.NoError(t, err)
 	})
 	t.Run("handle_client_setup", func(t *testing.T) {
@@ -37,9 +37,9 @@ func TestMessageRouter(t *testing.T) {
 				},
 			},
 		}
-		err := s.handleMessage(csm)
+		err := s.handleControlMessage(csm)
 		assert.Error(t, err)
-		assert.ErrorIs(t, err, errUnexpectedMessage)
+		assert.EqualError(t, err, "received unexpected message type on control stream")
 	})
 	t.Run("handle_subscribe_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -57,7 +57,7 @@ func TestMessageRouter(t *testing.T) {
 		})
 		s.controlMsgSender = c
 		go func() {
-			err := s.handleMessage(&subscribeRequestMessage{
+			err := s.handleControlMessage(&subscribeRequestMessage{
 				TrackNamespace: "namespace",
 				TrackName:      "track",
 				StartGroup:     Location{},
@@ -95,7 +95,7 @@ func TestMessageRouter(t *testing.T) {
 			close(done)
 		})
 		go func() {
-			err := s.handleMessage(&announceMessage{
+			err := s.handleControlMessage(&announceMessage{
 				TrackNamespace:         "namespace",
 				TrackRequestParameters: map[uint64]parameter{},
 			})
@@ -134,7 +134,7 @@ func TestMessageRouter(t *testing.T) {
 			},
 		}).Do(func(_ message) {
 			go func() {
-				err := s.handleMessage(&subscribeOkMessage{
+				err := s.handleControlMessage(&subscribeOkMessage{
 					TrackNamespace: "namespace",
 					TrackName:      "track",
 					TrackID:        17,
@@ -160,7 +160,7 @@ func TestMessageRouter(t *testing.T) {
 			TrackRequestParameters: map[uint64]parameter{},
 		}).Do(func(_ message) {
 			go func() {
-				err := s.handleMessage(&announceOkMessage{
+				err := s.handleControlMessage(&announceOkMessage{
 					TrackNamespace: "namespace",
 				})
 				assert.NoError(t, err)

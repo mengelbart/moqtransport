@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -29,7 +28,16 @@ func DialWebTransport(addr string, role Role) (*Session, error) {
 	wc := &webTransportConn{
 		sess: conn,
 	}
-	return newClientSession(context.Background(), wc, role, false)
+	session, err := newClientSession(context.Background(), wc, role, false)
+	if err != nil {
+		if me, ok := err.(*moqError); ok {
+			_ = conn.CloseWithError(webtransport.SessionErrorCode(me.code), me.message)
+		} else {
+			_ = conn.CloseWithError(genericErrorErrorCode, "internal server error")
+		}
+		return nil, err
+	}
+	return session, nil
 }
 
 func DialQUIC(addr string, role Role) (*Session, error) {
@@ -51,13 +59,14 @@ func DialQUICConn(conn quic.Connection, role Role) (*Session, error) {
 	qc := &quicConn{
 		conn: conn,
 	}
-	p, err := newClientSession(context.Background(), qc, role, true)
+	session, err := newClientSession(context.Background(), qc, role, true)
 	if err != nil {
-		if errors.Is(err, errUnsupportedVersion) {
-			_ = conn.CloseWithError(SessionTerminatedErrorCode, errUnsupportedVersion.Error())
+		if me, ok := err.(*moqError); ok {
+			_ = conn.CloseWithError(quic.ApplicationErrorCode(me.code), me.message)
+		} else {
+			_ = conn.CloseWithError(genericErrorErrorCode, "internal server error")
 		}
-		_ = conn.CloseWithError(GenericErrorCode, "internal server error")
 		return nil, err
 	}
-	return p, nil
+	return session, nil
 }

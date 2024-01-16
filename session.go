@@ -3,22 +3,12 @@ package moqtransport
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 
 	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/exp/slices"
-)
-
-var (
-	errUnexpectedMessage     = errors.New("got unexpected message")
-	errInvalidTrackNamespace = errors.New("got invalid tracknamespace")
-	errUnknownTrack          = errors.New("received object for unknown track")
-	errUnsupportedVersion    = errors.New("unsupported version")
-	errMissingRoleParameter  = errors.New("missing role parameter")
-	errInternal              = errors.New("internal error occured")
 )
 
 type parser interface {
@@ -75,16 +65,19 @@ func newClientSession(ctx context.Context, conn connection, clientRole Role, ena
 		},
 	}
 	if err = sendOnStream(ctrlStream, csm); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
 	}
 	msgParser := pf.new(quicvarint.NewReader(ctrlStream))
 	msg, err := msgParser.parse()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing message filed: %w", err)
 	}
 	ssm, ok := msg.(*serverSetupMessage)
 	if !ok {
-		return nil, errUnexpectedMessage
+		return nil, &moqError{
+			code:    protocolViolationErrorCode,
+			message: "received unexpected first message on control stream",
+		}
 	}
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
@@ -96,16 +89,19 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 	pf := newParserFactory()
 	ctrlStream, err := conn.AcceptStream(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("accepting control stream failed: %w", err)
 	}
 	p := pf.new(quicvarint.NewReader(ctrlStream))
 	m, err := p.parse()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing message filed: %w", err)
 	}
 	msg, ok := m.(*clientSetupMessage)
 	if !ok {
-		return nil, errUnexpectedMessage
+		return nil, &moqError{
+			code:    protocolViolationErrorCode,
+			message: "received unexpected first message on control stream",
+		}
 	}
 	// TODO: Algorithm to select best matching version
 	if !slices.Contains(msg.SupportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
@@ -113,7 +109,10 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 	}
 	_, ok = msg.SetupParameters[roleParameterKey]
 	if !ok {
-		return nil, errMissingRoleParameter
+		return nil, &moqError{
+			code:    genericErrorErrorCode,
+			message: "missing role parameter",
+		}
 	}
 	// TODO: save role parameter
 	ssm := &serverSetupMessage{
@@ -121,7 +120,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 		SetupParameters: map[uint64]parameter{},
 	}
 	if err := sendOnStream(ctrlStream, ssm); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
 	}
 	return newSession(ctx, conn, ctrlStream, pf, enableDatagrams), nil
 }
@@ -140,7 +139,7 @@ func newSession(ctx context.Context, conn connection, ctrlStream stream, pf pars
 	if enableDatagrams {
 		go s.acceptDatagrams(ctx)
 	}
-	go s.readMessages(quicvarint.NewReader(ctrlStream))
+	go s.readMessages(quicvarint.NewReader(ctrlStream), s.mr.handleControlMessage)
 	return s
 }
 
@@ -165,7 +164,7 @@ func (s *Session) acceptUnidirectionalStreams(ctx context.Context) {
 			s.logger.Error("failed to accept uni stream", "error", err)
 			return
 		}
-		go s.readMessages(quicvarint.NewReader(stream))
+		go s.readMessages(quicvarint.NewReader(stream), s.mr.handleObjectMessage)
 	}
 }
 
@@ -176,11 +175,13 @@ func (s *Session) acceptDatagrams(ctx context.Context) {
 			s.logger.Error("failed to receive datagram", "error", err)
 			return
 		}
-		go s.readMessages(bytes.NewReader(dgram))
+		go s.readMessages(bytes.NewReader(dgram), s.mr.handleObjectMessage)
 	}
 }
 
-func (s *Session) readMessages(r messageReader) {
+type messageHandler func(message) error
+
+func (s *Session) readMessages(r messageReader, handle messageHandler) {
 	msgParser := s.parserFactory.new(r)
 	for {
 		msg, err := msgParser.parse()
@@ -191,10 +192,9 @@ func (s *Session) readMessages(r messageReader) {
 			s.logger.Error("TODO", "error", err)
 			return
 		}
-		if err = s.mr.handleMessage(msg); err != nil {
+		if err = handle(msg); err != nil {
 			panic(fmt.Sprintf("TODO: %v", err))
 		}
-
 	}
 }
 

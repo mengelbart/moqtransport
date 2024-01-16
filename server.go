@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -155,23 +154,20 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 			return err
 		}
 		go func() {
-			if err := s.handleConn(conn); err != nil {
+			if err := s.handleConn(ctx, conn); err != nil {
 				s.logger.Error("handle conn failed", "error", err)
 			}
 		}()
 	}
 }
 
-func (s *Server) handleConn(conn connection) error {
-	session, err := newServerSession(context.TODO(), conn, false)
+func (s *Server) handleConn(ctx context.Context, conn connection) error {
+	session, err := newServerSession(ctx, conn, false)
 	if err != nil {
-		switch {
-		case errors.Is(err, errUnsupportedVersion):
-			_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-		case errors.Is(err, errMissingRoleParameter):
-			_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-		default:
-			_ = conn.CloseWithError(GenericErrorCode, "internal server error")
+		if me, ok := err.(*moqError); ok {
+			_ = conn.CloseWithError(uint64(me.code), me.message)
+		} else {
+			_ = conn.CloseWithError(genericErrorErrorCode, "internal server error")
 		}
 		return err
 	}
