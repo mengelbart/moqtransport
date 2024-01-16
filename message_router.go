@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 )
 
@@ -17,6 +18,8 @@ type controlMsgSender interface {
 
 type messageRouter struct {
 	ctx context.Context
+
+	logger *slog.Logger
 
 	conn connection
 
@@ -43,6 +46,7 @@ type transaction struct {
 func newMessageRouter(conn connection, cms controlMsgSender) *messageRouter {
 	return &messageRouter{
 		ctx:              context.Background(),
+		logger:           defaultLogger.With(componentKey, "MOQ_MESSAGE_ROUTER"),
 		conn:             conn,
 		controlMsgSender: cms,
 		receiveTrackLock: sync.RWMutex{},
@@ -56,11 +60,14 @@ func newMessageRouter(conn connection, cms controlMsgSender) *messageRouter {
 	}
 }
 
-func (s *messageRouter) handleMessage(msg message) error {
+func (s *messageRouter) handleControlMessage(msg message) error {
 	var err error
 	switch m := msg.(type) {
 	case *objectMessage:
-		err = s.handleObjectMessage(m)
+		return &moqError{
+			code:    protocolViolationErrorCode,
+			message: "received object message on control stream",
+		}
 	case *subscribeRequestMessage:
 		err = s.controlMsgSender.send(s.handleSubscribeRequest(m))
 	case *subscribeOkMessage:
@@ -82,7 +89,10 @@ func (s *messageRouter) handleMessage(msg message) error {
 	case *goAwayMessage:
 		panic("TODO")
 	default:
-		return fmt.Errorf("%w: %v", errUnexpectedMessage, m)
+		return &moqError{
+			code:    genericErrorErrorCode,
+			message: "received unexpected message type on control stream",
+		}
 	}
 	return err
 }
@@ -98,7 +108,10 @@ func (s *messageRouter) handleTransactionResponse(msg keyedMessage) error {
 		}
 		return nil
 	}
-	return errUnexpectedMessage
+	return &moqError{
+		code:    genericErrorErrorCode,
+		message: "received transaction response message to an unknown transaction",
+	}
 }
 
 func (s *messageRouter) handleSubscribeRequest(msg *subscribeRequestMessage) message {
@@ -185,14 +198,22 @@ func (s *messageRouter) handleAnnounceMessage(msg *announceMessage) message {
 	}
 }
 
-func (s *messageRouter) handleObjectMessage(o *objectMessage) error {
+func (s *messageRouter) handleObjectMessage(m message) error {
+	o, ok := m.(*objectMessage)
+	if !ok {
+		return &moqError{
+			code:    protocolViolationErrorCode,
+			message: "received unexpected control message on object stream",
+		}
+	}
 	s.receiveTrackLock.RLock()
 	t, ok := s.receiveTracks[o.TrackID]
 	s.receiveTrackLock.RUnlock()
 	if ok {
 		return t.push(o)
 	}
-	return errUnknownTrack
+	s.logger.Warn("dropping object message for unknown track")
+	return nil
 }
 
 func (s *messageRouter) readSubscription(ctx context.Context) (*Subscription, error) {
@@ -255,7 +276,11 @@ func (s *messageRouter) subscribe(ctx context.Context, namespace, trackname, aut
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
 		if v.key().id != sm.key().id {
-			return nil, errInternal
+			s.logger.Error("internal error: received response message for wrong subscribe transaction key.", "expected_key_id", sm.key().id, "repsonse_key_id", v.key().id)
+			return nil, &moqError{
+				code:    genericErrorErrorCode,
+				message: "internal error",
+			}
 		}
 		t := newReceiveTrack()
 		s.receiveTrackLock.Lock()
@@ -266,12 +291,15 @@ func (s *messageRouter) subscribe(ctx context.Context, namespace, trackname, aut
 	case *subscribeErrorMessage:
 		return nil, errors.New(v.ReasonPhrase)
 	}
-	return nil, errUnexpectedMessage
+	return nil, &moqError{
+		code:    genericErrorErrorCode,
+		message: "received unexpected response message type to subscribeRequestMessage",
+	}
 }
 
 func (s *messageRouter) announce(ctx context.Context, namespace string) error {
 	if len(namespace) == 0 {
-		return errInvalidTrackNamespace
+		return errors.New("invalid track namespace")
 	}
 	am := &announceMessage{
 		TrackNamespace:         namespace,
@@ -299,13 +327,18 @@ func (s *messageRouter) announce(ctx context.Context, namespace string) error {
 	switch v := resp.(type) {
 	case *announceOkMessage:
 		if v.TrackNamespace != am.TrackNamespace {
-			return errInternal
+			s.logger.Error("internal error: received response message for wrong announce transaction namespace.", "expected_namespace", am.TrackNamespace, "response_namespace", v.TrackNamespace)
+			return &moqError{
+				code:    genericErrorErrorCode,
+				message: "internal error",
+			}
 		}
+		return nil
 	case *announceErrorMessage:
 		return errors.New(v.ReasonPhrase)
-	default:
-		return errUnexpectedMessage
 	}
-	return nil
-
+	return &moqError{
+		code:    genericErrorErrorCode,
+		message: "received unexpected response message type to announceMessage",
+	}
 }
