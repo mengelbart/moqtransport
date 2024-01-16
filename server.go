@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -26,6 +26,7 @@ type SessionHandler interface {
 type Server struct {
 	Handler   SessionHandler
 	TLSConfig *tls.Config
+	logger    *slog.Logger
 }
 
 type listener interface {
@@ -64,6 +65,9 @@ func (l *wtListener) Accept(ctx context.Context) (connection, error) {
 }
 
 func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
+	if s.logger == nil {
+		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+	}
 	ws := &webtransport.Server{
 		H3: http3.Server{
 			Addr:      addr,
@@ -79,10 +83,10 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 		ch: make(chan *webtransport.Session),
 	}
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("upgrading to WebTransport")
+		s.logger.Info("upgrading to WebTransport")
 		conn, err := ws.Upgrade(w, r)
 		if err != nil {
-			log.Printf("upgrading failed: %v", err)
+			s.logger.Error("upgrading failed", "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -118,6 +122,9 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 }
 
 func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
+	if s.logger == nil {
+		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+	}
 	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
 		MaxIdleTimeout:  60 * time.Second,
 		EnableDatagrams: true,
@@ -129,6 +136,9 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 }
 
 func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener) error {
+	if s.logger == nil {
+		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+	}
 	l := &quicListener{
 		ql: listener,
 	}
@@ -136,25 +146,37 @@ func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener
 }
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
+	if s.logger == nil {
+		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+	}
 	for {
 		conn, err := l.Accept(ctx)
 		if err != nil {
 			return err
 		}
-		session, err := newServerSession(ctx, conn)
-		if err != nil {
-			switch {
-			case errors.Is(err, errUnsupportedVersion):
-				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			case errors.Is(err, errMissingRoleParameter):
-				_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
-			default:
-				_ = conn.CloseWithError(GenericErrorCode, "internal server error")
+		go func() {
+			if err := s.handleConn(conn); err != nil {
+				s.logger.Error("handle conn failed", "error", err)
 			}
-			continue
-		}
-		if s.Handler != nil {
-			s.Handler.Handle(session)
-		}
+		}()
 	}
+}
+
+func (s *Server) handleConn(conn connection) error {
+	session, err := newServerSession(context.TODO(), conn, false)
+	if err != nil {
+		switch {
+		case errors.Is(err, errUnsupportedVersion):
+			_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+		case errors.Is(err, errMissingRoleParameter):
+			_ = conn.CloseWithError(SessionTerminatedErrorCode, err.Error())
+		default:
+			_ = conn.CloseWithError(GenericErrorCode, "internal server error")
+		}
+		return err
+	}
+	if s.Handler != nil {
+		s.Handler.Handle(session)
+	}
+	return nil
 }
