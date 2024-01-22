@@ -20,8 +20,5 @@ type Parser = parser
 //go:generate sh -c "go run go.uber.org/mock/mockgen -build_flags=\"-tags=gomock\" -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_parser_factory_test.go github.com/mengelbart/moqtransport ParserFactory"
 type ParserFactory = parserFactory
 
-//go:generate sh -c "go run go.uber.org/mock/mockgen -build_flags=\"-tags=gomock\" -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_sink_test.go github.com/mengelbart/moqtransport Sink"
-type Sink = sink
-
 //go:generate sh -c "go run go.uber.org/mock/mockgen -build_flags=\"-tags=gomock\" -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_control_msg_sender_test.go github.com/mengelbart/moqtransport ControlMsgSender"
 type ControlMsgSender = controlMsgSender

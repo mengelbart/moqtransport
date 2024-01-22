@@ -1,8 +1,8 @@
 package moqtransport
 
 type Announcement struct {
-	responseCh chan error
-	closeCh    chan struct{}
+	errorCh chan error
+	closeCh chan struct{}
 
 	namespace  string
 	parameters parameters
@@ -11,14 +11,14 @@ type Announcement struct {
 func (a *Announcement) Accept() {
 	select {
 	case <-a.closeCh:
-	case a.responseCh <- nil:
+	case a.errorCh <- nil:
 	}
 }
 
 func (a *Announcement) Reject(err error) {
 	select {
 	case <-a.closeCh:
-	case a.responseCh <- err:
+	case a.errorCh <- err:
 	}
 }
 

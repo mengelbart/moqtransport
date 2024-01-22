@@ -16,8 +16,8 @@ import (
 
 type joinedRooms struct {
 	trackID uint64
-	st      *moqtransport.SendTrack
-	rts     []*moqtransport.ReceiveTrack
+	st      *moqtransport.SendSubscription
+	rts     []*moqtransport.ReceiveSubscription
 }
 
 type Client struct {
@@ -82,14 +82,14 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 				s.Reject(errors.New("invalid subscribe request"))
 				continue
 			}
-			s.SetTrackID(c.rooms[id].trackID)
-			c.rooms[id].st = s.Accept()
+			s.Accept()
+			c.rooms[id].st = s
 		}
 	}()
 	return c, nil
 }
 
-func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqtransport.ReceiveTrack) error {
+func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqtransport.ReceiveSubscription) error {
 	buf := make([]byte, 64_000)
 	for {
 		n, err := catalogTrack.Read(buf)
@@ -104,7 +104,7 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 			if p == username {
 				continue
 			}
-			t, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), p, username)
+			t, err := c.session.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v", roomID), p, username)
 			if err != nil {
 				return err
 			}
@@ -130,12 +130,12 @@ func (c *Client) joinRoom(roomID, username string) error {
 	c.rooms[roomID] = &joinedRooms{
 		trackID: c.nextTrackID,
 		st:      nil,
-		rts:     []*moqtransport.ReceiveTrack{},
+		rts:     []*moqtransport.ReceiveSubscription{},
 	}
 	if err := c.session.Announce(context.Background(), fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)); err != nil {
 		return err
 	}
-	catalogTrack, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
+	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
 	if err != nil {
 		return err
 	}
@@ -154,7 +154,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 		if p == username {
 			continue
 		}
-		t, err := c.session.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", roomID), p, username)
+		t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v", roomID), p, username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}
@@ -203,7 +203,7 @@ func (c *Client) Run() error {
 				fmt.Println("invalid msg command, usage: 'msg <room id> <msg>'")
 				continue
 			}
-			w, err := c.rooms[fields[1]].st.StartReliableObject()
+			w, err := c.rooms[fields[1]].st.NewObjectStream(0, 0, 0) // TODO
 			if err != nil {
 				fmt.Printf("failed to send object: %v", err)
 				continue
