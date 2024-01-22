@@ -2,12 +2,17 @@ package moqtransport
 
 import (
 	"log/slog"
+	"os"
 )
 
 const componentKey = "component"
 
 func init() {
-	defaultLogger = slog.Default()
+	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		Level:     nil,
+	})
+	defaultLogger = slog.New(h)
 }
 
 var defaultLogger *slog.Logger
