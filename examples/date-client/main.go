@@ -46,13 +46,13 @@ func run(addr string, wt bool) error {
 	}
 
 	log.Println("subscribing")
-	rt, err := p.Subscribe(context.Background(), "clock", "second", "")
+	rs, err := p.Subscribe(context.Background(), 0, 0, "clock", "second", "")
 	if err != nil {
 		panic(err)
 	}
 	buf := make([]byte, 64_000)
 	for {
-		n, err := rt.Read(buf)
+		n, err := rs.Read(buf)
 		if err != nil {
 			panic(err)
 		}

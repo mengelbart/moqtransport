@@ -8,17 +8,17 @@ import (
 )
 
 type publisher struct {
-	track       *moqtransport.ReceiveTrack
-	subscribers map[string]*moqtransport.SendTrack
+	track       *moqtransport.ReceiveSubscription
+	subscribers map[string]*moqtransport.SendSubscription
 	lock        sync.Mutex
 	closeCh     chan struct{}
 	closeWG     sync.WaitGroup
 }
 
-func newPublisher(track *moqtransport.ReceiveTrack) *publisher {
+func newPublisher(track *moqtransport.ReceiveSubscription) *publisher {
 	p := &publisher{
 		track:       track,
-		subscribers: map[string]*moqtransport.SendTrack{},
+		subscribers: map[string]*moqtransport.SendSubscription{},
 		lock:        sync.Mutex{},
 		closeCh:     make(chan struct{}),
 		closeWG:     sync.WaitGroup{},
@@ -32,14 +32,15 @@ func (p *publisher) close() {
 	p.closeWG.Wait()
 }
 
-func (p *publisher) subscribe(username string, sub *moqtransport.Subscription) {
+func (p *publisher) subscribe(username string, sub *moqtransport.SendSubscription) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	_, ok := p.subscribers[username]
 	if ok {
 		sub.Reject(errDuplicateSubscriber)
 	}
-	p.subscribers[username] = sub.Accept()
+	sub.Accept()
+	p.subscribers[username] = sub
 }
 
 func (p *publisher) broadcastMsg(msg []byte) error {
@@ -47,7 +48,7 @@ func (p *publisher) broadcastMsg(msg []byte) error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for _, s := range p.subscribers {
-		w, err := s.StartReliableObject()
+		w, err := s.NewObjectStream(0, 0, 0) //TODO
 		if err != nil {
 			log.Printf("failed to start new object: %v", err)
 		}

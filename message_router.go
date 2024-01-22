@@ -8,72 +8,82 @@ import (
 	"sync"
 )
 
-type sink interface {
-	push(*objectMessage) error
-}
-
 type controlMsgSender interface {
 	send(message) error
 }
 
 type messageRouter struct {
-	ctx context.Context
-
-	logger *slog.Logger
-
-	conn connection
-
+	ctx              context.Context
+	logger           *slog.Logger
+	conn             connection
 	controlMsgSender controlMsgSender
 
-	receiveTrackLock sync.RWMutex
-	receiveTracks    map[uint64]sink
-
-	sendTrackLock sync.RWMutex
-	sendTracks    map[string]*SendTrack
-
-	subscriptionCh chan *Subscription
+	subscriptionCh chan *SendSubscription
 	announcementCh chan *Announcement
 
-	transactionsLock sync.RWMutex
-	transactions     map[messageKey]*transaction
+	// NEW
+	// incoming subscription (i.e. has a sendTrack)
+	activeSendSubscriptionsLock sync.RWMutex
+	activeSendSubscriptions     map[uint64]*SendSubscription
+
+	activeReceiveSubscriptionsLock sync.RWMutex
+	activeReceiveSubscriptions     map[uint64]*ReceiveSubscription
+
+	// outgoing subscriptions (i.e. has a receiveTrack)
+	pendingSubscriptionsLock sync.RWMutex
+	pendingSubscriptions     map[uint64]*ReceiveSubscription
+
+	pendingAnnouncementsLock sync.RWMutex
+	pendingAnnouncements     map[string]*announcement
 }
 
-type transaction struct {
-	keyedMessage
-	responseCh chan message
+type announcement struct {
+	responseCh chan trackNamespacer
+}
+
+type subscribeIDer interface {
+	message
+	subscribeID() uint64
+}
+
+type trackNamespacer interface {
+	message
+	trackNamespace() string
 }
 
 func newMessageRouter(conn connection, cms controlMsgSender) *messageRouter {
 	return &messageRouter{
-		ctx:              context.Background(),
-		logger:           defaultLogger.With(componentKey, "MOQ_MESSAGE_ROUTER"),
-		conn:             conn,
-		controlMsgSender: cms,
-		receiveTrackLock: sync.RWMutex{},
-		receiveTracks:    map[uint64]sink{},
-		sendTrackLock:    sync.RWMutex{},
-		sendTracks:       map[string]*SendTrack{},
-		subscriptionCh:   make(chan *Subscription),
-		announcementCh:   make(chan *Announcement),
-		transactionsLock: sync.RWMutex{},
-		transactions:     map[messageKey]*transaction{},
+		ctx:                            context.Background(),
+		logger:                         defaultLogger.With(componentKey, "MOQ_MESSAGE_ROUTER"),
+		conn:                           conn,
+		controlMsgSender:               cms,
+		subscriptionCh:                 make(chan *SendSubscription),
+		announcementCh:                 make(chan *Announcement),
+		activeSendSubscriptionsLock:    sync.RWMutex{},
+		activeSendSubscriptions:        map[uint64]*SendSubscription{},
+		activeReceiveSubscriptionsLock: sync.RWMutex{},
+		activeReceiveSubscriptions:     map[uint64]*ReceiveSubscription{},
+		pendingSubscriptionsLock:       sync.RWMutex{},
+		pendingSubscriptions:           map[uint64]*ReceiveSubscription{},
+		pendingAnnouncementsLock:       sync.RWMutex{},
+		pendingAnnouncements:           map[string]*announcement{},
 	}
 }
 
 func (s *messageRouter) handleControlMessage(msg message) error {
 	var err error
 	switch m := msg.(type) {
-	case *objectMessage:
+	case *objectStreamMessage:
 		return &moqError{
 			code:    protocolViolationErrorCode,
 			message: "received object message on control stream",
 		}
-	case *subscribeRequestMessage:
+	case *subscribeMessage:
 		err = s.controlMsgSender.send(s.handleSubscribeRequest(m))
 	case *subscribeOkMessage:
-		err = s.handleTransactionResponse(m)
+		err = s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
-		err = s.handleTransactionResponse(m)
+		err = s.handleSubscriptionResponse(m)
 	case *subscribeFinMessage:
 		panic("TODO")
 	case *subscribeRstMessage:
@@ -83,9 +93,9 @@ func (s *messageRouter) handleControlMessage(msg message) error {
 	case *announceMessage:
 		err = s.controlMsgSender.send(s.handleAnnounceMessage(m))
 	case *announceOkMessage:
-		err = s.handleTransactionResponse(m)
+		err = s.handleAnnouncementResponse(m)
 	case *announceErrorMessage:
-		err = s.handleTransactionResponse(m)
+		err = s.handleAnnouncementResponse(m)
 	case *goAwayMessage:
 		panic("TODO")
 	default:
@@ -97,30 +107,53 @@ func (s *messageRouter) handleControlMessage(msg message) error {
 	return err
 }
 
-func (s *messageRouter) handleTransactionResponse(msg keyedMessage) error {
-	s.transactionsLock.RLock()
-	t, ok := s.transactions[msg.key()]
-	s.transactionsLock.RUnlock()
-	if ok {
-		select {
-		case t.responseCh <- msg:
-		case <-s.ctx.Done():
+func (s *messageRouter) handleSubscriptionResponse(msg subscribeIDer) error {
+	s.pendingSubscriptionsLock.RLock()
+	sub, ok := s.pendingSubscriptions[msg.subscribeID()]
+	s.pendingSubscriptionsLock.RUnlock()
+	if !ok {
+		return &moqError{
+			code:    genericErrorErrorCode,
+			message: "received subscription response message to an unknown subscription",
 		}
-		return nil
 	}
-	return &moqError{
-		code:    genericErrorErrorCode,
-		message: "received transaction response message to an unknown transaction",
+	// TODO: Run a goroutine to avoid blocking here?
+	select {
+	case sub.responseCh <- msg:
+	case <-s.ctx.Done():
+		return s.ctx.Err()
 	}
+	return nil
 }
 
-func (s *messageRouter) handleSubscribeRequest(msg *subscribeRequestMessage) message {
-	sub := &Subscription{
+func (s *messageRouter) handleAnnouncementResponse(msg trackNamespacer) error {
+	s.pendingAnnouncementsLock.RLock()
+	a, ok := s.pendingAnnouncements[msg.trackNamespace()]
+	s.pendingAnnouncementsLock.RUnlock()
+	if !ok {
+		return &moqError{
+			code:    genericErrorErrorCode,
+			message: "received announcement response message to an unknown announcement",
+		}
+	}
+	// TODO: Run a goroutine to avoid blocking here?
+	select {
+	case a.responseCh <- msg:
+	case <-s.ctx.Done():
+		return s.ctx.Err()
+	}
+	return nil
+}
+
+func (s *messageRouter) handleSubscribeRequest(msg *subscribeMessage) message {
+	sub := &SendSubscription{
 		lock:        sync.RWMutex{},
-		track:       newSendTrack(s.conn),
 		responseCh:  make(chan error),
 		closeCh:     make(chan struct{}),
 		expires:     0,
+		conn:        s.conn,
+		subscribeID: msg.SubscribeID,
+		trackAlias:  msg.TrackAlias,
 		namespace:   msg.TrackNamespace,
 		trackname:   msg.TrackName,
 		startGroup:  msg.StartGroup,
@@ -132,10 +165,10 @@ func (s *messageRouter) handleSubscribeRequest(msg *subscribeRequestMessage) mes
 	select {
 	case <-s.ctx.Done():
 		return &subscribeErrorMessage{
-			TrackNamespace: sub.namespace,
-			TrackName:      sub.trackname,
-			ErrorCode:      0, // TODO: set correct error code
-			ReasonPhrase:   "session closed",
+			SubscribeID:  msg.SubscribeID,
+			ErrorCode:    0,
+			ReasonPhrase: "session closed",
+			TrackAlias:   msg.TrackAlias,
 		}
 	case s.subscriptionCh <- sub:
 	}
@@ -145,29 +178,22 @@ func (s *messageRouter) handleSubscribeRequest(msg *subscribeRequestMessage) mes
 	case err := <-sub.responseCh:
 		if err != nil {
 			return &subscribeErrorMessage{
-				TrackNamespace: sub.namespace,
-				TrackName:      sub.trackname,
-				ErrorCode:      0, // TODO: Implement a custom error type including the code?
-				ReasonPhrase:   fmt.Sprintf("subscription rejected: %v", err),
+				SubscribeID:  msg.SubscribeID,
+				ErrorCode:    0,
+				ReasonPhrase: fmt.Sprintf("subscription rejected: %v", err),
+				TrackAlias:   msg.TrackAlias,
 			}
 		}
 	}
-	sub.lock.RLock()
-	defer sub.lock.RUnlock()
-	s.sendTrackLock.Lock()
-	defer s.sendTrackLock.Unlock()
-	s.sendTracks[msg.key().id] = sub.track
 	return &subscribeOkMessage{
-		TrackNamespace: sub.namespace,
-		TrackName:      sub.trackname,
-		TrackID:        sub.TrackID(),
-		Expires:        sub.expires,
+		SubscribeID: msg.SubscribeID,
+		Expires:     sub.expires,
 	}
 }
 
 func (s *messageRouter) handleAnnounceMessage(msg *announceMessage) message {
 	a := &Announcement{
-		responseCh: make(chan error),
+		errorCh:    make(chan error),
 		closeCh:    make(chan struct{}),
 		namespace:  msg.TrackNamespace,
 		parameters: msg.TrackRequestParameters,
@@ -184,7 +210,7 @@ func (s *messageRouter) handleAnnounceMessage(msg *announceMessage) message {
 	select {
 	case <-s.ctx.Done():
 		close(a.closeCh)
-	case err := <-a.responseCh:
+	case err := <-a.errorCh:
 		if err != nil {
 			return &announceErrorMessage{
 				TrackNamespace: a.namespace,
@@ -199,24 +225,25 @@ func (s *messageRouter) handleAnnounceMessage(msg *announceMessage) message {
 }
 
 func (s *messageRouter) handleObjectMessage(m message) error {
-	o, ok := m.(*objectMessage)
+	o, ok := m.(*objectStreamMessage)
 	if !ok {
 		return &moqError{
 			code:    protocolViolationErrorCode,
 			message: "received unexpected control message on object stream",
 		}
 	}
-	s.receiveTrackLock.RLock()
-	t, ok := s.receiveTracks[o.TrackID]
-	s.receiveTrackLock.RUnlock()
+	s.activeReceiveSubscriptionsLock.RLock()
+	sub, ok := s.activeReceiveSubscriptions[o.SubscribeID]
+	s.activeReceiveSubscriptionsLock.RUnlock()
 	if ok {
-		return t.push(o)
+		_, err := sub.push(o)
+		return err
 	}
 	s.logger.Warn("dropping object message for unknown track")
 	return nil
 }
 
-func (s *messageRouter) readSubscription(ctx context.Context) (*Subscription, error) {
+func (s *messageRouter) readSubscription(ctx context.Context) (*SendSubscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -238,8 +265,10 @@ func (s *messageRouter) readAnnouncement(ctx context.Context) (*Announcement, er
 	}
 }
 
-func (s *messageRouter) subscribe(ctx context.Context, namespace, trackname, auth string) (*ReceiveTrack, error) {
-	sm := &subscribeRequestMessage{
+func (s *messageRouter) subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
+	sm := &subscribeMessage{
+		SubscribeID:    subscribeID,
+		TrackAlias:     trackAlias,
 		TrackNamespace: namespace,
 		TrackName:      trackname,
 		StartGroup:     Location{},
@@ -254,40 +283,34 @@ func (s *messageRouter) subscribe(ctx context.Context, namespace, trackname, aut
 			v: auth,
 		}
 	}
-	responseCh := make(chan message)
-	t := &transaction{
-		keyedMessage: sm,
-		responseCh:   responseCh,
-	}
-	s.transactionsLock.Lock()
-	s.transactions[sm.key()] = t
-	s.transactionsLock.Unlock()
+	sub := newReceiveSubscription()
+	s.pendingSubscriptionsLock.Lock()
+	s.pendingSubscriptions[sm.subscribeID()] = sub
+	s.pendingSubscriptionsLock.Unlock()
 	if err := s.controlMsgSender.send(sm); err != nil {
 		return nil, err
 	}
-	var resp message
+	var resp subscribeIDer
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-s.ctx.Done():
 		return nil, s.ctx.Err()
-	case resp = <-responseCh:
+	case resp = <-sub.responseCh:
+	}
+	if resp.subscribeID() != sm.SubscribeID {
+		s.logger.Error("internal error: received response message for wrong subscription ID.", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
+		return nil, &moqError{
+			code:    genericErrorErrorCode,
+			message: "internal error",
+		}
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		if v.key().id != sm.key().id {
-			s.logger.Error("internal error: received response message for wrong subscribe transaction key.", "expected_key_id", sm.key().id, "repsonse_key_id", v.key().id)
-			return nil, &moqError{
-				code:    genericErrorErrorCode,
-				message: "internal error",
-			}
-		}
-		t := newReceiveTrack()
-		s.receiveTrackLock.Lock()
-		s.receiveTracks[v.TrackID] = t
-		s.receiveTrackLock.Unlock()
-		return t, nil
-
+		s.activeReceiveSubscriptionsLock.Lock()
+		s.activeReceiveSubscriptions[v.SubscribeID] = sub
+		s.activeReceiveSubscriptionsLock.Unlock()
+		return sub, nil
 	case *subscribeErrorMessage:
 		return nil, errors.New(v.ReasonPhrase)
 	}
@@ -305,18 +328,17 @@ func (s *messageRouter) announce(ctx context.Context, namespace string) error {
 		TrackNamespace:         namespace,
 		TrackRequestParameters: map[uint64]parameter{},
 	}
-	responseCh := make(chan message)
-	t := &transaction{
-		keyedMessage: am,
-		responseCh:   responseCh,
+	responseCh := make(chan trackNamespacer)
+	t := &announcement{
+		responseCh: responseCh,
 	}
-	s.transactionsLock.Lock()
-	s.transactions[am.key()] = t
-	s.transactionsLock.Unlock()
+	s.pendingAnnouncementsLock.Lock()
+	s.pendingAnnouncements[am.TrackNamespace] = t
+	s.pendingAnnouncementsLock.Unlock()
 	if err := s.controlMsgSender.send(am); err != nil {
 		return err
 	}
-	var resp message
+	var resp trackNamespacer
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -324,15 +346,15 @@ func (s *messageRouter) announce(ctx context.Context, namespace string) error {
 		return s.ctx.Err()
 	case resp = <-responseCh:
 	}
+	if resp.trackNamespace() != am.TrackNamespace {
+		s.logger.Error("internal error: received response message for wrong announce track namespace.", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
+		return &moqError{
+			code:    genericErrorErrorCode,
+			message: "internal error",
+		}
+	}
 	switch v := resp.(type) {
 	case *announceOkMessage:
-		if v.TrackNamespace != am.TrackNamespace {
-			s.logger.Error("internal error: received response message for wrong announce transaction namespace.", "expected_namespace", am.TrackNamespace, "response_namespace", v.TrackNamespace)
-			return &moqError{
-				code:    genericErrorErrorCode,
-				message: "internal error",
-			}
-		}
 		return nil
 	case *announceErrorMessage:
 		return errors.New(v.ReasonPhrase)

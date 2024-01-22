@@ -11,99 +11,54 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestObjectMessageAppend(t *testing.T) {
+func TestObjectStreamMessageAppend(t *testing.T) {
 	cases := []struct {
-		om     objectMessage
+		om     objectStreamMessage
 		buf    []byte
 		expect []byte
 	}{
 		{
-			om: objectMessage{
-				HasLength:       true,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
+			om: objectStreamMessage{
+				SubscribeID:     0,
+				TrackAlias:      0,
+				GroupID:         0,
+				ObjectID:        0,
 				ObjectSendOrder: 0,
 				ObjectPayload:   nil,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(objectMessageLenType), 0x00, 0x00, 0x00, 0x00, 0x00,
+				byte(objectStreamMessageType), 0x00, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
-			om: objectMessage{
-				HasLength:       true,
-				TrackID:         1,
-				GroupSequence:   2,
-				ObjectSequence:  3,
-				ObjectSendOrder: 4,
+			om: objectStreamMessage{
+				SubscribeID:     1,
+				TrackAlias:      2,
+				GroupID:         3,
+				ObjectID:        4,
+				ObjectSendOrder: 5,
 				ObjectPayload:   []byte{0x01, 0x02, 0x03},
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(objectMessageLenType), 0x01, 0x02, 0x03, 0x04,
-				0x03, 0x01, 0x02, 0x03,
+				byte(objectStreamMessageType), 0x01, 0x02, 0x03, 0x04, 0x05,
+				0x01, 0x02, 0x03,
 			},
 		},
 		{
-			om: objectMessage{
-				HasLength:       true,
-				TrackID:         1,
-				GroupSequence:   2,
-				ObjectSequence:  3,
-				ObjectSendOrder: 4,
+			om: objectStreamMessage{
+				SubscribeID:     1,
+				TrackAlias:      2,
+				GroupID:         3,
+				ObjectID:        4,
+				ObjectSendOrder: 5,
 				ObjectPayload:   []byte{0x01, 0x02, 0x03},
 			},
 			buf: []byte{0x01, 0x02, 0x03},
 			expect: []byte{
 				0x01, 0x02, 0x03,
-				byte(objectMessageLenType), 0x01, 0x02, 0x03, 0x04,
-				0x03, 0x01, 0x02, 0x03,
-			},
-		},
-		{
-			om: objectMessage{
-				HasLength:       false,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   nil,
-			},
-			buf: []byte{},
-			expect: []byte{
-				byte(objectMessageNoLenType), 0x00, 0x00, 0x00, 0x00,
-			},
-		},
-		{
-			om: objectMessage{
-				HasLength:       false,
-				TrackID:         1,
-				GroupSequence:   2,
-				ObjectSequence:  3,
-				ObjectSendOrder: 4,
-				ObjectPayload:   []byte{0x01, 0x02, 0x03},
-			},
-			buf: []byte{},
-			expect: []byte{
-				byte(objectMessageNoLenType), 0x01, 0x02, 0x03, 0x04,
-				0x01, 0x02, 0x03,
-			},
-		},
-		{
-			om: objectMessage{
-				HasLength:       false,
-				TrackID:         1,
-				GroupSequence:   2,
-				ObjectSequence:  3,
-				ObjectSendOrder: 4,
-				ObjectPayload:   []byte{0x01, 0x02, 0x03},
-			},
-			buf: []byte{0x01, 0x02, 0x03},
-			expect: []byte{
-				0x01, 0x02, 0x03,
-				byte(objectMessageNoLenType), 0x01, 0x02, 0x03, 0x04,
+				byte(objectStreamMessageType), 0x01, 0x02, 0x03, 0x04, 0x05,
 				0x01, 0x02, 0x03,
 			},
 		},
@@ -119,16 +74,9 @@ func TestObjectMessageAppend(t *testing.T) {
 func TestParseObjectMessage(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		msgTyp uint64
-		expect *objectMessage
+		expect *objectStreamMessage
 		err    error
 	}{
-		{
-			r:      bytes.NewReader([]byte{}),
-			msgTyp: 17,
-			expect: nil,
-			err:    errInvalidMessageEncoding,
-		},
 		{
 			r:      nil,
 			expect: nil,
@@ -150,110 +98,36 @@ func TestParseObjectMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
-			msgTyp: 0,
-			expect: &objectMessage{
-				HasLength:       true,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
+			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
+			expect: &objectStreamMessage{
+				SubscribeID:     0,
+				TrackAlias:      0,
+				GroupID:         0,
+				ObjectID:        0,
 				ObjectSendOrder: 0,
 				ObjectPayload:   []byte{},
 			},
 			err: nil,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
-			msgTyp: 0,
-			expect: nil,
-			err:    io.ErrUnexpectedEOF,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
-			msgTyp: 0,
-			expect: &objectMessage{
-				HasLength:       true,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
+			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
+			expect: &objectStreamMessage{
+				SubscribeID:     0,
+				TrackAlias:      0,
+				GroupID:         0,
+				ObjectID:        0,
 				ObjectSendOrder: 0,
 				ObjectPayload:   []byte{},
 			},
 			err: nil,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
-			msgTyp: 0,
-			expect: &objectMessage{
-				HasLength:       true,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   []byte{},
-			},
-			err: nil,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x04, 0x0a, 0x0b, 0x0c, 0x0d}),
-			msgTyp: 0,
-			expect: &objectMessage{
-				HasLength:       true,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			},
-			err: nil,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00}),
-			msgTyp: 2,
-			expect: &objectMessage{
-				HasLength:       false,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   []byte{},
-			},
-			err: nil,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
-			msgTyp: 2,
-			expect: &objectMessage{
-				HasLength:       false,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			},
-			err: nil,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00}),
-			msgTyp: 2,
-			expect: &objectMessage{
-				HasLength:       false,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
-				ObjectSendOrder: 0,
-				ObjectPayload:   []byte{},
-			},
-			err: nil,
-		},
-		{
-			r:      bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
-			msgTyp: 2,
-			expect: &objectMessage{
-				HasLength:       false,
-				TrackID:         0,
-				GroupSequence:   0,
-				ObjectSequence:  0,
+			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
+			expect: &objectStreamMessage{
+				SubscribeID:     0,
+				TrackAlias:      0,
+				GroupID:         0,
+				ObjectID:        0,
 				ObjectSendOrder: 0,
 				ObjectPayload:   []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			},
@@ -266,7 +140,7 @@ func TestParseObjectMessage(t *testing.T) {
 				logger: slog.Default(),
 				reader: tc.r,
 			}
-			res, err := p.parseObjectMessage(tc.msgTyp)
+			res, err := p.parseObjectMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
@@ -645,12 +519,14 @@ func TestParseLocation(t *testing.T) {
 
 func TestSubscribeRequestMessageAppend(t *testing.T) {
 	cases := []struct {
-		srm    subscribeRequestMessage
+		srm    subscribeMessage
 		buf    []byte
 		expect []byte
 	}{
 		{
-			srm: subscribeRequestMessage{
+			srm: subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "",
 				TrackName:      "",
 				StartGroup:     Location{},
@@ -661,11 +537,13 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeRequestMessageType), 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00,
+				byte(subscribeMessageType), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00,
 			},
 		},
 		{
-			srm: subscribeRequestMessage{
+			srm: subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{Mode: 0, Value: 0},
@@ -675,10 +553,12 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 				Parameters:     parameters{},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeRequestMessageType), 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00),
+			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00, 0x00),
 		},
 		{
-			srm: subscribeRequestMessage{
+			srm: subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{},
@@ -688,10 +568,12 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeRequestMessageType), 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
 		},
 		{
-			srm: subscribeRequestMessage{
+			srm: subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{},
@@ -701,7 +583,7 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
-			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeRequestMessageType), 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeMessageType), 0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
 		},
 	}
 	for i, tc := range cases {
@@ -715,7 +597,7 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 func TestParseSubscribeRequestMessage(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		expect *subscribeRequestMessage
+		expect *subscribeMessage
 		err    error
 	}{
 		{
@@ -737,9 +619,11 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x00),
+				append(append([]byte{0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x00),
 			),
-			expect: &subscribeRequestMessage{
+			expect: &subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{},
@@ -759,9 +643,11 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x01, 0x01, 'A'),
+				append(append([]byte{0x011, 0x012, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x02, 0x01, 0x01, 0x01, 'A'),
 			),
-			expect: &subscribeRequestMessage{
+			expect: &subscribeMessage{
+				SubscribeID:    17,
+				TrackAlias:     18,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{Mode: 1, Value: 2},
@@ -774,9 +660,11 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+				append(append([]byte{0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			),
-			expect: &subscribeRequestMessage{
+			expect: &subscribeMessage{
+				SubscribeID:    0,
+				TrackAlias:     0,
 				TrackNamespace: "ns",
 				TrackName:      "trackname",
 				StartGroup:     Location{},
@@ -821,34 +709,29 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 	}{
 		{
 			som: subscribeOkMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				TrackID:        0,
-				Expires:        0,
+				SubscribeID: 0,
+				Expires:     0,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00, 0x00, 0x00,
+				byte(subscribeOkMessageType), 0x00, 0x00,
 			},
 		},
 		{
 			som: subscribeOkMessage{
-				TrackNamespace: "",
-				TrackName:      "fulltrackname",
-				TrackID:        17,
-				Expires:        1000,
+				SubscribeID: 17,
+				Expires:     1000,
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeOkMessageType), 0x00, 0x0d}, "fulltrackname"...), 0x11, 0x43, 0xe8),
+			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8},
 		},
 		{
 			som: subscribeOkMessage{
-				TrackName: "fulltrackname",
-				TrackID:   17,
-				Expires:   1000,
+				SubscribeID: 17,
+				Expires:     1000,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: append(append([]byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x00, 0x0d}, "fulltrackname"...), 0x11, 0x43, 0xe8),
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8},
 		},
 	}
 	for i, tc := range cases {
@@ -877,27 +760,11 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x09}, "trackname"...), 0x01, 0x00),
-			),
-			expect: nil,
-			err:    io.EOF,
-		},
-		{
-			r: bytes.NewReader(
-				append(append([]byte{0x09}, "trackname"...), 0x01, 0x00),
-			),
-			expect: nil,
-			err:    io.EOF,
-		},
-		{
-			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), 0x01, 0x10),
+				[]byte{0x01, 0x10},
 			),
 			expect: &subscribeOkMessage{
-				TrackNamespace: "",
-				TrackName:      "trackname",
-				TrackID:        1,
-				Expires:        0x10 * time.Millisecond,
+				SubscribeID: 1,
+				Expires:     0x10 * time.Millisecond,
 			},
 			err: nil,
 		},
@@ -928,10 +795,10 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 	}{
 		{
 			sem: subscribeErrorMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				ErrorCode:      0,
-				ReasonPhrase:   "",
+				SubscribeID:  0,
+				ErrorCode:    0,
+				ReasonPhrase: "",
+				TrackAlias:   0,
 			},
 			buf: []byte{0x0a, 0x0b},
 			expect: []byte{
@@ -940,25 +807,13 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 		},
 		{
 			sem: subscribeErrorMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				ErrorCode:      0,
-				ReasonPhrase:   "",
-			},
-			buf: []byte{},
-			expect: []byte{
-				byte(subscribeErrorMessageType), 0x00, 0x00, 0x00, 0x00,
-			},
-		},
-		{
-			sem: subscribeErrorMessage{
-				TrackNamespace: "",
-				TrackName:      "fulltrackname",
-				ErrorCode:      12,
-				ReasonPhrase:   "reason",
+				SubscribeID:  17,
+				ErrorCode:    12,
+				ReasonPhrase: "reason",
+				TrackAlias:   0,
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(subscribeErrorMessageType), 0x00, 0x0d}, "fulltrackname"...), []byte{0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n'}...),
+			expect: []byte{byte(subscribeErrorMessageType), 0x11, 0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n', 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -987,12 +842,13 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				append(append([]byte{0x00, 0x09}, "trackname"...), append([]byte{0x01, 0x0c}, "error phrase"...)...),
+				[]byte{0x00, 0x01, 0x05, 'e', 'r', 'r', 'o', 'r', 0x11},
 			),
 			expect: &subscribeErrorMessage{
-				TrackName:    "trackname",
+				SubscribeID:  0,
 				ErrorCode:    1,
-				ReasonPhrase: "error phrase",
+				ReasonPhrase: "error",
+				TrackAlias:   17,
 			},
 			err: nil,
 		},
@@ -1023,21 +879,19 @@ func TestUnsubscribeMessageAppend(t *testing.T) {
 	}{
 		{
 			usm: unsubscribeMessage{
-				TrackNamespace: "",
-				TrackName:      "",
+				SubscribeID: 17,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(unsubscribeMessageType), 0x00, 0x00,
+				byte(unsubscribeMessageType), 0x11,
 			},
 		},
 		{
 			usm: unsubscribeMessage{
-				TrackNamespace: "tracknamespace",
-				TrackName:      "",
+				SubscribeID: 17,
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(unsubscribeMessageType), 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
+			expect: []byte{0x0a, 0x0b, byte(unsubscribeMessageType), 0x11},
 		},
 	}
 	for i, tc := range cases {
@@ -1060,17 +914,11 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 			err:    errInvalidMessageReader,
 		},
 		{
-			r: bytes.NewReader(append([]byte{0, 9}, "trackname"...)),
+			r: bytes.NewReader([]byte{17}),
 			expect: &unsubscribeMessage{
-				TrackNamespace: "",
-				TrackName:      "trackname",
+				SubscribeID: 17,
 			},
 			err: nil,
-		},
-		{
-			r:      bytes.NewReader(append([]byte{0xA}, "track"...)),
-			expect: nil,
-			err:    io.EOF,
 		},
 	}
 	for i, tc := range cases {
@@ -1099,33 +947,30 @@ func TestSubscribeFinMessageAppend(t *testing.T) {
 	}{
 		{
 			sfm: subscribeFinMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				FinalGroup:     0,
-				FinalObject:    0,
+				SubscribeID: 17,
+				FinalGroup:  0,
+				FinalObject: 0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{0x0b, 0x11, 0x00, 0x00},
 		},
 		{
 			sfm: subscribeFinMessage{
-				TrackNamespace: "Test",
-				TrackName:      "Name",
-				FinalGroup:     1,
-				FinalObject:    2,
+				SubscribeID: 0,
+				FinalGroup:  1,
+				FinalObject: 2,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0b, 0x04, 'T', 'e', 's', 't', 0x04, 'N', 'a', 'm', 'e', 0x01, 0x02},
+			expect: []byte{0x0b, 0x00, 0x01, 0x02},
 		},
 		{
 			sfm: subscribeFinMessage{
-				TrackNamespace: "Test",
-				TrackName:      "Name",
-				FinalGroup:     1,
-				FinalObject:    2,
+				SubscribeID: 0,
+				FinalGroup:  1,
+				FinalObject: 2,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0b, 0x04, 'T', 'e', 's', 't', 0x04, 'N', 'a', 'm', 'e', 0x01, 0x02},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0b, 0x00, 0x01, 0x02},
 		},
 	}
 	for i, tc := range cases {
@@ -1154,28 +999,14 @@ func TestParseSubscribeFinMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x00, 0x00, 0x00, 0x00,
-			}),
-			expect: &subscribeFinMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				FinalGroup:     0,
-				FinalObject:    0,
-			},
-			err: nil,
-		},
-		{
-			r: bytes.NewReader([]byte{
-				0x05, 's', 'p', 'a', 'c', 'e',
-				0x04, 'n', 'a', 'm', 'e',
+				0x00,
 				0x01,
 				0x02,
 			}),
 			expect: &subscribeFinMessage{
-				TrackNamespace: "space",
-				TrackName:      "name",
-				FinalGroup:     1,
-				FinalObject:    2,
+				SubscribeID: 0,
+				FinalGroup:  1,
+				FinalObject: 2,
 			},
 			err: nil,
 		},
@@ -1206,53 +1037,50 @@ func TestSubscribeRstMessageAppend(t *testing.T) {
 	}{
 		{
 			srm: subscribeRstMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				ErrorCode:      0,
-				ReasonPhrase:   "",
-				FinalGroup:     0,
-				FinalObject:    0,
+				SusbcribeID:  0,
+				ErrorCode:    0,
+				ReasonPhrase: "",
+				FinalGroup:   0,
+				FinalObject:  0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			srm: subscribeRstMessage{
-				TrackNamespace: "space",
-				TrackName:      "name",
-				ErrorCode:      1,
-				ReasonPhrase:   "reason",
-				FinalGroup:     2,
-				FinalObject:    3,
+				SusbcribeID:  0,
+				ErrorCode:    1,
+				ReasonPhrase: "reason",
+				FinalGroup:   2,
+				FinalObject:  3,
 			},
 			buf: []byte{},
 			expect: []byte{
 				0x0c,
-				0x05, 's', 'p', 'a', 'c', 'e',
-				0x04, 'n', 'a', 'm', 'e',
+				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
-				0x02, 0x03,
+				0x02,
+				0x03,
 			},
 		},
 		{
 			srm: subscribeRstMessage{
-				TrackNamespace: "space",
-				TrackName:      "name",
-				ErrorCode:      1,
-				ReasonPhrase:   "reason",
-				FinalGroup:     2,
-				FinalObject:    3,
+				SusbcribeID:  17,
+				ErrorCode:    1,
+				ReasonPhrase: "reason",
+				FinalGroup:   2,
+				FinalObject:  3,
 			},
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
 				0x0a, 0x0b, 0x0c, 0x0d,
 				0x0c,
-				0x05, 's', 'p', 'a', 'c', 'e',
-				0x04, 'n', 'a', 'm', 'e',
+				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
-				0x02, 0x03,
+				0x02,
+				0x03,
 			},
 		},
 	}
@@ -1282,34 +1110,31 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00,
 			}),
 			expect: &subscribeRstMessage{
-				TrackNamespace: "",
-				TrackName:      "",
-				ErrorCode:      0,
-				ReasonPhrase:   "",
-				FinalGroup:     0,
-				FinalObject:    0,
+				SusbcribeID:  0,
+				ErrorCode:    0,
+				ReasonPhrase: "",
+				FinalGroup:   0,
+				FinalObject:  0,
 			},
 			err: nil,
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x05, 's', 'p', 'a', 'c', 'e',
-				0x04, 'n', 'a', 'm', 'e',
+				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
 				0x02,
 				0x03,
 			}),
 			expect: &subscribeRstMessage{
-				TrackNamespace: "space",
-				TrackName:      "name",
-				ErrorCode:      1,
-				ReasonPhrase:   "reason",
-				FinalGroup:     2,
-				FinalObject:    3,
+				SusbcribeID:  0,
+				ErrorCode:    1,
+				ReasonPhrase: "reason",
+				FinalGroup:   2,
+				FinalObject:  3,
 			},
 			err: nil,
 		},

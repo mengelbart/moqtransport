@@ -15,7 +15,7 @@ type room struct {
 	id           string
 	participants *chatalog
 	publishers   map[string]*publisher
-	subscribers  map[string]*moqtransport.SendTrack
+	subscribers  map[string]*moqtransport.SendSubscription
 	lock         sync.Mutex
 	closeCh      chan struct{}
 	closeWG      sync.WaitGroup
@@ -31,7 +31,7 @@ func newChat(id string) *room {
 			participants: map[string]struct{}{},
 		},
 		publishers:  map[string]*publisher{},
-		subscribers: map[string]*moqtransport.SendTrack{},
+		subscribers: map[string]*moqtransport.SendSubscription{},
 		lock:        sync.Mutex{},
 		closeCh:     make(chan struct{}),
 		closeWG:     sync.WaitGroup{},
@@ -48,7 +48,7 @@ func (r *room) join(username string, p *moqtransport.Session) error {
 	if _, ok := r.publishers[username]; ok {
 		return errors.New("username already taken")
 	}
-	t, err := p.Subscribe(context.Background(), fmt.Sprintf("moq-chat/%v", r.id), username, "")
+	t, err := p.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v", r.id), username, "")
 	if err != nil {
 		return err
 	}
@@ -63,8 +63,8 @@ func (r *room) join(username string, p *moqtransport.Session) error {
 	return nil
 }
 
-func (r *room) subscribe(name string, t *moqtransport.SendTrack) error {
-	w, err := t.StartReliableObject()
+func (r *room) subscribe(name string, t *moqtransport.SendSubscription) error {
+	w, err := t.NewObjectStream(0, 0, 0) //TODO
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (r *room) broadcast() {
 				log.Println(err)
 			}
 			for _, s := range r.subscribers {
-				w, err := s.StartReliableObject()
+				w, err := s.NewObjectStream(0, 0, 0)
 				if err != nil {
 					log.Println(err)
 					continue

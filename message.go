@@ -12,9 +12,8 @@ import (
 )
 
 var (
-	errInvalidMessageReader   = errors.New("invalid message reader")
-	errInvalidMessageEncoding = errors.New("invalid message encoding")
-	errUnknownMessage         = errors.New("unknown message type")
+	errInvalidMessageReader = errors.New("invalid message reader")
+	errUnknownMessage       = errors.New("unknown message type")
 )
 
 type message interface {
@@ -24,33 +23,32 @@ type message interface {
 type messageType uint64
 
 const (
-	objectMessageLenType messageType = iota
-
-	objectMessageNoLenType messageType = iota + 1
-	subscribeRequestMessageType
-	subscribeOkMessageType
-	subscribeErrorMessageType
-	announceMessageType
-	announceOkMessageType
-	announceErrorMessageType
-	unannounceMessageType
-	unsubscribeMessageType
-	subscribeFinMessageType
-	subscribeRstMessageType
-
-	goAwayMessageType messageType = 0x10
-
-	clientSetupMessageType messageType = 0x40
-	serverSetupMessageType messageType = 0x41
+	objectStreamMessageType         messageType = 0x00
+	objectPreferDatagramMessageType messageType = 0x01
+	subscribeMessageType            messageType = 0x03
+	subscribeOkMessageType          messageType = 0x04
+	subscribeErrorMessageType       messageType = 0x05
+	announceMessageType             messageType = 0x06
+	announceOkMessageType           messageType = 0x07
+	announceErrorMessageType        messageType = 0x08
+	unannounceMessageType           messageType = 0x09
+	unsubscribeMessageType          messageType = 0x0a
+	subscribeFinMessageType         messageType = 0x0b
+	subscribeRstMessageType         messageType = 0x0c
+	goAwayMessageType               messageType = 0x10
+	clientSetupMessageType          messageType = 0x40
+	serverSetupMessageType          messageType = 0x41
+	streamHeaderTrackMessageType    messageType = 0x50
+	streamHeaderGroupMessageType    messageType = 0x51
 )
 
 func (mt messageType) String() string {
 	switch mt {
-	case objectMessageLenType:
-		return "ObjectLenMessage"
-	case objectMessageNoLenType:
-		return "ObjectNoLenMessage"
-	case subscribeRequestMessageType:
+	case objectStreamMessageType:
+		return "ObjectStreamMessage"
+	case objectPreferDatagramMessageType:
+		return "objectPreferDatagram"
+	case subscribeMessageType:
 		return "SubscribeMessage"
 	case subscribeOkMessageType:
 		return "SubscribeOkMessage"
@@ -76,6 +74,10 @@ func (mt messageType) String() string {
 		return "ClientSetupMessage"
 	case serverSetupMessageType:
 		return "ServerSetupMessage"
+	case streamHeaderTrackMessageType:
+		return "StreamHeaderTrackMessage"
+	case streamHeaderGroupMessageType:
+		return "streamHeaderGroupMessage"
 	}
 	return "unknown message type"
 }
@@ -106,11 +108,9 @@ func (p *loggingParser) parse() (msg message, err error) {
 	}
 	p.logger.Info("parsing message", "message_type", messageType(mt), "message_type_uint64", mt)
 	switch messageType(mt) {
-	case objectMessageLenType:
-		msg, err = p.parseObjectMessage(mt)
-	case objectMessageNoLenType:
-		msg, err = p.parseObjectMessage(mt)
-	case subscribeRequestMessageType:
+	case objectStreamMessageType, objectPreferDatagramMessageType:
+		msg, err = p.parseObjectMessage()
+	case subscribeMessageType:
 		msg, err = p.parseSubscribeRequestMessage()
 	case subscribeOkMessageType:
 		msg, err = p.parseSubscribeOkMessage()
@@ -136,6 +136,10 @@ func (p *loggingParser) parse() (msg message, err error) {
 		msg, err = p.parseClientSetupMessage()
 	case serverSetupMessageType:
 		msg, err = p.parseServerSetupMessage()
+	case streamHeaderTrackMessageType:
+		msg, err = p.parseStreamHeaderTrackMessage()
+	case streamHeaderGroupMessageType:
+		msg, err = p.parseStreamHeaderGroupMessage()
 	default:
 		p.logger.Info("failed to parse message", "message_type", mt)
 		return nil, errUnknownMessage
@@ -146,61 +150,56 @@ func (p *loggingParser) parse() (msg message, err error) {
 	return
 }
 
-type objectMessage struct {
-	HasLength bool
-
-	TrackID         uint64
-	GroupSequence   uint64
-	ObjectSequence  uint64
+type objectStreamMessage struct {
+	SubscribeID     uint64
+	TrackAlias      uint64
+	GroupID         uint64
+	ObjectID        uint64
 	ObjectSendOrder uint64
 	ObjectPayload   []byte
 }
 
-func (m objectMessage) String() string {
+func (o *objectStreamMessage) payload() []byte {
+	return o.ObjectPayload
+}
+
+func (m objectStreamMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
 		return "json.Marshal of objectMessage failed"
 	}
-	if m.HasLength {
-		return fmt.Sprintf("%v:%v", objectMessageLenType, string(buf))
-	}
-	return fmt.Sprintf("%v:%v", objectMessageNoLenType, string(buf))
+	return fmt.Sprintf("%v:%v", objectStreamMessageType.String(), string(buf))
 }
 
-func (m *objectMessage) append(buf []byte) []byte {
-	if m.HasLength {
-		buf = quicvarint.Append(buf, uint64(objectMessageLenType))
-	} else {
-		buf = quicvarint.Append(buf, uint64(objectMessageNoLenType))
-	}
-	buf = quicvarint.Append(buf, m.TrackID)
-	buf = quicvarint.Append(buf, m.GroupSequence)
-	buf = quicvarint.Append(buf, m.ObjectSequence)
+func (m *objectStreamMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(objectStreamMessageType))
+	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.TrackAlias)
+	buf = quicvarint.Append(buf, m.GroupID)
+	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = quicvarint.Append(buf, m.ObjectSendOrder)
-	if m.HasLength {
-		buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
-	}
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
 
-func (p *loggingParser) parseObjectMessage(typ uint64) (*objectMessage, error) {
+// TODO: Add prefer datagram property to object type?
+func (p *loggingParser) parseObjectMessage() (*objectStreamMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	if typ != uint64(objectMessageLenType) && typ != uint64(objectMessageNoLenType) {
-		return nil, errInvalidMessageEncoding
-	}
-	hasLen := typ == 0x00
-	trackID, err := quicvarint.Read(p.reader)
+	subscribeID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	groupSequence, err := quicvarint.Read(p.reader)
+	trackAlias, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	objectSequence, err := quicvarint.Read(p.reader)
+	groupID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	objectID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -208,45 +207,19 @@ func (p *loggingParser) parseObjectMessage(typ uint64) (*objectMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !hasLen {
-		var objectPayload []byte
-		objectPayload, err = io.ReadAll(p.reader)
-		return &objectMessage{
-			HasLength:       hasLen,
-			TrackID:         trackID,
-			GroupSequence:   groupSequence,
-			ObjectSequence:  objectSequence,
-			ObjectSendOrder: objectSendOrder,
-			ObjectPayload:   objectPayload,
-		}, err
-	}
-	length, err := quicvarint.Read(p.reader)
+	// TODO: make the message type an io.Reader and let the user read
+	objectPayload, err := io.ReadAll(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	if length > 0 {
-		objectPayload := make([]byte, length)
-		_, err = io.ReadFull(p.reader, objectPayload)
-		if err != nil {
-			return nil, err
-		}
-		return &objectMessage{
-			HasLength:       hasLen,
-			TrackID:         trackID,
-			GroupSequence:   groupSequence,
-			ObjectSequence:  objectSequence,
-			ObjectSendOrder: objectSendOrder,
-			ObjectPayload:   objectPayload,
-		}, err
-	}
-	return &objectMessage{
-		HasLength:       hasLen,
-		TrackID:         trackID,
-		GroupSequence:   groupSequence,
-		ObjectSequence:  objectSequence,
+	return &objectStreamMessage{
+		SubscribeID:     subscribeID,
+		TrackAlias:      trackAlias,
+		GroupID:         groupID,
+		ObjectID:        objectID,
 		ObjectSendOrder: objectSendOrder,
-		ObjectPayload:   []byte{},
-	}, err
+		ObjectPayload:   objectPayload,
+	}, nil
 }
 
 type clientSetupMessage struct {
@@ -334,7 +307,9 @@ func (p *loggingParser) parseServerSetupMessage() (*serverSetupMessage, error) {
 	}, nil
 }
 
-type subscribeRequestMessage struct {
+type subscribeMessage struct {
+	SubscribeID    uint64
+	TrackAlias     uint64
 	TrackNamespace string
 	TrackName      string
 	StartGroup     Location
@@ -344,23 +319,22 @@ type subscribeRequestMessage struct {
 	Parameters     parameters
 }
 
-func (m subscribeRequestMessage) String() string {
+func (m subscribeMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
 		return "json.Marshal of subscribeRequestMessage failed"
 	}
-	return fmt.Sprintf("%v:%v", subscribeRequestMessageType.String(), string(buf))
+	return fmt.Sprintf("%v:%v", subscribeMessageType.String(), string(buf))
 }
 
-func (m subscribeRequestMessage) key() messageKey {
-	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: fmt.Sprintf("%v/%v", m.TrackNamespace, m.TrackName),
-	}
+func (m subscribeMessage) subscribeID() uint64 {
+	return m.SubscribeID
 }
 
-func (m *subscribeRequestMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeRequestMessageType))
+func (m *subscribeMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(subscribeMessageType))
+	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = appendVarIntString(buf, m.TrackNamespace)
 	buf = appendVarIntString(buf, m.TrackName)
 	buf = m.StartGroup.append(buf)
@@ -374,9 +348,17 @@ func (m *subscribeRequestMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeRequestMessage, error) {
+func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
+	}
+	subscribeID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	trackAlias, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
 	}
 	trackNamespace, err := parseVarIntString(p.reader)
 	if err != nil {
@@ -406,7 +388,9 @@ func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeRequestMessage
 	if err != nil {
 		return nil, err
 	}
-	return &subscribeRequestMessage{
+	return &subscribeMessage{
+		SubscribeID:    subscribeID,
+		TrackAlias:     trackAlias,
 		TrackNamespace: trackNamespace,
 		TrackName:      fullTrackName,
 		StartGroup:     startGroup,
@@ -418,10 +402,8 @@ func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeRequestMessage
 }
 
 type subscribeOkMessage struct {
-	TrackNamespace string
-	TrackName      string
-	TrackID        uint64
-	Expires        time.Duration
+	SubscribeID uint64
+	Expires     time.Duration
 }
 
 func (m subscribeOkMessage) String() string {
@@ -432,18 +414,13 @@ func (m subscribeOkMessage) String() string {
 	return fmt.Sprintf("%v:%v", subscribeOkMessageType.String(), string(buf))
 }
 
-func (m subscribeOkMessage) key() messageKey {
-	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: fmt.Sprintf("%v/%v", m.TrackNamespace, m.TrackName),
-	}
+func (m subscribeOkMessage) subscribeID() uint64 {
+	return m.SubscribeID
 }
 
 func (m *subscribeOkMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeOkMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = appendVarIntString(buf, m.TrackName)
-	buf = quicvarint.Append(buf, m.TrackID)
+	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, uint64(m.Expires))
 	return buf
 }
@@ -452,15 +429,7 @@ func (p *loggingParser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	trackName, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	trackID, err := quicvarint.Read(p.reader)
+	subscribeID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -469,18 +438,16 @@ func (p *loggingParser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
 		return nil, err
 	}
 	return &subscribeOkMessage{
-		TrackNamespace: namespace,
-		TrackName:      trackName,
-		TrackID:        trackID,
-		Expires:        time.Duration(expires) * time.Millisecond,
+		SubscribeID: subscribeID,
+		Expires:     time.Duration(expires) * time.Millisecond,
 	}, nil
 }
 
 type subscribeErrorMessage struct {
-	TrackNamespace string
-	TrackName      string
-	ErrorCode      uint64
-	ReasonPhrase   string
+	SubscribeID  uint64
+	ErrorCode    uint64
+	ReasonPhrase string
+	TrackAlias   uint64
 }
 
 func (m subscribeErrorMessage) String() string {
@@ -491,19 +458,16 @@ func (m subscribeErrorMessage) String() string {
 	return fmt.Sprintf("%v:%v", subscribeErrorMessageType.String(), string(buf))
 }
 
-func (m subscribeErrorMessage) key() messageKey {
-	return messageKey{
-		mt: subscribeRequestMessageType,
-		id: fmt.Sprintf("%v/%v", m.TrackNamespace, m.TrackName),
-	}
+func (m subscribeErrorMessage) subscribeID() uint64 {
+	return m.SubscribeID
 }
 
 func (m *subscribeErrorMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeErrorMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = appendVarIntString(buf, m.TrackName)
+	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.ErrorCode)
 	buf = appendVarIntString(buf, m.ReasonPhrase)
+	buf = quicvarint.Append(buf, m.TrackAlias)
 	return buf
 }
 
@@ -511,11 +475,7 @@ func (p *loggingParser) parseSubscribeErrorMessage() (*subscribeErrorMessage, er
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	trackName, err := parseVarIntString(p.reader)
+	subscribeID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -524,17 +484,20 @@ func (p *loggingParser) parseSubscribeErrorMessage() (*subscribeErrorMessage, er
 		return nil, err
 	}
 	reasonPhrase, err := parseVarIntString(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	trackAlias, err := quicvarint.Read(p.reader)
 	return &subscribeErrorMessage{
-		TrackNamespace: namespace,
-		TrackName:      trackName,
-		ErrorCode:      errorCode,
-		ReasonPhrase:   reasonPhrase,
+		SubscribeID:  subscribeID,
+		ErrorCode:    errorCode,
+		ReasonPhrase: reasonPhrase,
+		TrackAlias:   trackAlias,
 	}, err
 }
 
 type unsubscribeMessage struct {
-	TrackNamespace string
-	TrackName      string
+	SubscribeID uint64
 }
 
 func (m unsubscribeMessage) String() string {
@@ -547,8 +510,7 @@ func (m unsubscribeMessage) String() string {
 
 func (m *unsubscribeMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(unsubscribeMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = appendVarIntString(buf, m.TrackName)
+	buf = quicvarint.Append(buf, m.SubscribeID)
 	return buf
 }
 
@@ -556,25 +518,16 @@ func (p *loggingParser) parseUnsubscribeMessage() (*unsubscribeMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	trackName, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
+	subscribeID, err := quicvarint.Read(p.reader)
 	return &unsubscribeMessage{
-		TrackNamespace: namespace,
-		TrackName:      trackName,
+		SubscribeID: subscribeID,
 	}, err
 }
 
 type subscribeFinMessage struct {
-	TrackNamespace string
-	TrackName      string
-	FinalGroup     uint64
-	FinalObject    uint64
+	SubscribeID uint64
+	FinalGroup  uint64
+	FinalObject uint64
 }
 
 func (m subscribeFinMessage) String() string {
@@ -587,8 +540,7 @@ func (m subscribeFinMessage) String() string {
 
 func (m *subscribeFinMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeFinMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = appendVarIntString(buf, m.TrackName)
+	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.FinalGroup)
 	buf = quicvarint.Append(buf, m.FinalObject)
 	return buf
@@ -598,11 +550,7 @@ func (p *loggingParser) parseSubscribeFinMessage() (*subscribeFinMessage, error)
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	name, err := parseVarIntString(p.reader)
+	subscribeID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -615,20 +563,18 @@ func (p *loggingParser) parseSubscribeFinMessage() (*subscribeFinMessage, error)
 		return nil, err
 	}
 	return &subscribeFinMessage{
-		TrackNamespace: namespace,
-		TrackName:      name,
-		FinalGroup:     finalGroup,
-		FinalObject:    finalObject,
+		SubscribeID: subscribeID,
+		FinalGroup:  finalGroup,
+		FinalObject: finalObject,
 	}, nil
 }
 
 type subscribeRstMessage struct {
-	TrackNamespace string
-	TrackName      string
-	ErrorCode      uint64
-	ReasonPhrase   string
-	FinalGroup     uint64
-	FinalObject    uint64
+	SusbcribeID  uint64
+	ErrorCode    uint64
+	ReasonPhrase string
+	FinalGroup   uint64
+	FinalObject  uint64
 }
 
 func (m subscribeRstMessage) String() string {
@@ -641,8 +587,7 @@ func (m subscribeRstMessage) String() string {
 
 func (m *subscribeRstMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeRstMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = appendVarIntString(buf, m.TrackName)
+	buf = quicvarint.Append(buf, m.SusbcribeID)
 	buf = quicvarint.Append(buf, m.ErrorCode)
 	buf = appendVarIntString(buf, m.ReasonPhrase)
 	buf = quicvarint.Append(buf, m.FinalGroup)
@@ -654,11 +599,7 @@ func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error)
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
-	namespace, err := parseVarIntString(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	name, err := parseVarIntString(p.reader)
+	subscribeID, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -679,12 +620,11 @@ func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error)
 		return nil, err
 	}
 	return &subscribeRstMessage{
-		TrackNamespace: namespace,
-		TrackName:      name,
-		ErrorCode:      errCode,
-		ReasonPhrase:   reasonPhrase,
-		FinalGroup:     finalGroup,
-		FinalObject:    finalObject,
+		SusbcribeID:  subscribeID,
+		ErrorCode:    errCode,
+		ReasonPhrase: reasonPhrase,
+		FinalGroup:   finalGroup,
+		FinalObject:  finalObject,
 	}, nil
 }
 
@@ -701,11 +641,8 @@ func (m announceMessage) String() string {
 	return fmt.Sprintf("%v:%v", announceMessageType.String(), string(buf))
 }
 
-func (m announceMessage) key() messageKey {
-	return messageKey{
-		mt: announceMessageType,
-		id: m.TrackNamespace,
-	}
+func (m announceMessage) trackNamespace() string {
+	return m.TrackNamespace
 }
 
 func (m *announceMessage) append(buf []byte) []byte {
@@ -748,11 +685,8 @@ func (m announceOkMessage) String() string {
 	return fmt.Sprintf("%v:%v", announceOkMessageType.String(), string(buf))
 }
 
-func (m announceOkMessage) key() messageKey {
-	return messageKey{
-		mt: announceMessageType,
-		id: m.TrackNamespace,
-	}
+func (m announceOkMessage) trackNamespace() string {
+	return m.TrackNamespace
 }
 
 func (m *announceOkMessage) append(buf []byte) []byte {
@@ -788,11 +722,8 @@ func (m announceErrorMessage) String() string {
 	return fmt.Sprintf("%v:%v", announceErrorMessageType.String(), string(buf))
 }
 
-func (m announceErrorMessage) key() messageKey {
-	return messageKey{
-		mt: announceMessageType,
-		id: m.TrackNamespace,
-	}
+func (m announceErrorMessage) trackNamespace() string {
+	return m.TrackNamespace
 }
 
 func (m *announceErrorMessage) append(buf []byte) []byte {
@@ -885,5 +816,159 @@ func (p *loggingParser) parseGoAwayMessage() (*goAwayMessage, error) {
 	}
 	return &goAwayMessage{
 		NewSessionURI: uri,
+	}, nil
+}
+
+type StreamHeaderTrackMessage struct {
+	SubscribeID     uint64
+	TrackAlias      uint64
+	ObjectSendOrder uint64
+}
+
+func (m *StreamHeaderTrackMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.TrackAlias)
+	buf = quicvarint.Append(buf, m.ObjectSendOrder)
+	return buf
+}
+
+func (p *loggingParser) parseStreamHeaderTrackMessage() (*StreamHeaderTrackMessage, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	subscribeID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	trackAlias, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	objectSendOrder, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &StreamHeaderTrackMessage{
+		SubscribeID:     subscribeID,
+		TrackAlias:      trackAlias,
+		ObjectSendOrder: objectSendOrder,
+	}, nil
+}
+
+type streamHeaderGroupMessage struct {
+	SubscribeID     uint64
+	TrackAlias      uint64
+	GroupID         uint64
+	ObjectSendOrder uint64
+}
+
+func (m *streamHeaderGroupMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.TrackAlias)
+	buf = quicvarint.Append(buf, m.GroupID)
+	buf = quicvarint.Append(buf, m.ObjectSendOrder)
+	return buf
+}
+
+func (p *loggingParser) parseStreamHeaderGroupMessage() (*streamHeaderGroupMessage, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	subscribeID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	trackAlias, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	groupID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	objectSendOrder, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &streamHeaderGroupMessage{
+		SubscribeID:     subscribeID,
+		TrackAlias:      trackAlias,
+		GroupID:         groupID,
+		ObjectSendOrder: objectSendOrder,
+	}, nil
+}
+
+type streamHeaderTrackObject struct {
+	GroupID       uint64
+	ObjectID      uint64
+	ObjectPayload []byte
+}
+
+func (o *streamHeaderTrackObject) payload() []byte {
+	return o.ObjectPayload
+}
+
+func (m *streamHeaderTrackObject) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.GroupID)
+	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = append(buf, m.ObjectPayload...)
+	return buf
+}
+
+func (p *loggingParser) parseStreamHeaderTrackObjectMessage() (*streamHeaderTrackObject, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	groupID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	objectID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: make the message type an io.Reader and let the user read
+	objectPayload, err := io.ReadAll(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &streamHeaderTrackObject{
+		GroupID:       groupID,
+		ObjectID:      objectID,
+		ObjectPayload: objectPayload,
+	}, nil
+}
+
+type streamHeaderGroupObject struct {
+	ObjectID      uint64
+	ObjectPayload []byte
+}
+
+func (o *streamHeaderGroupObject) payload() []byte {
+	return o.ObjectPayload
+}
+
+func (m *streamHeaderGroupObject) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = append(buf, m.ObjectPayload...)
+	return buf
+}
+
+func (p *loggingParser) parseStreamHeaderGroupObjectMessage() (*streamHeaderGroupObject, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	objectID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: make the message type an io.Reader and let the user read
+	objectPayload, err := io.ReadAll(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &streamHeaderGroupObject{
+		ObjectID:      objectID,
+		ObjectPayload: objectPayload,
 	}, nil
 }

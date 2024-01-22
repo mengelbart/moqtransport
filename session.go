@@ -25,20 +25,6 @@ func (f parserFactoryFn) new(r messageReader) parser {
 	return f(r)
 }
 
-type messageKey struct {
-	mt messageType
-	id string
-}
-
-type keyer interface {
-	key() messageKey
-}
-
-type keyedMessage interface {
-	message
-	keyer
-}
-
 type Session struct {
 	conn       connection
 	ctrlStream stream
@@ -150,7 +136,6 @@ func sendOnStream(stream sendStream, msg message) error {
 		return err
 	}
 	return nil
-
 }
 
 func (s *Session) send(msg message) error {
@@ -198,7 +183,7 @@ func (s *Session) readMessages(r messageReader, handle messageHandler) {
 	}
 }
 
-func (s *Session) ReadSubscription(ctx context.Context) (*Subscription, error) {
+func (s *Session) ReadSubscription(ctx context.Context) (*SendSubscription, error) {
 	return s.mr.readSubscription(ctx)
 }
 
@@ -206,8 +191,8 @@ func (s *Session) ReadAnnouncement(ctx context.Context) (*Announcement, error) {
 	return s.mr.readAnnouncement(ctx)
 }
 
-func (s *Session) Subscribe(ctx context.Context, namespace, trackname, auth string) (*ReceiveTrack, error) {
-	return s.mr.subscribe(ctx, namespace, trackname, auth)
+func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
+	return s.mr.subscribe(ctx, subscribeID, trackAlias, namespace, trackname, auth)
 }
 
 func (s *Session) Announce(ctx context.Context, namespace string) error {

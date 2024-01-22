@@ -59,11 +59,11 @@ func handler() moqtransport.SessionHandlerFunc {
 			if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
 				s.Reject(errors.New("unknown namespace/trackname"))
 			}
-			t := s.Accept()
+			s.Accept()
 			go func() {
 				ticker := time.NewTicker(time.Second)
 				for ts := range ticker.C {
-					w, err := t.StartCancellableObject()
+					w, err := s.NewObjectStream(0, 0, 0) // TODO: Use meaningful values
 					if err != nil {
 						log.Println(err)
 						return

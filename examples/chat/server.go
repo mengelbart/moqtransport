@@ -107,18 +107,15 @@ func (s *Server) sessionHandler() moqtransport.SessionHandlerFunc {
 					continue
 				}
 				if sub.Trackname() == "/catalog" {
-					t := sub.Accept()
+					sub.Accept()
 					go func() {
 						// TODO: Improve synchronization (buffer objects before
 						// subscription finished)
 						time.Sleep(100 * time.Millisecond)
-						s.chatRooms[id].subscribe(name, t)
+						s.chatRooms[id].subscribe(name, sub)
 					}()
 					continue
 				}
-
-				sub.SetTrackID(s.nextTrackID)
-				s.nextTrackID += 1
 
 				r.lock.Lock()
 				log.Printf("subscribing user %v to publisher %v", name, sub.Trackname())
@@ -140,5 +137,5 @@ func (m *chatMessage) MarshalBinary() (data []byte, err error) {
 
 type subscriber struct {
 	name  string
-	track *moqtransport.SendTrack
+	track *moqtransport.SendSubscription
 }
