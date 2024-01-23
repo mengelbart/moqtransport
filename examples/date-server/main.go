@@ -56,6 +56,7 @@ func handler() moqtransport.SessionHandlerFunc {
 			if err != nil {
 				panic(err)
 			}
+			log.Printf("got subscription: %v", s)
 			if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
 				s.Reject(errors.New("unknown namespace/trackname"))
 			}
@@ -69,6 +70,10 @@ func handler() moqtransport.SessionHandlerFunc {
 						return
 					}
 					if _, err := fmt.Fprintf(w, "%v", ts); err != nil {
+						log.Println(err)
+						return
+					}
+					if err := w.Close(); err != nil {
 						log.Println(err)
 						return
 					}

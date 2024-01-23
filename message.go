@@ -92,13 +92,11 @@ type loggingParser struct {
 	reader messageReader
 }
 
-func newParserFactory() parserFactory {
-	return parserFactoryFn(func(mr messageReader) parser {
-		return &loggingParser{
-			logger: defaultLogger.With(componentKey, "MOQ_PARSER"),
-			reader: mr,
-		}
-	})
+func newParser(mr messageReader) parser {
+	return &loggingParser{
+		logger: defaultLogger.With(componentKey, "MOQ_PARSER"),
+		reader: mr,
+	}
 }
 
 func (p *loggingParser) parse() (msg message, err error) {
@@ -106,7 +104,6 @@ func (p *loggingParser) parse() (msg message, err error) {
 	if err != nil {
 		return nil, err
 	}
-	p.logger.Info("parsing message", "message_type", messageType(mt), "message_type_uint64", mt)
 	switch messageType(mt) {
 	case objectStreamMessageType, objectPreferDatagramMessageType:
 		msg, err = p.parseObjectMessage()
