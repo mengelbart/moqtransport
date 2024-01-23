@@ -2,6 +2,8 @@ package moqtransport
 
 import (
 	"context"
+	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,12 +11,32 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func TestMessageRouter(t *testing.T) {
+func session(conn connection, ctrlStream controlStreamHandler) *Session {
+	return &Session{
+		ctx:                            context.Background(),
+		logger:                         slog.Default(),
+		conn:                           conn,
+		cms:                            ctrlStream,
+		enableDatagrams:                false,
+		subscriptionCh:                 make(chan *SendSubscription),
+		announcementCh:                 make(chan *Announcement),
+		activeSendSubscriptionsLock:    sync.RWMutex{},
+		activeSendSubscriptions:        map[uint64]*SendSubscription{},
+		activeReceiveSubscriptionsLock: sync.RWMutex{},
+		activeReceiveSubscriptions:     map[uint64]*ReceiveSubscription{},
+		pendingSubscriptionsLock:       sync.RWMutex{},
+		pendingSubscriptions:           map[uint64]*ReceiveSubscription{},
+		pendingAnnouncementsLock:       sync.RWMutex{},
+		pendingAnnouncements:           map[string]*announcement{},
+	}
+}
+
+func TestSession(t *testing.T) {
 	t.Run("handle_object", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
+		csh := NewMockControlStreamHandler(ctrl)
+		s := *session(mc, csh)
 		s.activeReceiveSubscriptions[0] = newReceiveSubscription()
 		object := &objectStreamMessage{
 			SubscribeID:     0,
@@ -42,9 +64,8 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_client_setup", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
-		s.controlMsgSender = c
+		csh := NewMockControlStreamHandler(ctrl)
+		s := session(mc, csh)
 		csm := &clientSetupMessage{
 			SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
 			SetupParameters: map[uint64]parameter{
@@ -61,16 +82,15 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_subscribe_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
+		csh := NewMockControlStreamHandler(ctrl)
+		s := session(mc, csh)
 		done := make(chan struct{})
-		c.EXPECT().send(&subscribeOkMessage{
+		csh.EXPECT().send(&subscribeOkMessage{
 			SubscribeID: 17,
 			Expires:     time.Second,
 		}).Do(func(_ message) {
 			close(done)
 		})
-		s.controlMsgSender = c
 		go func() {
 			err := s.handleControlMessage(&subscribeMessage{
 				SubscribeID:    17,
@@ -87,7 +107,7 @@ func TestMessageRouter(t *testing.T) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		sub, err := s.readSubscription(ctx)
+		sub, err := s.ReadSubscription(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, sub)
 		sub.SetExpires(time.Second)
@@ -101,11 +121,10 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("handle_announcement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
-		s.controlMsgSender = c
+		csh := NewMockControlStreamHandler(ctrl)
+		s := session(mc, csh)
 		done := make(chan struct{})
-		c.EXPECT().send(&announceOkMessage{
+		csh.EXPECT().send(&announceOkMessage{
 			TrackNamespace: "namespace",
 		}).Do(func(_ message) {
 			close(done)
@@ -119,7 +138,7 @@ func TestMessageRouter(t *testing.T) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		a, err := s.readAnnouncement(ctx)
+		a, err := s.ReadAnnouncement(ctx)
 		assert.NoError(t, err)
 		assert.NotNil(t, a)
 		a.Accept()
@@ -132,11 +151,10 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
-		s.controlMsgSender = c
+		csh := NewMockControlStreamHandler(ctrl)
+		s := session(mc, csh)
 		done := make(chan struct{})
-		c.EXPECT().send(&subscribeMessage{
+		csh.EXPECT().send(&subscribeMessage{
 			SubscribeID:    17,
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
@@ -146,7 +164,7 @@ func TestMessageRouter(t *testing.T) {
 			EndGroup:       Location{},
 			EndObject:      Location{},
 			Parameters:     map[uint64]parameter{authorizationParameterKey: stringParameter{k: authorizationParameterKey, v: "auth"}},
-		}).Do(func(m message) {
+		}).Do(func(_ message) {
 			go func() {
 				err := s.handleControlMessage(&subscribeOkMessage{
 					SubscribeID: 17,
@@ -158,7 +176,7 @@ func TestMessageRouter(t *testing.T) {
 		})
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		track, err := s.subscribe(ctx, 17, 0, "namespace", "track", "auth")
+		track, err := s.Subscribe(ctx, 17, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, track)
 		<-done
@@ -166,10 +184,9 @@ func TestMessageRouter(t *testing.T) {
 	t.Run("announce", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		c := NewMockControlMsgSender(ctrl)
-		s := newMessageRouter(mc, c)
-		s.controlMsgSender = c
-		c.EXPECT().send(&announceMessage{
+		csh := NewMockControlStreamHandler(ctrl)
+		s := session(mc, csh)
+		csh.EXPECT().send(&announceMessage{
 			TrackNamespace:         "namespace",
 			TrackRequestParameters: map[uint64]parameter{},
 		}).Do(func(_ message) {
@@ -182,7 +199,7 @@ func TestMessageRouter(t *testing.T) {
 		})
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		err := s.announce(ctx, "namespace")
+		err := s.Announce(ctx, "namespace")
 		assert.NoError(t, err)
 	})
 }

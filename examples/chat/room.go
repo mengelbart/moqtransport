@@ -76,7 +76,7 @@ func (r *room) subscribe(name string, t *moqtransport.SendSubscription) error {
 		name:  name,
 		track: t,
 	}
-	return nil
+	return w.Close()
 }
 
 func (r *room) close() {
@@ -102,6 +102,9 @@ func (r *room) broadcast() {
 				}
 				_, err = w.Write(data)
 				if err != nil {
+					log.Println(err)
+				}
+				if err = w.Close(); err != nil {
 					log.Println(err)
 				}
 			}

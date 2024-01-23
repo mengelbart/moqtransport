@@ -52,10 +52,12 @@ func (p *publisher) broadcastMsg(msg []byte) error {
 		if err != nil {
 			log.Printf("failed to start new object: %v", err)
 		}
-		_, err = w.Write(msg)
-		if err != nil {
+		if _, err = w.Write(msg); err != nil {
 			log.Printf("error sending message to subscriber: %v", err)
 			// TODO: Remove subscriber?
+		}
+		if err = w.Close(); err != nil {
+			log.Printf("error closing object stream: %v", err)
 		}
 	}
 	return nil

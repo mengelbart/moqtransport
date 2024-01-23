@@ -208,9 +208,11 @@ func (c *Client) Run() error {
 				fmt.Printf("failed to send object: %v", err)
 				continue
 			}
-			_, err = w.Write([]byte(strings.TrimSpace(msg)))
-			if err != nil {
+			if _, err = w.Write([]byte(strings.TrimSpace(msg))); err != nil {
 				return fmt.Errorf("failed to write to room: %v", err)
+			}
+			if err = w.Close(); err != nil {
+				return fmt.Errorf("failed to close object stream: %v", err)
 			}
 			continue
 		}
