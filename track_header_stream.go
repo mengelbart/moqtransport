@@ -5,7 +5,7 @@ type trackHeaderStream struct {
 }
 
 func newTrackHeaderStream(stream sendStream, subscribeID, trackAlias, objectSendOrder uint64) (*trackHeaderStream, error) {
-	shtm := &StreamHeaderTrackMessage{
+	shtm := &streamHeaderTrackMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		ObjectSendOrder: objectSendOrder,
