@@ -238,7 +238,42 @@ func (s *Session) acceptUnidirectionalStreams(ctx context.Context) {
 			s.logger.Error("failed to accept uni stream", "error", err)
 			return
 		}
-		go s.readMessages(quicvarint.NewReader(stream), s.handleObjectMessage)
+		go s.handleIncomingUniStream(stream)
+	}
+}
+
+func (s *Session) handleIncomingUniStream(stream receiveStream) {
+	p := newParser(quicvarint.NewReader(stream))
+	msg, err := p.parse()
+	if err != nil {
+		s.logger.Error("failed to parse message", "error", err)
+		return
+	}
+	switch h := msg.(type) {
+	case *objectStreamMessage:
+		// TODO: Only parse header and then delegate reading payload to ReceiveSubscription
+		if err := s.handleObjectMessage(msg); err != nil {
+			panic(err) // TODO
+		}
+		return
+	case *streamHeaderTrackMessage:
+		s.activeReceiveSubscriptionsLock.RLock()
+		sub, ok := s.activeReceiveSubscriptions[h.SubscribeID]
+		s.activeReceiveSubscriptionsLock.RUnlock()
+		if !ok {
+			s.logger.Warn("got stream header track message for unknown subscription")
+			panic("TODO")
+		}
+		sub.readTrackHeaderStream(stream)
+	case *streamHeaderGroupMessage:
+		s.activeReceiveSubscriptionsLock.RLock()
+		sub, ok := s.activeReceiveSubscriptions[h.SubscribeID]
+		s.activeReceiveSubscriptionsLock.RUnlock()
+		if !ok {
+			s.logger.Warn("got stream header track message for unknown subscription")
+			panic("TODO")
+		}
+		sub.readGroupHeaderStream(stream)
 	}
 }
 

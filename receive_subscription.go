@@ -1,6 +1,10 @@
 package moqtransport
 
-import "io"
+import (
+	"io"
+
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type ReceiveSubscription struct {
 	responseCh chan subscribeIDer
@@ -28,4 +32,36 @@ func (s *ReceiveSubscription) push(p payloader) (int, error) {
 
 func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 	return s.readBuffer.Read(buf)
+}
+
+func (s *ReceiveSubscription) readTrackHeaderStream(rs receiveStream) {
+	parser := newParser(quicvarint.NewReader(rs))
+	for {
+		msg, err := parser.parseStreamHeaderTrackObjectMessage()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			panic(err)
+		}
+		if _, err = s.push(msg); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (s *ReceiveSubscription) readGroupHeaderStream(rs receiveStream) {
+	parser := newParser(quicvarint.NewReader(rs))
+	for {
+		msg, err := parser.parseStreamHeaderGroupObjectMessage()
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			panic(err)
+		}
+		if _, err = s.push(msg); err != nil {
+			panic(err)
+		}
+	}
 }

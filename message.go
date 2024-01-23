@@ -92,7 +92,7 @@ type loggingParser struct {
 	reader messageReader
 }
 
-func newParser(mr messageReader) parser {
+func newParser(mr messageReader) *loggingParser {
 	return &loggingParser{
 		logger: defaultLogger.With(componentKey, "MOQ_PARSER"),
 		reader: mr,
@@ -816,20 +816,20 @@ func (p *loggingParser) parseGoAwayMessage() (*goAwayMessage, error) {
 	}, nil
 }
 
-type StreamHeaderTrackMessage struct {
+type streamHeaderTrackMessage struct {
 	SubscribeID     uint64
 	TrackAlias      uint64
 	ObjectSendOrder uint64
 }
 
-func (m *StreamHeaderTrackMessage) append(buf []byte) []byte {
+func (m *streamHeaderTrackMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.ObjectSendOrder)
 	return buf
 }
 
-func (p *loggingParser) parseStreamHeaderTrackMessage() (*StreamHeaderTrackMessage, error) {
+func (p *loggingParser) parseStreamHeaderTrackMessage() (*streamHeaderTrackMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -845,7 +845,7 @@ func (p *loggingParser) parseStreamHeaderTrackMessage() (*StreamHeaderTrackMessa
 	if err != nil {
 		return nil, err
 	}
-	return &StreamHeaderTrackMessage{
+	return &streamHeaderTrackMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		ObjectSendOrder: objectSendOrder,
