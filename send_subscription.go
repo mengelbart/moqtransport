@@ -1,8 +1,11 @@
 package moqtransport
 
 import (
+	"errors"
 	"sync"
 	"time"
+
+	"github.com/quic-go/quic-go"
 )
 
 type SendSubscription struct {
@@ -72,8 +75,34 @@ func (s *SendSubscription) NewObjectStream(groupID, objectID, objectSendOrder ui
 	return newObjectStream(stream, s.subscribeID, s.trackAlias, groupID, objectID, objectSendOrder)
 }
 
-func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSendOrder uint64, payload []byte) {
-	panic("TODO")
+func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSendOrder uint64, payload []byte) error {
+	o := objectMessage{
+		preferDatagram:  true,
+		SubscribeID:     s.subscribeID,
+		TrackAlias:      s.trackAlias,
+		GroupID:         groupID,
+		ObjectID:        objectID,
+		ObjectSendOrder: objectSendOrder,
+		ObjectPayload:   payload,
+	}
+	buf := make([]byte, 0, 48+len(o.ObjectPayload))
+	buf = o.append(buf)
+	err := s.conn.SendMessage(buf)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, &quic.DatagramTooLargeError{}) {
+		return err
+	}
+	os, err := s.NewObjectStream(groupID, objectID, objectSendOrder)
+	if err != nil {
+		return err
+	}
+	_, err = os.Write(buf)
+	if err != nil {
+		return err
+	}
+	return os.Close()
 }
 
 func (s *SendSubscription) NewTrackHeaderStream(objectSendOrder uint64) (*trackHeaderStream, error) {

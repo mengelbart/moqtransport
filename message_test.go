@@ -13,12 +13,12 @@ import (
 
 func TestObjectStreamMessageAppend(t *testing.T) {
 	cases := []struct {
-		om     objectStreamMessage
+		om     objectMessage
 		buf    []byte
 		expect []byte
 	}{
 		{
-			om: objectStreamMessage{
+			om: objectMessage{
 				SubscribeID:     0,
 				TrackAlias:      0,
 				GroupID:         0,
@@ -32,7 +32,7 @@ func TestObjectStreamMessageAppend(t *testing.T) {
 			},
 		},
 		{
-			om: objectStreamMessage{
+			om: objectMessage{
 				SubscribeID:     1,
 				TrackAlias:      2,
 				GroupID:         3,
@@ -47,7 +47,7 @@ func TestObjectStreamMessageAppend(t *testing.T) {
 			},
 		},
 		{
-			om: objectStreamMessage{
+			om: objectMessage{
 				SubscribeID:     1,
 				TrackAlias:      2,
 				GroupID:         3,
@@ -74,7 +74,7 @@ func TestObjectStreamMessageAppend(t *testing.T) {
 func TestParseObjectMessage(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		expect *objectStreamMessage
+		expect *objectMessage
 		err    error
 	}{
 		{
@@ -99,7 +99,7 @@ func TestParseObjectMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
-			expect: &objectStreamMessage{
+			expect: &objectMessage{
 				SubscribeID:     0,
 				TrackAlias:      0,
 				GroupID:         0,
@@ -111,7 +111,7 @@ func TestParseObjectMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00}),
-			expect: &objectStreamMessage{
+			expect: &objectMessage{
 				SubscribeID:     0,
 				TrackAlias:      0,
 				GroupID:         0,
@@ -123,7 +123,7 @@ func TestParseObjectMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x0b, 0x0c, 0x0d}),
-			expect: &objectStreamMessage{
+			expect: &objectMessage{
 				SubscribeID:     0,
 				TrackAlias:      0,
 				GroupID:         0,
@@ -140,7 +140,7 @@ func TestParseObjectMessage(t *testing.T) {
 				logger: slog.Default(),
 				reader: tc.r,
 			}
-			res, err := p.parseObjectMessage()
+			res, err := p.parseObjectMessage(objectStreamMessageType)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
