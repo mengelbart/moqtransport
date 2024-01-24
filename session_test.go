@@ -38,7 +38,7 @@ func TestSession(t *testing.T) {
 		csh := NewMockControlStreamHandler(ctrl)
 		s := *session(mc, csh)
 		s.activeReceiveSubscriptions[0] = newReceiveSubscription()
-		object := &objectStreamMessage{
+		object := &objectMessage{
 			SubscribeID:     0,
 			TrackAlias:      0,
 			GroupID:         0,

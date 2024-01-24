@@ -106,7 +106,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 	}
 	switch messageType(mt) {
 	case objectStreamMessageType, objectPreferDatagramMessageType:
-		msg, err = p.parseObjectMessage()
+		msg, err = p.parseObjectMessage(messageType(mt))
 	case subscribeMessageType:
 		msg, err = p.parseSubscribeRequestMessage()
 	case subscribeOkMessageType:
@@ -147,7 +147,8 @@ func (p *loggingParser) parse() (msg message, err error) {
 	return
 }
 
-type objectStreamMessage struct {
+type objectMessage struct {
+	preferDatagram  bool
 	SubscribeID     uint64
 	TrackAlias      uint64
 	GroupID         uint64
@@ -156,11 +157,11 @@ type objectStreamMessage struct {
 	ObjectPayload   []byte
 }
 
-func (o *objectStreamMessage) payload() []byte {
+func (o *objectMessage) payload() []byte {
 	return o.ObjectPayload
 }
 
-func (m objectStreamMessage) String() string {
+func (m objectMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
 		return "json.Marshal of objectMessage failed"
@@ -168,8 +169,12 @@ func (m objectStreamMessage) String() string {
 	return fmt.Sprintf("%v:%v", objectStreamMessageType.String(), string(buf))
 }
 
-func (m *objectStreamMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(objectStreamMessageType))
+func (m *objectMessage) append(buf []byte) []byte {
+	if m.preferDatagram {
+		buf = quicvarint.Append(buf, uint64(objectPreferDatagramMessageType))
+	} else {
+		buf = quicvarint.Append(buf, uint64(objectStreamMessageType))
+	}
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
@@ -180,7 +185,7 @@ func (m *objectStreamMessage) append(buf []byte) []byte {
 }
 
 // TODO: Add prefer datagram property to object type?
-func (p *loggingParser) parseObjectMessage() (*objectStreamMessage, error) {
+func (p *loggingParser) parseObjectMessage(mt messageType) (*objectMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -209,7 +214,8 @@ func (p *loggingParser) parseObjectMessage() (*objectStreamMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &objectStreamMessage{
+	return &objectMessage{
+		preferDatagram:  mt == objectPreferDatagramMessageType,
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		GroupID:         groupID,
@@ -912,7 +918,7 @@ func (m *streamHeaderTrackObject) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *loggingParser) parseStreamHeaderTrackObjectMessage() (*streamHeaderTrackObject, error) {
+func (p *loggingParser) parseStreamHeaderTrackObject() (*streamHeaderTrackObject, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -951,7 +957,7 @@ func (m *streamHeaderGroupObject) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *loggingParser) parseStreamHeaderGroupObjectMessage() (*streamHeaderGroupObject, error) {
+func (p *loggingParser) parseStreamHeaderGroupObject() (*streamHeaderGroupObject, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}

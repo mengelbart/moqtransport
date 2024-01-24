@@ -250,7 +250,7 @@ func (s *Session) handleIncomingUniStream(stream receiveStream) {
 		return
 	}
 	switch h := msg.(type) {
-	case *objectStreamMessage:
+	case *objectMessage:
 		// TODO: Only parse header and then delegate reading payload to ReceiveSubscription
 		if err := s.handleObjectMessage(msg); err != nil {
 			panic(err) // TODO
@@ -308,7 +308,7 @@ func (s *Session) readMessages(r messageReader, handle messageHandler) {
 func (s *Session) handleControlMessage(msg message) error {
 	var err error
 	switch m := msg.(type) {
-	case *objectStreamMessage:
+	case *objectMessage:
 		return &moqError{
 			code:    protocolViolationErrorCode,
 			message: "received object message on control stream",
@@ -460,7 +460,7 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
 }
 
 func (s *Session) handleObjectMessage(m message) error {
-	o, ok := m.(*objectStreamMessage)
+	o, ok := m.(*objectMessage)
 	if !ok {
 		return &moqError{
 			code:    protocolViolationErrorCode,

@@ -11,7 +11,7 @@ func newGroupHeaderStream(stream sendStream, subscribeID, trackAlias, groupID, o
 		GroupID:         groupID,
 		ObjectSendOrder: objectSendOrder,
 	}
-	buf := make([]byte, 0, 32)
+	buf := make([]byte, 0, 40)
 	buf = shgm.append(buf)
 	_, err := stream.Write(buf)
 	if err != nil {

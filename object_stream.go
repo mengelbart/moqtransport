@@ -5,7 +5,8 @@ type objectStream struct {
 }
 
 func newObjectStream(stream sendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
-	osm := &objectStreamMessage{
+	osm := &objectMessage{
+		preferDatagram:  false,
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		GroupID:         groupID,
@@ -13,7 +14,7 @@ func newObjectStream(stream sendStream, subscribeID, trackAlias, groupID, object
 		ObjectSendOrder: objectSendOrder,
 		ObjectPayload:   nil,
 	}
-	buf := make([]byte, 0, 40)
+	buf := make([]byte, 0, 48)
 	buf = osm.append(buf)
 	_, err := stream.Write(buf)
 	if err != nil {

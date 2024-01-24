@@ -10,7 +10,7 @@ func newTrackHeaderStream(stream sendStream, subscribeID, trackAlias, objectSend
 		TrackAlias:      trackAlias,
 		ObjectSendOrder: objectSendOrder,
 	}
-	buf := make([]byte, 0, 24)
+	buf := make([]byte, 0, 32)
 	buf = shtm.append(buf)
 	_, err := stream.Write(buf)
 	if err != nil {
