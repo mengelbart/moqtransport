@@ -64,6 +64,10 @@ func (l *wtListener) Accept(ctx context.Context) (connection, error) {
 }
 
 func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
+	return s.ListenWebTransportPath(ctx, addr, "/moq")
+}
+
+func (s *Server) ListenWebTransportPath(ctx context.Context, addr, path string) error {
 	if s.logger == nil {
 		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
 	}
@@ -81,7 +85,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 	l := &wtListener{
 		ch: make(chan *webtransport.Session),
 	}
-	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("upgrading to WebTransport")
 		conn, err := ws.Upgrade(w, r)
 		if err != nil {
