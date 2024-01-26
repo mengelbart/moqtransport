@@ -116,7 +116,7 @@ func newClientSession(ctx context.Context, conn connection, clientRole Role, ena
 		return nil, fmt.Errorf("opening control stream failed: %w", err)
 	}
 	ctrlStreamHandler := &defaultCtrlStreamHandler{
-		logger: defaultLogger.With(componentKey, "MOQ_CONTROL_STREAM"),
+		logger: defaultLogger.WithGroup("MOQ_CONTROL_STREAM"),
 		stream: ctrlStream,
 		parser: newParser(quicvarint.NewReader(ctrlStream)),
 	}
@@ -160,7 +160,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 		return nil, fmt.Errorf("accepting control stream failed: %w", err)
 	}
 	ctrlStreamHandler := &defaultCtrlStreamHandler{
-		logger: defaultLogger.With(componentKey, "MOQ_CONTROL_STREAM"),
+		logger: defaultLogger.WithGroup("MOQ_CONTROL_STREAM"),
 		stream: ctrlStream,
 		parser: newParser(quicvarint.NewReader(ctrlStream)),
 	}
@@ -205,7 +205,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 func newSession(ctx context.Context, conn connection, cms controlStreamHandler, enableDatagrams bool) *Session {
 	s := &Session{
 		ctx:                            ctx,
-		logger:                         defaultLogger.With(componentKey, "MOQ_SESSION"),
+		logger:                         defaultLogger.WithGroup("MOQ_SESSION"),
 		conn:                           conn,
 		cms:                            cms,
 		enableDatagrams:                enableDatagrams,

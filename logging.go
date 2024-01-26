@@ -5,8 +5,6 @@ import (
 	"os"
 )
 
-const componentKey = "component"
-
 func init() {
 	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource: true,
