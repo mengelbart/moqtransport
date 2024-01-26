@@ -5,11 +5,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
 var (
