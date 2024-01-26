@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
-	"golang.org/x/exp/slices"
 )
 
 type messageHandler func(message) error
