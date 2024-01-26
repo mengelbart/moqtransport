@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "https://localhost:8080/moq", "address to connect to")
+	addr := flag.String("addr", "localhost:8080", "address to connect to")
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
 	flag.Parse()
 
