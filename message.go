@@ -94,7 +94,7 @@ type loggingParser struct {
 
 func newParser(mr messageReader) *loggingParser {
 	return &loggingParser{
-		logger: defaultLogger.With(componentKey, "MOQ_PARSER"),
+		logger: defaultLogger.WithGroup("MOQ_PARSER"),
 		reader: mr,
 	}
 }

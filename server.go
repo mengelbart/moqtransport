@@ -69,7 +69,7 @@ func (s *Server) ListenWebTransport(ctx context.Context, addr string) error {
 
 func (s *Server) ListenWebTransportPath(ctx context.Context, addr, path string) error {
 	if s.logger == nil {
-		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+		s.logger = defaultLogger.WithGroup("MOQ_SERVER")
 	}
 	ws := &webtransport.Server{
 		H3: http3.Server{
@@ -126,7 +126,7 @@ func (s *Server) ListenWebTransportPath(ctx context.Context, addr, path string) 
 
 func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 	if s.logger == nil {
-		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+		s.logger = defaultLogger.WithGroup("MOQ_SERVER")
 	}
 	ql, err := quic.ListenAddr(addr, s.TLSConfig, &quic.Config{
 		MaxIdleTimeout:  60 * time.Second,
@@ -140,7 +140,7 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string) error {
 
 func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener) error {
 	if s.logger == nil {
-		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+		s.logger = defaultLogger.WithGroup("MOQ_SERVER")
 	}
 	l := &quicListener{
 		ql: listener,
@@ -150,7 +150,7 @@ func (s *Server) ListenQUICListener(ctx context.Context, listener *quic.Listener
 
 func (s *Server) Listen(ctx context.Context, l listener) error {
 	if s.logger == nil {
-		s.logger = defaultLogger.With(componentKey, "MOQ_SERVER")
+		s.logger = defaultLogger.WithGroup("MOQ_SERVER")
 	}
 	for {
 		conn, err := l.Accept(ctx)
