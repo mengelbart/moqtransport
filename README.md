@@ -15,13 +15,13 @@ Chat](https://afrind.github.io/draft-frindell-moq-chat/draft-frindell-moq-chat.h
 To run a simple chat server using MoQ Tranpsort on top of QUIC, run:
 
 ```shell
-go run examples/server/main.go
+go run examples/chat-server/main.go
 ```
 
 Then, open a new shell and start a client:
 
 ```shell
-go run examples/client/main.go
+go run examples/chat-client/main.go
 ```
 
 The client is a simple interactive shell that reads and writes messages from
@@ -31,8 +31,8 @@ Open another shell and run a second client to chat with the first one using the
 commands `join <roomID> <username>` to join a room and `msg <roomID> <message>`
 to send messages to a room.
 
-To use WebTransport, we need to create a TLS certificate. This can be done using
-[mkcert](https://github.com/FiloSottile/mkcert):
+To use WebTransport, you need to create a TLS certificate. This can be done
+using [mkcert](https://github.com/FiloSottile/mkcert):
 
 ```shell
 mkcert localhost
@@ -43,17 +43,18 @@ mkcert -install
 change the name of the files or use a different host name, you can use the
 `-cert` and `-key` flags of the server command to point it to the correct files.
 
-We can now start the server and client with the `-webtransport` and `-addr`
-flags to run MoQ Transport on top of WebTransport:
+Now start the server and client with the `-webtransport` and `-addr` flags to
+run MoQ Transport on top of WebTransport:
 
 Server:
 
 ```shell
-go run examples/server/main.go -webtransport
+go run examples/chat-server/main.go -webtransport
 ```
 
 Client:
 
 ```shell
-go run examples/client/main.go -webtransport -addr https://localhost:8080/moq
+go run examples/chat-client/main.go -webtransport -addr https://localhost:8080/moq
 ```
+
