@@ -829,6 +829,7 @@ type streamHeaderTrackMessage struct {
 }
 
 func (m *streamHeaderTrackMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(streamHeaderTrackMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.ObjectSendOrder)
@@ -866,6 +867,7 @@ type streamHeaderGroupMessage struct {
 }
 
 func (m *streamHeaderGroupMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(streamHeaderGroupMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
@@ -914,6 +916,7 @@ func (o *streamHeaderTrackObject) payload() []byte {
 func (m *streamHeaderTrackObject) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
@@ -953,6 +956,7 @@ func (o *streamHeaderGroupObject) payload() []byte {
 
 func (m *streamHeaderGroupObject) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
