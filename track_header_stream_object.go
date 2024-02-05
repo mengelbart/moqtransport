@@ -1,11 +1,11 @@
 package moqtransport
 
-type trackHeaderStreamObject struct {
+type TrackHeaderStreamObject struct {
 	stream            sendStream
 	groupID, objectID uint64
 }
 
-func (o *trackHeaderStreamObject) Write(payload []byte) (int, error) {
+func (o *TrackHeaderStreamObject) Write(payload []byte) (int, error) {
 	shto := streamHeaderTrackObject{
 		GroupID:       o.groupID,
 		ObjectID:      o.objectID,
