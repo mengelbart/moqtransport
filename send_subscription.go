@@ -105,7 +105,7 @@ func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSend
 	return os.Close()
 }
 
-func (s *SendSubscription) NewTrackHeaderStream(objectSendOrder uint64) (*trackHeaderStream, error) {
+func (s *SendSubscription) NewTrackHeaderStream(objectSendOrder uint64) (*TrackHeaderStream, error) {
 	stream, err := s.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
