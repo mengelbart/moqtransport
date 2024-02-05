@@ -11,7 +11,7 @@ func (o *trackHeaderStreamObject) Write(payload []byte) (int, error) {
 		ObjectID:      o.objectID,
 		ObjectPayload: payload,
 	}
-	buf := make([]byte, 0, 24+len(payload))
+	buf := make([]byte, 0, 32+len(payload))
 	buf = shto.append(buf)
 	return o.stream.Write(buf)
 }
