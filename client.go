@@ -26,7 +26,7 @@ func DialWebTransport(addr string, role Role) (*Session, error) {
 		return nil, err
 	}
 	wc := &webTransportConn{
-		sess: conn,
+		session: conn,
 	}
 	session, err := newClientSession(context.Background(), wc, role, false)
 	if err != nil {

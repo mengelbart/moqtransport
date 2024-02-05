@@ -166,7 +166,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 	}
 	m, err := ctrlStreamHandler.readNext()
 	if err != nil {
-		return nil, fmt.Errorf("parsing message filed: %w", err)
+		return nil, fmt.Errorf("parsing message failed: %w", err)
 	}
 	msg, ok := m.(*clientSetupMessage)
 	if !ok {
