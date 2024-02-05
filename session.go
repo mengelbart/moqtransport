@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/quic-go/webtransport-go"
 )
 
 type messageHandler func(message) error
@@ -108,6 +109,10 @@ type Session struct {
 
 	pendingAnnouncementsLock sync.RWMutex
 	pendingAnnouncements     map[string]*announcement
+}
+
+func NewWebtransportServerSession(ctx context.Context, conn *webtransport.Session, enableDatagrams bool) (*Session, error) {
+	return newServerSession(ctx, &webTransportConn{session: conn}, enableDatagrams)
 }
 
 func newClientSession(ctx context.Context, conn connection, clientRole Role, enableDatagrams bool) (*Session, error) {
