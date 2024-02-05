@@ -57,7 +57,7 @@ func (l *wtListener) Accept(ctx context.Context) (connection, error) {
 		return nil, ctx.Err()
 	case s := <-l.ch:
 		wc := &webTransportConn{
-			sess: s,
+			session: s,
 		}
 		return wc, nil
 	}
