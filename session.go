@@ -126,7 +126,7 @@ func newClientSession(ctx context.Context, conn connection, clientRole Role, ena
 		parser: newParser(quicvarint.NewReader(ctrlStream)),
 	}
 	csm := &clientSetupMessage{
-		SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
+		SupportedVersions: []version{CURRENT_VERSION},
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
@@ -181,7 +181,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 		}
 	}
 	// TODO: Algorithm to select best matching version
-	if !slices.Contains(msg.SupportedVersions, DRAFT_IETF_MOQ_TRANSPORT_01) {
+	if !slices.Contains(msg.SupportedVersions, CURRENT_VERSION) {
 		return nil, errUnsupportedVersion
 	}
 	_, ok = msg.SetupParameters[roleParameterKey]
@@ -193,7 +193,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 	}
 	// TODO: save role parameter
 	ssm := &serverSetupMessage{
-		SelectedVersion: DRAFT_IETF_MOQ_TRANSPORT_01,
+		SelectedVersion: CURRENT_VERSION,
 		SetupParameters: map[uint64]parameter{},
 	}
 	if err = ctrlStreamHandler.send(ssm); err != nil {

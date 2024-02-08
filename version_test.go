@@ -22,7 +22,7 @@ func TestVersionsLen(t *testing.T) {
 			expected: 1,
 		},
 		{
-			versions: []version{version(DRAFT_IETF_MOQ_TRANSPORT_00)},
+			versions: []version{version(CURRENT_VERSION)},
 			expected: 8,
 		},
 		{
