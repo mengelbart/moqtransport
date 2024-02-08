@@ -108,7 +108,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 	case objectStreamMessageType, objectPreferDatagramMessageType:
 		msg, err = p.parseObjectMessage(messageType(mt))
 	case subscribeMessageType:
-		msg, err = p.parseSubscribeRequestMessage()
+		msg, err = p.parseSubscribeMessage()
 	case subscribeOkMessageType:
 		msg, err = p.parseSubscribeOkMessage()
 	case subscribeErrorMessageType:
@@ -325,7 +325,7 @@ type subscribeMessage struct {
 func (m subscribeMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		return "json.Marshal of subscribeRequestMessage failed"
+		return "json.Marshal of subscribeMessage failed"
 	}
 	return fmt.Sprintf("%v:%v", subscribeMessageType.String(), string(buf))
 }
@@ -351,7 +351,7 @@ func (m *subscribeMessage) append(buf []byte) []byte {
 	return buf
 }
 
-func (p *loggingParser) parseSubscribeRequestMessage() (*subscribeMessage, error) {
+func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
