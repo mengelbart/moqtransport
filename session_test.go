@@ -67,7 +67,7 @@ func TestSession(t *testing.T) {
 		csh := NewMockControlStreamHandler(ctrl)
 		s := session(mc, csh)
 		csm := &clientSetupMessage{
-			SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_01},
+			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					k: roleParameterKey,
