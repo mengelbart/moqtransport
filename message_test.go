@@ -689,7 +689,7 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 				logger: slog.Default(),
 				reader: tc.r,
 			}
-			res, err := p.parseSubscribeRequestMessage()
+			res, err := p.parseSubscribeMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)
