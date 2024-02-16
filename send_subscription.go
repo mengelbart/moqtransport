@@ -8,6 +8,8 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+var errUnsubscribed = errors.New("peer unsubscribed")
+
 type SendSubscription struct {
 	lock       sync.RWMutex
 	responseCh chan error
@@ -67,7 +69,16 @@ func (s *SendSubscription) EndObject() Location {
 	return s.endObject
 }
 
+func (s *SendSubscription) unsubscribe() {
+	close(s.closeCh)
+}
+
 func (s *SendSubscription) NewObjectStream(groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
+	select {
+	case <-s.closeCh:
+		return nil, errUnsubscribed
+	default:
+	}
 	stream, err := s.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -76,6 +87,11 @@ func (s *SendSubscription) NewObjectStream(groupID, objectID, objectSendOrder ui
 }
 
 func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSendOrder uint64, payload []byte) error {
+	select {
+	case <-s.closeCh:
+		return errUnsubscribed
+	default:
+	}
 	o := objectMessage{
 		preferDatagram:  true,
 		SubscribeID:     s.subscribeID,
@@ -106,6 +122,11 @@ func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSend
 }
 
 func (s *SendSubscription) NewTrackHeaderStream(objectSendOrder uint64) (*TrackHeaderStream, error) {
+	select {
+	case <-s.closeCh:
+		return nil, errUnsubscribed
+	default:
+	}
 	stream, err := s.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -114,6 +135,11 @@ func (s *SendSubscription) NewTrackHeaderStream(objectSendOrder uint64) (*TrackH
 }
 
 func (s *SendSubscription) NewGroupHeaderStream(groupID, objectSendOrder uint64) (*groupHeaderStream, error) {
+	select {
+	case <-s.closeCh:
+		return nil, errUnsubscribed
+	default:
+	}
 	stream, err := s.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
