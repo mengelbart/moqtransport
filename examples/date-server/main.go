@@ -62,7 +62,7 @@ func listenWebTransport(ctx context.Context, addr string, tlsConfig *tls.Config)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		moqSession, err := moqtransport.NewServerSession(ctx, webtransportmoq.New(session), false)
+		moqSession, err := moqtransport.NewServerSession(webtransportmoq.New(session), false)
 		if err != nil {
 			log.Printf("MoQ Session initialization failed: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -85,7 +85,7 @@ func listenQUIC(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 		if err != nil {
 			return err
 		}
-		s, err := moqtransport.NewServerSession(ctx, quicmoq.New(conn), true)
+		s, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
 		if err != nil {
 			return err
 		}

@@ -13,6 +13,8 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+var errClosed = errors.New("session closed")
+
 type messageHandler func(message) error
 
 type controlStreamHandler interface {
@@ -44,7 +46,8 @@ func (h *defaultCtrlStreamHandler) readMessages(handler messageHandler) {
 			return
 		}
 		if err = handler(msg); err != nil {
-			panic(fmt.Sprintf("TODO: %v", err))
+			h.logger.Error("TODO", "error", err)
+			return
 		}
 	}
 }
@@ -86,11 +89,12 @@ type trackNamespacer interface {
 }
 
 type Session struct {
-	ctx    context.Context
 	logger *slog.Logger
 
-	conn Connection
-	cms  controlStreamHandler
+	closeOnce sync.Once
+	closed    chan struct{}
+	conn      Connection
+	cms       controlStreamHandler
 
 	enableDatagrams bool
 
@@ -100,18 +104,15 @@ type Session struct {
 	activeSendSubscriptionsLock sync.RWMutex
 	activeSendSubscriptions     map[uint64]*SendSubscription
 
-	activeReceiveSubscriptionsLock sync.RWMutex
-	activeReceiveSubscriptions     map[uint64]*ReceiveSubscription
-
-	pendingSubscriptionsLock sync.RWMutex
-	pendingSubscriptions     map[uint64]*ReceiveSubscription
+	receiveSubscriptionsLock sync.RWMutex
+	receiveSubscriptions     map[uint64]*ReceiveSubscription
 
 	pendingAnnouncementsLock sync.RWMutex
 	pendingAnnouncements     map[string]*announcement
 }
 
-func NewClientSession(ctx context.Context, conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
-	ctrlStream, err := conn.OpenStreamSync(ctx)
+func NewClientSession(conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
+	ctrlStream, err := conn.OpenStreamSync(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("opening control stream failed: %w", err)
 	}
@@ -146,7 +147,8 @@ func NewClientSession(ctx context.Context, conn Connection, clientRole Role, ena
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
 	}
-	s, err := newSession(ctx, conn, ctrlStreamHandler, enableDatagrams), nil
+	l := defaultLogger.WithGroup("MOQ_CLIENT_SESSION")
+	s, err := newSession(conn, ctrlStreamHandler, enableDatagrams, l), nil
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +156,8 @@ func NewClientSession(ctx context.Context, conn Connection, clientRole Role, ena
 	return s, nil
 }
 
-func NewServerSession(ctx context.Context, conn Connection, enableDatagrams bool) (*Session, error) {
-	ctrlStream, err := conn.AcceptStream(ctx)
+func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
+	ctrlStream, err := conn.AcceptStream(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("accepting control stream failed: %w", err)
 	}
@@ -194,7 +196,8 @@ func NewServerSession(ctx context.Context, conn Connection, enableDatagrams bool
 	if err = ctrlStreamHandler.send(ssm); err != nil {
 		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
 	}
-	s, err := newSession(ctx, conn, ctrlStreamHandler, enableDatagrams), nil
+	l := defaultLogger.WithGroup("MOQ_SERVER_SESSION")
+	s, err := newSession(conn, ctrlStreamHandler, enableDatagrams, l), nil
 	if err != nil {
 		return nil, err
 	}
@@ -202,40 +205,52 @@ func NewServerSession(ctx context.Context, conn Connection, enableDatagrams bool
 	return s, nil
 }
 
-func newSession(ctx context.Context, conn Connection, cms controlStreamHandler, enableDatagrams bool) *Session {
+func newSession(conn Connection, cms controlStreamHandler, enableDatagrams bool, logger *slog.Logger) *Session {
 	s := &Session{
-		ctx:                            ctx,
-		logger:                         defaultLogger.WithGroup("MOQ_SESSION"),
-		conn:                           conn,
-		cms:                            cms,
-		enableDatagrams:                enableDatagrams,
-		subscriptionCh:                 make(chan *SendSubscription),
-		announcementCh:                 make(chan *Announcement),
-		activeSendSubscriptionsLock:    sync.RWMutex{},
-		activeSendSubscriptions:        map[uint64]*SendSubscription{},
-		activeReceiveSubscriptionsLock: sync.RWMutex{},
-		activeReceiveSubscriptions:     map[uint64]*ReceiveSubscription{},
-		pendingSubscriptionsLock:       sync.RWMutex{},
-		pendingSubscriptions:           map[uint64]*ReceiveSubscription{},
-		pendingAnnouncementsLock:       sync.RWMutex{},
-		pendingAnnouncements:           map[string]*announcement{},
+		logger:                      logger,
+		closed:                      make(chan struct{}),
+		conn:                        conn,
+		cms:                         cms,
+		enableDatagrams:             enableDatagrams,
+		subscriptionCh:              make(chan *SendSubscription),
+		announcementCh:              make(chan *Announcement),
+		activeSendSubscriptionsLock: sync.RWMutex{},
+		activeSendSubscriptions:     map[uint64]*SendSubscription{},
+		receiveSubscriptionsLock:    sync.RWMutex{},
+		receiveSubscriptions:        map[uint64]*ReceiveSubscription{},
+		pendingAnnouncementsLock:    sync.RWMutex{},
+		pendingAnnouncements:        map[string]*announcement{},
 	}
 	return s
 }
 
 func (s *Session) run() {
-	go s.acceptUnidirectionalStreams(s.ctx)
+	go s.acceptUnidirectionalStreams()
 	if s.enableDatagrams {
-		go s.acceptDatagrams(s.ctx)
+		go s.acceptDatagrams()
 	}
 	go s.cms.readMessages(s.handleControlMessage)
 }
 
-func (s *Session) acceptUnidirectionalStreams(ctx context.Context) {
+func (s *Session) acceptUnidirectionalStream() (ReceiveStream, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-s.closed:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return s.conn.AcceptUniStream(ctx)
+}
+
+func (s *Session) acceptUnidirectionalStreams() {
 	for {
-		stream, err := s.conn.AcceptUniStream(ctx)
+		stream, err := s.acceptUnidirectionalStream()
 		if err != nil {
 			s.logger.Error("failed to accept uni stream", "error", err)
+			s.peerClosed(err)
 			return
 		}
 		go s.handleIncomingUniStream(stream)
@@ -251,37 +266,56 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 	}
 	switch h := msg.(type) {
 	case *objectMessage:
-		// TODO: Only parse header and then delegate reading payload to ReceiveSubscription
-		if err := s.handleObjectMessage(msg); err != nil {
-			panic(err) // TODO
+		s.receiveSubscriptionsLock.RLock()
+		sub, ok := s.receiveSubscriptions[h.SubscribeID]
+		s.receiveSubscriptionsLock.RUnlock()
+		if !ok {
+			s.logger.Warn("got object for unknown subscribe ID")
+			return
 		}
-		return
+		if _, err := sub.push(h); err != nil {
+			panic(err)
+		}
 	case *streamHeaderTrackMessage:
-		s.activeReceiveSubscriptionsLock.RLock()
-		sub, ok := s.activeReceiveSubscriptions[h.SubscribeID]
-		s.activeReceiveSubscriptionsLock.RUnlock()
+		s.receiveSubscriptionsLock.RLock()
+		sub, ok := s.receiveSubscriptions[h.SubscribeID]
+		s.receiveSubscriptionsLock.RUnlock()
 		if !ok {
 			s.logger.Warn("got stream header track message for unknown subscription")
-			panic("TODO")
+			return
 		}
 		sub.readTrackHeaderStream(stream)
 	case *streamHeaderGroupMessage:
-		s.activeReceiveSubscriptionsLock.RLock()
-		sub, ok := s.activeReceiveSubscriptions[h.SubscribeID]
-		s.activeReceiveSubscriptionsLock.RUnlock()
+		s.receiveSubscriptionsLock.RLock()
+		sub, ok := s.receiveSubscriptions[h.SubscribeID]
+		s.receiveSubscriptionsLock.RUnlock()
 		if !ok {
 			s.logger.Warn("got stream header track message for unknown subscription")
-			panic("TODO")
+			return
 		}
 		sub.readGroupHeaderStream(stream)
 	}
 }
 
-func (s *Session) acceptDatagrams(ctx context.Context) {
+func (s *Session) acceptDatagram() ([]byte, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-s.closed:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	return s.conn.ReceiveDatagram(ctx)
+}
+
+func (s *Session) acceptDatagrams() {
 	for {
-		dgram, err := s.conn.ReceiveDatagram(ctx)
+		dgram, err := s.acceptDatagram()
 		if err != nil {
 			s.logger.Error("failed to receive datagram", "error", err)
+			s.peerClosed(err)
 			return
 		}
 		go s.readMessages(bytes.NewReader(dgram), s.handleObjectMessage)
@@ -314,7 +348,10 @@ func (s *Session) handleControlMessage(msg message) error {
 			message: "received object message on control stream",
 		}
 	case *subscribeMessage:
-		err = s.cms.send(s.handleSubscribeRequest(m))
+		r := s.handleSubscribeRequest(m)
+		if r != nil {
+			err = s.cms.send(r)
+		}
 	case *subscribeOkMessage:
 		err = s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
@@ -326,7 +363,10 @@ func (s *Session) handleControlMessage(msg message) error {
 	case *unsubscribeMessage:
 		panic("TODO")
 	case *announceMessage:
-		err = s.cms.send(s.handleAnnounceMessage(m))
+		r := s.handleAnnounceMessage(m)
+		if r != nil {
+			err = s.cms.send(r)
+		}
 	case *announceOkMessage:
 		err = s.handleAnnouncementResponse(m)
 	case *announceErrorMessage:
@@ -343,9 +383,9 @@ func (s *Session) handleControlMessage(msg message) error {
 }
 
 func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
-	s.pendingSubscriptionsLock.RLock()
-	sub, ok := s.pendingSubscriptions[msg.subscribeID()]
-	s.pendingSubscriptionsLock.RUnlock()
+	s.receiveSubscriptionsLock.RLock()
+	sub, ok := s.receiveSubscriptions[msg.subscribeID()]
+	s.receiveSubscriptionsLock.RUnlock()
 	if !ok {
 		return &moqError{
 			code:    genericErrorErrorCode,
@@ -355,8 +395,8 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 	// TODO: Run a goroutine to avoid blocking here?
 	select {
 	case sub.responseCh <- msg:
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-s.closed:
+		return errClosed
 	}
 	return nil
 }
@@ -374,8 +414,8 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	// TODO: Run a goroutine to avoid blocking here?
 	select {
 	case a.responseCh <- msg:
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-s.closed:
+		return errClosed
 	}
 	return nil
 }
@@ -398,18 +438,14 @@ func (s *Session) handleSubscribeRequest(msg *subscribeMessage) message {
 		parameters:  msg.Parameters,
 	}
 	select {
-	case <-s.ctx.Done():
-		return &subscribeErrorMessage{
-			SubscribeID:  msg.SubscribeID,
-			ErrorCode:    0,
-			ReasonPhrase: "session closed",
-			TrackAlias:   msg.TrackAlias,
-		}
+	case <-s.closed:
+		return nil
 	case s.subscriptionCh <- sub:
 	}
 	select {
-	case <-s.ctx.Done():
+	case <-s.closed:
 		close(sub.closeCh)
+		return nil
 	case err := <-sub.responseCh:
 		if err != nil {
 			return &subscribeErrorMessage{
@@ -434,17 +470,14 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
 		parameters: msg.TrackRequestParameters,
 	}
 	select {
-	case <-s.ctx.Done():
-		return &announceErrorMessage{
-			TrackNamespace: msg.TrackNamespace,
-			ErrorCode:      0, // TODO: Set correct code?
-			ReasonPhrase:   "session closed",
-		}
+	case <-s.closed:
+		return nil
 	case s.announcementCh <- a:
 	}
 	select {
-	case <-s.ctx.Done():
+	case <-s.closed:
 		close(a.closeCh)
+		return nil
 	case err := <-a.errorCh:
 		if err != nil {
 			return &announceErrorMessage{
@@ -467,9 +500,9 @@ func (s *Session) handleObjectMessage(m message) error {
 			message: "received unexpected control message on object stream",
 		}
 	}
-	s.activeReceiveSubscriptionsLock.RLock()
-	sub, ok := s.activeReceiveSubscriptions[o.SubscribeID]
-	s.activeReceiveSubscriptionsLock.RUnlock()
+	s.receiveSubscriptionsLock.RLock()
+	sub, ok := s.receiveSubscriptions[o.SubscribeID]
+	s.receiveSubscriptionsLock.RUnlock()
 	if ok {
 		_, err := sub.push(o)
 		return err
@@ -482,8 +515,8 @@ func (s *Session) ReadSubscription(ctx context.Context) (*SendSubscription, erro
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-s.ctx.Done():
-		return nil, errors.New("session closed") // TODO: Better error message including a reason?
+	case <-s.closed:
+		return nil, errClosed // TODO: Better error message including a reason?
 	case s := <-s.subscriptionCh:
 		return s, nil
 	}
@@ -493,8 +526,8 @@ func (s *Session) ReadAnnouncement(ctx context.Context) (*Announcement, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-s.ctx.Done():
-		return nil, errors.New("session closed") // TODO: Better error message including a reason?
+	case <-s.closed:
+		return nil, errClosed // TODO: Better error message including a reason?
 	case a := <-s.announcementCh:
 		return a, nil
 	}
@@ -519,9 +552,9 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		}
 	}
 	sub := newReceiveSubscription()
-	s.pendingSubscriptionsLock.Lock()
-	s.pendingSubscriptions[sm.subscribeID()] = sub
-	s.pendingSubscriptionsLock.Unlock()
+	s.receiveSubscriptionsLock.Lock()
+	s.receiveSubscriptions[sm.subscribeID()] = sub
+	s.receiveSubscriptionsLock.Unlock()
 	if err := s.cms.send(sm); err != nil {
 		return nil, err
 	}
@@ -529,8 +562,8 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-s.ctx.Done():
-		return nil, s.ctx.Err()
+	case <-s.closed:
+		return nil, errClosed
 	case resp = <-sub.responseCh:
 	}
 	if resp.subscribeID() != sm.SubscribeID {
@@ -542,11 +575,11 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
-		s.activeReceiveSubscriptionsLock.Lock()
-		s.activeReceiveSubscriptions[v.SubscribeID] = sub
-		s.activeReceiveSubscriptionsLock.Unlock()
 		return sub, nil
 	case *subscribeErrorMessage:
+		s.receiveSubscriptionsLock.Lock()
+		delete(s.receiveSubscriptions, sm.subscribeID())
+		s.receiveSubscriptionsLock.Unlock()
 		return nil, errors.New(v.ReasonPhrase)
 	}
 	return nil, &moqError{
@@ -577,8 +610,8 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-s.ctx.Done():
-		return s.ctx.Err()
+	case <-s.closed:
+		return errClosed
 	case resp = <-responseCh:
 	}
 	if resp.trackNamespace() != am.TrackNamespace {
@@ -600,6 +633,13 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	}
 }
 
-func (s *Session) CloseWithError(code uint64, msg string) {
+func (s *Session) Close() error {
+	s.peerClosed(nil)
+	return s.conn.CloseWithError(0, "")
+}
 
+func (s *Session) peerClosed(err error) {
+	s.closeOnce.Do(func() {
+		close(s.closed)
+	})
 }

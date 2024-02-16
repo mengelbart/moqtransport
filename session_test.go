@@ -13,21 +13,19 @@ import (
 
 func session(conn Connection, ctrlStream controlStreamHandler) *Session {
 	return &Session{
-		ctx:                            context.Background(),
-		logger:                         slog.Default(),
-		conn:                           conn,
-		cms:                            ctrlStream,
-		enableDatagrams:                false,
-		subscriptionCh:                 make(chan *SendSubscription),
-		announcementCh:                 make(chan *Announcement),
-		activeSendSubscriptionsLock:    sync.RWMutex{},
-		activeSendSubscriptions:        map[uint64]*SendSubscription{},
-		activeReceiveSubscriptionsLock: sync.RWMutex{},
-		activeReceiveSubscriptions:     map[uint64]*ReceiveSubscription{},
-		pendingSubscriptionsLock:       sync.RWMutex{},
-		pendingSubscriptions:           map[uint64]*ReceiveSubscription{},
-		pendingAnnouncementsLock:       sync.RWMutex{},
-		pendingAnnouncements:           map[string]*announcement{},
+		logger:                      slog.Default(),
+		closed:                      make(chan struct{}),
+		conn:                        conn,
+		cms:                         ctrlStream,
+		enableDatagrams:             false,
+		subscriptionCh:              make(chan *SendSubscription),
+		announcementCh:              make(chan *Announcement),
+		activeSendSubscriptionsLock: sync.RWMutex{},
+		activeSendSubscriptions:     map[uint64]*SendSubscription{},
+		receiveSubscriptionsLock:    sync.RWMutex{},
+		receiveSubscriptions:        map[uint64]*ReceiveSubscription{},
+		pendingAnnouncementsLock:    sync.RWMutex{},
+		pendingAnnouncements:        map[string]*announcement{},
 	}
 }
 
@@ -37,7 +35,7 @@ func TestSession(t *testing.T) {
 		mc := NewMockConnection(ctrl)
 		csh := NewMockControlStreamHandler(ctrl)
 		s := *session(mc, csh)
-		s.activeReceiveSubscriptions[0] = newReceiveSubscription()
+		s.receiveSubscriptions[0] = newReceiveSubscription()
 		object := &objectMessage{
 			SubscribeID:     0,
 			TrackAlias:      0,
@@ -49,7 +47,7 @@ func TestSession(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			buf := make([]byte, 1024)
-			n, err := s.activeReceiveSubscriptions[0].Read(buf)
+			n, err := s.receiveSubscriptions[0].Read(buf)
 			assert.NoError(t, err)
 			assert.Equal(t, object.payload(), buf[:n])
 			close(done)

@@ -36,11 +36,11 @@ func run(ctx context.Context, addr string, wt bool) error {
 	if err != nil {
 		return err
 	}
-	session, err = moqtransport.NewClientSession(context.Background(), conn, moqtransport.IngestionDeliveryRole, true)
+	session, err = moqtransport.NewClientSession(conn, moqtransport.IngestionDeliveryRole, true)
 	if err != nil {
 		return err
 	}
-	defer session.CloseWithError(0, "closing conn")
+	defer session.Close()
 
 	for {
 		var a *moqtransport.Announcement
