@@ -10,35 +10,35 @@ type webTransportConn struct {
 	session *webtransport.Session
 }
 
-func (c *webTransportConn) OpenStream() (stream, error) {
+func (c *webTransportConn) OpenStream() (Stream, error) {
 	return c.session.OpenStream()
 }
 
-func (c *webTransportConn) OpenStreamSync(ctx context.Context) (stream, error) {
+func (c *webTransportConn) OpenStreamSync(ctx context.Context) (Stream, error) {
 	return c.session.OpenStreamSync(ctx)
 }
 
-func (c *webTransportConn) OpenUniStream() (sendStream, error) {
+func (c *webTransportConn) OpenUniStream() (SendStream, error) {
 	return c.session.OpenUniStream()
 }
 
-func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (sendStream, error) {
+func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
 	return c.session.OpenUniStreamSync(ctx)
 }
 
-func (c *webTransportConn) AcceptStream(ctx context.Context) (stream, error) {
+func (c *webTransportConn) AcceptStream(ctx context.Context) (Stream, error) {
 	return c.session.AcceptStream(ctx)
 }
 
-func (c *webTransportConn) AcceptUniStream(ctx context.Context) (receiveStream, error) {
+func (c *webTransportConn) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
 	return c.session.AcceptUniStream(ctx)
 }
 
-func (c *webTransportConn) SendMessage(b []byte) error {
+func (c *webTransportConn) SendDatagram(b []byte) error {
 	panic("SendMessage is not implemented for WebTransport")
 }
 
-func (c *webTransportConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
+func (c *webTransportConn) ReceiveDatagram(ctx context.Context) ([]byte, error) {
 	panic("ReceiveMessage is not implemented for WebTransport")
 }
 

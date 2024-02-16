@@ -1,10 +1,10 @@
 package moqtransport
 
 type TrackHeaderStream struct {
-	stream sendStream
+	stream SendStream
 }
 
-func newTrackHeaderStream(stream sendStream, subscribeID, trackAlias, objectSendOrder uint64) (*TrackHeaderStream, error) {
+func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSendOrder uint64) (*TrackHeaderStream, error) {
 	shtm := &streamHeaderTrackMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,

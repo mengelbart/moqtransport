@@ -14,7 +14,7 @@ type SendSubscription struct {
 	closeCh    chan struct{}
 	expires    time.Duration
 
-	conn connection
+	conn Connection
 
 	subscribeID, trackAlias uint64
 	namespace, trackname    string
@@ -87,7 +87,7 @@ func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSend
 	}
 	buf := make([]byte, 0, 48+len(o.ObjectPayload))
 	buf = o.append(buf)
-	err := s.conn.SendMessage(buf)
+	err := s.conn.SendDatagram(buf)
 	if err == nil {
 		return nil
 	}

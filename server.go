@@ -29,14 +29,14 @@ type Server struct {
 }
 
 type listener interface {
-	Accept(context.Context) (connection, error)
+	Accept(context.Context) (Connection, error)
 }
 
 type quicListener struct {
 	ql *quic.Listener
 }
 
-func (l *quicListener) Accept(ctx context.Context) (connection, error) {
+func (l *quicListener) Accept(ctx context.Context) (Connection, error) {
 	c, err := l.ql.Accept(ctx)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ type wtListener struct {
 	ch chan *webtransport.Session
 }
 
-func (l *wtListener) Accept(ctx context.Context) (connection, error) {
+func (l *wtListener) Accept(ctx context.Context) (Connection, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -165,7 +165,7 @@ func (s *Server) Listen(ctx context.Context, l listener) error {
 	}
 }
 
-func (s *Server) handleConn(ctx context.Context, conn connection) error {
+func (s *Server) handleConn(ctx context.Context, conn Connection) error {
 	session, err := newServerSession(ctx, conn, false)
 	if err != nil {
 		if me, ok := err.(*moqError); ok {

@@ -1,10 +1,10 @@
 package moqtransport
 
 type objectStream struct {
-	stream sendStream
+	stream SendStream
 }
 
-func newObjectStream(stream sendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
+func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
 	osm := &objectMessage{
 		preferDatagram:  false,
 		SubscribeID:     subscribeID,
