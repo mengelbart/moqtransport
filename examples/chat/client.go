@@ -38,7 +38,7 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	moqSession, err := moqtransport.NewClientSession(ctx, quicmoq.New(conn), moqtransport.IngestionDeliveryRole, true)
+	moqSession, err := moqtransport.NewClientSession(quicmoq.New(conn), moqtransport.IngestionDeliveryRole, true)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	moqSession, err := moqtransport.NewClientSession(ctx, webtransportmoq.New(session), moqtransport.IngestionDeliveryRole, false)
+	moqSession, err := moqtransport.NewClientSession(webtransportmoq.New(session), moqtransport.IngestionDeliveryRole, false)
 	if err != nil {
 		return nil, err
 	}
