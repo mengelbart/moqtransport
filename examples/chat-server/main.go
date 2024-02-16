@@ -27,14 +27,14 @@ func main() {
 		tlsConfig = generateTLSConfig()
 	}
 
-	s := chat.NewServer(tlsConfig)
+	s := chat.NewServer()
 	if *wt {
-		if err := s.ListenWebTransport(context.TODO(), *addr); err != nil {
+		if err := s.ListenWebTransport(context.TODO(), *addr, tlsConfig); err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
-	if err := s.ListenQUIC(context.TODO(), *addr); err != nil {
+	if err := s.ListenQUIC(context.TODO(), *addr, tlsConfig); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/quic-go/quic-go/quicvarint"
-	"github.com/quic-go/webtransport-go"
 )
 
 type messageHandler func(message) error
@@ -111,11 +110,7 @@ type Session struct {
 	pendingAnnouncements     map[string]*announcement
 }
 
-func NewWebtransportServerSession(ctx context.Context, conn *webtransport.Session, enableDatagrams bool) (*Session, error) {
-	return newServerSession(ctx, &webTransportConn{session: conn}, enableDatagrams)
-}
-
-func newClientSession(ctx context.Context, conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
+func NewClientSession(ctx context.Context, conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
 	ctrlStream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("opening control stream failed: %w", err)
@@ -159,7 +154,7 @@ func newClientSession(ctx context.Context, conn Connection, clientRole Role, ena
 	return s, nil
 }
 
-func newServerSession(ctx context.Context, conn Connection, enableDatagrams bool) (*Session, error) {
+func NewServerSession(ctx context.Context, conn Connection, enableDatagrams bool) (*Session, error) {
 	ctrlStream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accepting control stream failed: %w", err)

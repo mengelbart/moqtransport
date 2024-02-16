@@ -1,8 +1,9 @@
-package moqtransport
+package webtransportmoq
 
 import (
 	"context"
 
+	"github.com/mengelbart/moqtransport"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -10,27 +11,31 @@ type webTransportConn struct {
 	session *webtransport.Session
 }
 
-func (c *webTransportConn) OpenStream() (Stream, error) {
+func New(session *webtransport.Session) moqtransport.Connection {
+	return &webTransportConn{session}
+}
+
+func (c *webTransportConn) OpenStream() (moqtransport.Stream, error) {
 	return c.session.OpenStream()
 }
 
-func (c *webTransportConn) OpenStreamSync(ctx context.Context) (Stream, error) {
+func (c *webTransportConn) OpenStreamSync(ctx context.Context) (moqtransport.Stream, error) {
 	return c.session.OpenStreamSync(ctx)
 }
 
-func (c *webTransportConn) OpenUniStream() (SendStream, error) {
+func (c *webTransportConn) OpenUniStream() (moqtransport.SendStream, error) {
 	return c.session.OpenUniStream()
 }
 
-func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
+func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (moqtransport.SendStream, error) {
 	return c.session.OpenUniStreamSync(ctx)
 }
 
-func (c *webTransportConn) AcceptStream(ctx context.Context) (Stream, error) {
+func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
 	return c.session.AcceptStream(ctx)
 }
 
-func (c *webTransportConn) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
+func (c *webTransportConn) AcceptUniStream(ctx context.Context) (moqtransport.ReceiveStream, error) {
 	return c.session.AcceptUniStream(ctx)
 }
 
