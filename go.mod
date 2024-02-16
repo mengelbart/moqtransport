@@ -1,6 +1,6 @@
 module github.com/mengelbart/moqtransport
 
-go 1.21
+go 1.22.0
 
 require (
 	github.com/quic-go/quic-go v0.41.0

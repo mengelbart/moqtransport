@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.21.x' ]
+        go: [ '1.21.x', '1.22.x' ]
     runs-on: ubuntu-latest
     name: Unit tests (${{ matrix.go }})
     steps:
