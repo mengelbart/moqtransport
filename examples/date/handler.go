@@ -12,9 +12,11 @@ import (
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/mengelbart/moqtransport/webtransportmoq"
+	"github.com/mengelbart/moqtransport/xnetquic"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
+	xquic "golang.org/x/net/quic"
 )
 
 type moqHandler struct {
@@ -27,6 +29,28 @@ type moqHandler struct {
 	publish    bool
 	subscribe  bool
 	publishers chan moqtransport.Publisher
+}
+
+func (h *moqHandler) runXClient(ctx context.Context) error {
+	e, err := xquic.Listen("udp", ":0", nil)
+	if err != nil {
+		return err
+	}
+	conn, err := e.Dial(ctx, "udp", h.addr, &xquic.Config{
+		TLSConfig: &tls.Config{
+			MinVersion:         tls.VersionTLS13,
+			InsecureSkipVerify: true,
+			NextProtos:         []string{"moq-00"},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if h.publish {
+		go h.setupDateTrack()
+	}
+	h.handle(xnetquic.NewClient(conn))
+	select {}
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -129,6 +153,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 		conn.CloseWithError(0, "session initialization error")
 		return
 	}
+	log.Printf("MoQ Session initialization finished successfully")
 	if h.publish {
 		if err := ms.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
@@ -174,14 +199,24 @@ func (h *moqHandler) setupDateTrack() {
 		case ts := <-ticker.C:
 			log.Printf("TICK: %v", ts)
 			for _, p := range publishers {
-				if err := p.SendDatagram(moqtransport.Object{
-					GroupID:    uint64(groupID),
-					SubGroupID: 0,
-					ObjectID:   0,
-					Payload:    []byte(fmt.Sprintf("%v", ts)),
-				}); err != nil {
+				sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
+				if err != nil {
+					log.Printf("failed to open subgroup: %v", err)
+				}
+				if _, err = sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
 					log.Printf("failed to write time to publisher: %v", err)
 				}
+				if err := sg.Close(); err != nil {
+					log.Printf("failed to close subgroup: %v", err)
+				}
+				// if err := p.SendDatagram(moqtransport.Object{
+				// 	GroupID:    uint64(groupID),
+				// 	SubGroupID: 0,
+				// 	ObjectID:   0,
+				// 	Payload:    []byte(fmt.Sprintf("%v", ts)),
+				// }); err != nil {
+				// 	log.Printf("failed to write time to publisher: %v", err)
+				// }
 			}
 		case publisher := <-h.publishers:
 			log.Printf("got subscriber")

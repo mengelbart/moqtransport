@@ -21,7 +21,10 @@ func NewClient(conn quic.Connection) moqtransport.Connection {
 }
 
 func New(conn quic.Connection, perspective moqtransport.Perspective) moqtransport.Connection {
-	return &connection{conn, perspective}
+	return &connection{
+		connection:  conn,
+		perspective: perspective,
+	}
 }
 
 func (c *connection) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
