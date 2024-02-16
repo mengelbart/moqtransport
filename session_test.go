@@ -13,19 +13,19 @@ import (
 
 func session(conn Connection, ctrlStream controlStreamHandler) *Session {
 	return &Session{
-		logger:                      slog.Default(),
-		closed:                      make(chan struct{}),
-		conn:                        conn,
-		cms:                         ctrlStream,
-		enableDatagrams:             false,
-		subscriptionCh:              make(chan *SendSubscription),
-		announcementCh:              make(chan *Announcement),
-		activeSendSubscriptionsLock: sync.RWMutex{},
-		activeSendSubscriptions:     map[uint64]*SendSubscription{},
-		receiveSubscriptionsLock:    sync.RWMutex{},
-		receiveSubscriptions:        map[uint64]*ReceiveSubscription{},
-		pendingAnnouncementsLock:    sync.RWMutex{},
-		pendingAnnouncements:        map[string]*announcement{},
+		logger:                   slog.Default(),
+		closed:                   make(chan struct{}),
+		conn:                     conn,
+		cms:                      ctrlStream,
+		enableDatagrams:          false,
+		subscriptionCh:           make(chan *SendSubscription),
+		announcementCh:           make(chan *Announcement),
+		sendSubscriptionsLock:    sync.RWMutex{},
+		sendSubscriptions:        map[uint64]*SendSubscription{},
+		receiveSubscriptionsLock: sync.RWMutex{},
+		receiveSubscriptions:     map[uint64]*ReceiveSubscription{},
+		announcementsLock:        sync.RWMutex{},
+		announcements:            map[string]*announcement{},
 	}
 }
 
@@ -35,7 +35,7 @@ func TestSession(t *testing.T) {
 		mc := NewMockConnection(ctrl)
 		csh := NewMockControlStreamHandler(ctrl)
 		s := *session(mc, csh)
-		s.receiveSubscriptions[0] = newReceiveSubscription()
+		s.receiveSubscriptions[0] = newReceiveSubscription(0, &s)
 		object := &objectMessage{
 			SubscribeID:     0,
 			TrackAlias:      0,

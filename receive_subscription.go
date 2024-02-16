@@ -9,16 +9,22 @@ import (
 type ReceiveSubscription struct {
 	responseCh chan subscribeIDer
 
-	writeBuffer io.Writer
-	readBuffer  io.Reader
+	session *Session
+
+	writeBuffer *io.PipeWriter
+	readBuffer  *io.PipeReader
+
+	subscribeID uint64
 }
 
-func newReceiveSubscription() *ReceiveSubscription {
+func newReceiveSubscription(id uint64, s *Session) *ReceiveSubscription {
 	r, w := io.Pipe()
 	return &ReceiveSubscription{
 		responseCh:  make(chan subscribeIDer),
+		session:     s,
 		writeBuffer: w,
 		readBuffer:  r,
+		subscribeID: id,
 	}
 }
 
@@ -32,6 +38,13 @@ func (s *ReceiveSubscription) push(p payloader) (int, error) {
 
 func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 	return s.readBuffer.Read(buf)
+}
+
+func (s *ReceiveSubscription) Unsubscribe() error {
+	if err := s.writeBuffer.Close(); err != nil {
+		return err
+	}
+	return s.session.unsubscribe(s.subscribeID)
 }
 
 func (s *ReceiveSubscription) readTrackHeaderStream(rs ReceiveStream) {

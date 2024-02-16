@@ -13,6 +13,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
@@ -201,6 +202,50 @@ func TestIntegration(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "hello world", string(buf[:n]))
 		close(receivedObject)
+		assert.NoError(t, client.Close())
+		wg.Wait()
+	})
+
+	t.Run("unsubscribe", func(t *testing.T) {
+		defer goleak.VerifyNone(t)
+		var wg sync.WaitGroup
+		listener, addr, teardown := setup()
+		defer teardown()
+		wg.Add(1)
+		receivedUnsubscribe := make(chan struct{})
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			conn, err := listener.Accept(ctx)
+			assert.NoError(t, err)
+			server, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
+			assert.NoError(t, err)
+			sub, err := server.ReadSubscription(ctx)
+			assert.NoError(t, err)
+			assert.Equal(t, "namespace", sub.Namespace())
+			assert.Equal(t, "track", sub.Trackname())
+			sub.Accept()
+			for i := 0; i < 10; i++ {
+				err = sub.NewObjectPreferDatagram(0, 0, 0, nil)
+				if err != nil {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			assert.Error(t, err)
+			assert.ErrorContains(t, err, "peer unsubscribed")
+			close(receivedUnsubscribe)
+			assert.NoError(t, server.Close())
+		}()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		client := quicClientSession(t, ctx, addr)
+		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
+		assert.NoError(t, err)
+		assert.NoError(t, sub.Unsubscribe())
+		<-receivedUnsubscribe
+		assert.NoError(t, err)
 		assert.NoError(t, client.Close())
 		wg.Wait()
 	})
