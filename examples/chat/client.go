@@ -3,6 +3,7 @@ package chat
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,11 @@ import (
 	"sync"
 
 	"github.com/mengelbart/moqtransport"
+	"github.com/mengelbart/moqtransport/quicmoq"
+	"github.com/mengelbart/moqtransport/webtransportmoq"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/webtransport-go"
 )
 
 type joinedRooms struct {
@@ -27,20 +33,38 @@ type Client struct {
 	nextTrackID uint64
 }
 
-func NewQUICClient(addr string) (*Client, error) {
-	p, err := moqtransport.DialQUIC(addr, 3)
+func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
+	conn, err := quic.DialAddr(ctx, addr, &tls.Config{}, &quic.Config{})
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(p)
+	moqSession, err := moqtransport.NewClientSession(ctx, quicmoq.New(conn), moqtransport.IngestionDeliveryRole, true)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(moqSession)
 }
 
-func NewWebTransportClient(addr string) (*Client, error) {
-	p, err := moqtransport.DialWebTransport(addr, 3)
+func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
+	dialer := webtransport.Dialer{
+		RoundTripper: &http3.RoundTripper{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+			QuicConfig:      &quic.Config{},
+			EnableDatagrams: false,
+		},
+		StreamReorderingTimeout: 0,
+	}
+	_, session, err := dialer.Dial(ctx, addr, nil)
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(p)
+	moqSession, err := moqtransport.NewClientSession(ctx, webtransportmoq.New(session), moqtransport.IngestionDeliveryRole, false)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(moqSession)
 }
 
 func NewClient(p *moqtransport.Session) (*Client, error) {
