@@ -10,35 +10,35 @@ type quicConn struct {
 	conn quic.Connection
 }
 
-func (c *quicConn) OpenStream() (stream, error) {
+func (c *quicConn) OpenStream() (Stream, error) {
 	return c.conn.OpenStream()
 }
 
-func (c *quicConn) OpenStreamSync(ctx context.Context) (stream, error) {
+func (c *quicConn) OpenStreamSync(ctx context.Context) (Stream, error) {
 	return c.conn.OpenStreamSync(ctx)
 }
 
-func (c *quicConn) OpenUniStream() (sendStream, error) {
+func (c *quicConn) OpenUniStream() (SendStream, error) {
 	return c.conn.OpenUniStream()
 }
 
-func (c *quicConn) OpenUniStreamSync(ctx context.Context) (sendStream, error) {
+func (c *quicConn) OpenUniStreamSync(ctx context.Context) (SendStream, error) {
 	return c.conn.OpenUniStreamSync(ctx)
 }
 
-func (c *quicConn) AcceptStream(ctx context.Context) (stream, error) {
+func (c *quicConn) AcceptStream(ctx context.Context) (Stream, error) {
 	return c.conn.AcceptStream(ctx)
 }
 
-func (c *quicConn) AcceptUniStream(ctx context.Context) (receiveStream, error) {
+func (c *quicConn) AcceptUniStream(ctx context.Context) (ReceiveStream, error) {
 	return c.conn.AcceptUniStream(ctx)
 }
 
-func (c *quicConn) SendMessage(b []byte) error {
+func (c *quicConn) SendDatagram(b []byte) error {
 	return c.conn.SendDatagram(b)
 }
 
-func (c *quicConn) ReceiveMessage(ctx context.Context) ([]byte, error) {
+func (c *quicConn) ReceiveDatagram(ctx context.Context) ([]byte, error) {
 	return c.conn.ReceiveDatagram(ctx)
 }
 

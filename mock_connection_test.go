@@ -39,10 +39,10 @@ func (m *MockConnection) EXPECT() *MockConnectionMockRecorder {
 }
 
 // AcceptStream mocks base method.
-func (m *MockConnection) AcceptStream(arg0 context.Context) (stream, error) {
+func (m *MockConnection) AcceptStream(arg0 context.Context) (Stream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcceptStream", arg0)
-	ret0, _ := ret[0].(stream)
+	ret0, _ := ret[0].(Stream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -54,10 +54,10 @@ func (mr *MockConnectionMockRecorder) AcceptStream(arg0 any) *gomock.Call {
 }
 
 // AcceptUniStream mocks base method.
-func (m *MockConnection) AcceptUniStream(arg0 context.Context) (receiveStream, error) {
+func (m *MockConnection) AcceptUniStream(arg0 context.Context) (ReceiveStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcceptUniStream", arg0)
-	ret0, _ := ret[0].(receiveStream)
+	ret0, _ := ret[0].(ReceiveStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -83,10 +83,10 @@ func (mr *MockConnectionMockRecorder) CloseWithError(arg0, arg1 any) *gomock.Cal
 }
 
 // OpenStream mocks base method.
-func (m *MockConnection) OpenStream() (stream, error) {
+func (m *MockConnection) OpenStream() (Stream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenStream")
-	ret0, _ := ret[0].(stream)
+	ret0, _ := ret[0].(Stream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -98,10 +98,10 @@ func (mr *MockConnectionMockRecorder) OpenStream() *gomock.Call {
 }
 
 // OpenStreamSync mocks base method.
-func (m *MockConnection) OpenStreamSync(arg0 context.Context) (stream, error) {
+func (m *MockConnection) OpenStreamSync(arg0 context.Context) (Stream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenStreamSync", arg0)
-	ret0, _ := ret[0].(stream)
+	ret0, _ := ret[0].(Stream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -113,10 +113,10 @@ func (mr *MockConnectionMockRecorder) OpenStreamSync(arg0 any) *gomock.Call {
 }
 
 // OpenUniStream mocks base method.
-func (m *MockConnection) OpenUniStream() (sendStream, error) {
+func (m *MockConnection) OpenUniStream() (SendStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenUniStream")
-	ret0, _ := ret[0].(sendStream)
+	ret0, _ := ret[0].(SendStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -128,10 +128,10 @@ func (mr *MockConnectionMockRecorder) OpenUniStream() *gomock.Call {
 }
 
 // OpenUniStreamSync mocks base method.
-func (m *MockConnection) OpenUniStreamSync(arg0 context.Context) (sendStream, error) {
+func (m *MockConnection) OpenUniStreamSync(arg0 context.Context) (SendStream, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "OpenUniStreamSync", arg0)
-	ret0, _ := ret[0].(sendStream)
+	ret0, _ := ret[0].(SendStream)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -142,8 +142,8 @@ func (mr *MockConnectionMockRecorder) OpenUniStreamSync(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenUniStreamSync", reflect.TypeOf((*MockConnection)(nil).OpenUniStreamSync), arg0)
 }
 
-// ReceiveMessage mocks base method.
-func (m *MockConnection) ReceiveMessage(arg0 context.Context) ([]byte, error) {
+// ReceiveDatagram mocks base method.
+func (m *MockConnection) ReceiveDatagram(arg0 context.Context) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReceiveMessage", arg0)
 	ret0, _ := ret[0].([]byte)
@@ -154,11 +154,11 @@ func (m *MockConnection) ReceiveMessage(arg0 context.Context) ([]byte, error) {
 // ReceiveMessage indicates an expected call of ReceiveMessage.
 func (mr *MockConnectionMockRecorder) ReceiveMessage(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReceiveMessage", reflect.TypeOf((*MockConnection)(nil).ReceiveMessage), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReceiveMessage", reflect.TypeOf((*MockConnection)(nil).ReceiveDatagram), arg0)
 }
 
-// SendMessage mocks base method.
-func (m *MockConnection) SendMessage(arg0 []byte) error {
+// SendDatagram mocks base method.
+func (m *MockConnection) SendDatagram(arg0 []byte) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendMessage", arg0)
 	ret0, _ := ret[0].(error)
@@ -168,5 +168,5 @@ func (m *MockConnection) SendMessage(arg0 []byte) error {
 // SendMessage indicates an expected call of SendMessage.
 func (mr *MockConnectionMockRecorder) SendMessage(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockConnection)(nil).SendMessage), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockConnection)(nil).SendDatagram), arg0)
 }

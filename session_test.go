@@ -11,7 +11,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func session(conn connection, ctrlStream controlStreamHandler) *Session {
+func session(conn Connection, ctrlStream controlStreamHandler) *Session {
 	return &Session{
 		ctx:                            context.Background(),
 		logger:                         slog.Default(),

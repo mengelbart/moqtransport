@@ -34,7 +34,7 @@ func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 	return s.readBuffer.Read(buf)
 }
 
-func (s *ReceiveSubscription) readTrackHeaderStream(rs receiveStream) {
+func (s *ReceiveSubscription) readTrackHeaderStream(rs ReceiveStream) {
 	parser := newParser(quicvarint.NewReader(rs))
 	for {
 		msg, err := parser.parseStreamHeaderTrackObject()
@@ -50,7 +50,7 @@ func (s *ReceiveSubscription) readTrackHeaderStream(rs receiveStream) {
 	}
 }
 
-func (s *ReceiveSubscription) readGroupHeaderStream(rs receiveStream) {
+func (s *ReceiveSubscription) readGroupHeaderStream(rs ReceiveStream) {
 	parser := newParser(quicvarint.NewReader(rs))
 	for {
 		msg, err := parser.parseStreamHeaderGroupObject()

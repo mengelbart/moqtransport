@@ -24,7 +24,7 @@ type controlStreamHandler interface {
 
 type defaultCtrlStreamHandler struct {
 	logger *slog.Logger
-	stream stream
+	stream Stream
 	parser parser
 }
 
@@ -59,7 +59,7 @@ func (s defaultCtrlStreamHandler) send(msg message) error {
 	return sendOnStream(s.stream, msg)
 }
 
-func sendOnStream(stream sendStream, msg message) error {
+func sendOnStream(stream SendStream, msg message) error {
 	buf := make([]byte, 0, 1500)
 	buf = msg.append(buf)
 	if _, err := stream.Write(buf); err != nil {
@@ -90,7 +90,7 @@ type Session struct {
 	ctx    context.Context
 	logger *slog.Logger
 
-	conn connection
+	conn Connection
 	cms  controlStreamHandler
 
 	enableDatagrams bool
@@ -115,7 +115,7 @@ func NewWebtransportServerSession(ctx context.Context, conn *webtransport.Sessio
 	return newServerSession(ctx, &webTransportConn{session: conn}, enableDatagrams)
 }
 
-func newClientSession(ctx context.Context, conn connection, clientRole Role, enableDatagrams bool) (*Session, error) {
+func newClientSession(ctx context.Context, conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
 	ctrlStream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("opening control stream failed: %w", err)
@@ -159,7 +159,7 @@ func newClientSession(ctx context.Context, conn connection, clientRole Role, ena
 	return s, nil
 }
 
-func newServerSession(ctx context.Context, conn connection, enableDatagrams bool) (*Session, error) {
+func newServerSession(ctx context.Context, conn Connection, enableDatagrams bool) (*Session, error) {
 	ctrlStream, err := conn.AcceptStream(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("accepting control stream failed: %w", err)
@@ -207,7 +207,7 @@ func newServerSession(ctx context.Context, conn connection, enableDatagrams bool
 	return s, nil
 }
 
-func newSession(ctx context.Context, conn connection, cms controlStreamHandler, enableDatagrams bool) *Session {
+func newSession(ctx context.Context, conn Connection, cms controlStreamHandler, enableDatagrams bool) *Session {
 	s := &Session{
 		ctx:                            ctx,
 		logger:                         defaultLogger.WithGroup("MOQ_SESSION"),
@@ -247,7 +247,7 @@ func (s *Session) acceptUnidirectionalStreams(ctx context.Context) {
 	}
 }
 
-func (s *Session) handleIncomingUniStream(stream receiveStream) {
+func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 	p := newParser(quicvarint.NewReader(stream))
 	msg, err := p.parse()
 	if err != nil {
@@ -284,7 +284,7 @@ func (s *Session) handleIncomingUniStream(stream receiveStream) {
 
 func (s *Session) acceptDatagrams(ctx context.Context) {
 	for {
-		dgram, err := s.conn.ReceiveMessage(ctx)
+		dgram, err := s.conn.ReceiveDatagram(ctx)
 		if err != nil {
 			s.logger.Error("failed to receive datagram", "error", err)
 			return

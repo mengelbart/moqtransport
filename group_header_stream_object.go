@@ -1,7 +1,7 @@
 package moqtransport
 
 type groupHeaderStreamObject struct {
-	stream   sendStream
+	stream   SendStream
 	objectID uint64
 }
 

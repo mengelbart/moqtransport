@@ -1,10 +1,10 @@
 package moqtransport
 
 type groupHeaderStream struct {
-	stream sendStream
+	stream SendStream
 }
 
-func newGroupHeaderStream(stream sendStream, subscribeID, trackAlias, groupID, objectSendOrder uint64) (*groupHeaderStream, error) {
+func newGroupHeaderStream(stream SendStream, subscribeID, trackAlias, groupID, objectSendOrder uint64) (*groupHeaderStream, error) {
 	shgm := &streamHeaderGroupMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
