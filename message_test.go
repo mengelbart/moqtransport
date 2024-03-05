@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -709,29 +710,73 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 	}{
 		{
 			som: subscribeOkMessage{
-				SubscribeID: 0,
-				Expires:     0,
+				SubscribeID:   0,
+				Expires:       0,
+				ContentExists: true,
+				FinalGroup:    1,
+				FinalObject:   2,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00,
+				byte(subscribeOkMessageType), 0x00, 0x00, 0x01, 0x01, 0x02,
 			},
 		},
 		{
 			som: subscribeOkMessage{
-				SubscribeID: 17,
-				Expires:     1000,
+				SubscribeID:   17,
+				Expires:       1000,
+				ContentExists: true,
+				FinalGroup:    1,
+				FinalObject:   2,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8},
+			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x02},
 		},
 		{
 			som: subscribeOkMessage{
-				SubscribeID: 17,
-				Expires:     1000,
+				SubscribeID:   17,
+				Expires:       1000,
+				ContentExists: true,
+				FinalGroup:    1,
+				FinalObject:   2,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x02},
+		},
+		{
+			som: subscribeOkMessage{
+				SubscribeID:   0,
+				Expires:       0,
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
+			},
+			buf: []byte{},
+			expect: []byte{
+				byte(subscribeOkMessageType), 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			som: subscribeOkMessage{
+				SubscribeID:   17,
+				Expires:       1000,
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
+			},
+			buf:    []byte{},
+			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x00},
+		},
+		{
+			som: subscribeOkMessage{
+				SubscribeID:   17,
+				Expires:       1000,
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
+			},
+			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -760,13 +805,36 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader(
-				[]byte{0x01, 0x10},
+				[]byte{0x01, 0x10, 0x00},
 			),
 			expect: &subscribeOkMessage{
-				SubscribeID: 1,
-				Expires:     0x10 * time.Millisecond,
+				SubscribeID:   1,
+				Expires:       0x10 * time.Millisecond,
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
 			},
 			err: nil,
+		},
+		{
+			r: bytes.NewReader(
+				[]byte{0x01, 0x10, 0x01, 0x01, 0x02},
+			),
+			expect: &subscribeOkMessage{
+				SubscribeID:   1,
+				Expires:       0x10 * time.Millisecond,
+				ContentExists: true,
+				FinalGroup:    1,
+				FinalObject:   2,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader(
+				[]byte{0x01, 0x10, 0x08, 0x01, 0x02},
+			),
+			expect: nil,
+			err:    errors.New("invalid use of ContentExists byte"),
 		},
 	}
 	for i, tc := range cases {
@@ -939,120 +1007,32 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 	}
 }
 
-func TestSubscribeFinMessageAppend(t *testing.T) {
+func TestSubscribeDoneMessageAppend(t *testing.T) {
 	cases := []struct {
-		sfm    subscribeFinMessage
+		srm    subscribeDoneMessage
 		buf    []byte
 		expect []byte
 	}{
 		{
-			sfm: subscribeFinMessage{
-				SubscribeID: 17,
-				FinalGroup:  0,
-				FinalObject: 0,
+			srm: subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    0,
+				ReasonPhrase:  "",
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0b, 0x11, 0x00, 0x00},
+			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00},
 		},
 		{
-			sfm: subscribeFinMessage{
-				SubscribeID: 0,
-				FinalGroup:  1,
-				FinalObject: 2,
-			},
-			buf:    []byte{},
-			expect: []byte{0x0b, 0x00, 0x01, 0x02},
-		},
-		{
-			sfm: subscribeFinMessage{
-				SubscribeID: 0,
-				FinalGroup:  1,
-				FinalObject: 2,
-			},
-			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x0b, 0x00, 0x01, 0x02},
-		},
-	}
-	for i, tc := range cases {
-		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := tc.sfm.append(tc.buf)
-			assert.Equal(t, tc.expect, res)
-		})
-	}
-}
-
-func TestParseSubscribeFinMessage(t *testing.T) {
-	cases := []struct {
-		r      messageReader
-		expect *subscribeFinMessage
-		err    error
-	}{
-		{
-			r:      nil,
-			expect: nil,
-			err:    errInvalidMessageReader,
-		},
-		{
-			r:      bytes.NewReader([]byte{}),
-			expect: nil,
-			err:    io.EOF,
-		},
-		{
-			r: bytes.NewReader([]byte{
-				0x00,
-				0x01,
-				0x02,
-			}),
-			expect: &subscribeFinMessage{
-				SubscribeID: 0,
-				FinalGroup:  1,
-				FinalObject: 2,
-			},
-			err: nil,
-		},
-	}
-	for i, tc := range cases {
-		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			p := loggingParser{
-				logger: slog.Default(),
-				reader: tc.r,
-			}
-			res, err := p.parseSubscribeFinMessage()
-			if tc.err != nil {
-				assert.Equal(t, tc.err, err)
-				assert.Equal(t, tc.expect, res)
-				return
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expect, res)
-		})
-	}
-}
-
-func TestSubscribeRstMessageAppend(t *testing.T) {
-	cases := []struct {
-		srm    subscribeRstMessage
-		buf    []byte
-		expect []byte
-	}{
-		{
-			srm: subscribeRstMessage{
-				SusbcribeID:  0,
-				ErrorCode:    0,
-				ReasonPhrase: "",
-				FinalGroup:   0,
-				FinalObject:  0,
-			},
-			buf:    []byte{},
-			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00, 0x00},
-		},
-		{
-			srm: subscribeRstMessage{
-				SusbcribeID:  0,
-				ErrorCode:    1,
-				ReasonPhrase: "reason",
-				FinalGroup:   2,
-				FinalObject:  3,
+			srm: subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: false,
+				FinalGroup:    2,
+				FinalObject:   3,
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -1060,17 +1040,15 @@ func TestSubscribeRstMessageAppend(t *testing.T) {
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
-				0x02,
-				0x03,
+				0x00,
 			},
 		},
 		{
-			srm: subscribeRstMessage{
-				SusbcribeID:  17,
-				ErrorCode:    1,
-				ReasonPhrase: "reason",
-				FinalGroup:   2,
-				FinalObject:  3,
+			srm: subscribeDoneMessage{
+				SusbcribeID:   17,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: false,
 			},
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
@@ -1079,6 +1057,58 @@ func TestSubscribeRstMessageAppend(t *testing.T) {
 				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x00,
+			},
+		},
+		{
+			srm: subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    0,
+				ReasonPhrase:  "",
+				ContentExists: true,
+				FinalGroup:    0,
+				FinalObject:   0,
+			},
+			buf:    []byte{},
+			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
+		},
+		{
+			srm: subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: true,
+				FinalGroup:    2,
+				FinalObject:   3,
+			},
+			buf: []byte{},
+			expect: []byte{
+				0x0c,
+				0x00,
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x01,
+				0x02,
+				0x03,
+			},
+		},
+		{
+			srm: subscribeDoneMessage{
+				SusbcribeID:   17,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: true,
+				FinalGroup:    2,
+				FinalObject:   3,
+			},
+			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
+			expect: []byte{
+				0x0a, 0x0b, 0x0c, 0x0d,
+				0x0c,
+				0x11,
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x01,
 				0x02,
 				0x03,
 			},
@@ -1092,10 +1122,10 @@ func TestSubscribeRstMessageAppend(t *testing.T) {
 	}
 }
 
-func TestParseSubscribeRstMessage(t *testing.T) {
+func TestParseSubscribeDoneMessage(t *testing.T) {
 	cases := []struct {
 		r      messageReader
-		expect *subscribeRstMessage
+		expect *subscribeDoneMessage
 		err    error
 	}{
 		{
@@ -1110,14 +1140,15 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 		},
 		{
 			r: bytes.NewReader([]byte{
-				0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
 			}),
-			expect: &subscribeRstMessage{
-				SusbcribeID:  0,
-				ErrorCode:    0,
-				ReasonPhrase: "",
-				FinalGroup:   0,
-				FinalObject:  0,
+			expect: &subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    0,
+				ReasonPhrase:  "",
+				ContentExists: true,
+				FinalGroup:    0,
+				FinalObject:   0,
 			},
 			err: nil,
 		},
@@ -1126,17 +1157,58 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x01,
 				0x02,
 				0x03,
 			}),
-			expect: &subscribeRstMessage{
-				SusbcribeID:  0,
-				ErrorCode:    1,
-				ReasonPhrase: "reason",
-				FinalGroup:   2,
-				FinalObject:  3,
+			expect: &subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: true,
+				FinalGroup:    2,
+				FinalObject:   3,
 			},
 			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x00,
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x00,
+			}),
+			expect: &subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    1,
+				ReasonPhrase:  "reason",
+				ContentExists: false,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x00, 0x00, 0x00, 0x00,
+			}),
+			expect: &subscribeDoneMessage{
+				SusbcribeID:   0,
+				StatusCode:    0,
+				ReasonPhrase:  "",
+				ContentExists: false,
+				FinalGroup:    0,
+				FinalObject:   0,
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader([]byte{
+				0x00,
+				0x01,
+				0x06, 'r', 'e', 'a', 's', 'o', 'n',
+				0x07,
+			}),
+			expect: nil,
+			err:    errors.New("invalid use of ContentExists byte"),
 		},
 	}
 	for i, tc := range cases {
@@ -1145,7 +1217,7 @@ func TestParseSubscribeRstMessage(t *testing.T) {
 				logger: slog.Default(),
 				reader: tc.r,
 			}
-			res, err := p.parseSubscribeRstMessage()
+			res, err := p.parseSubscribeDoneMessage()
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)

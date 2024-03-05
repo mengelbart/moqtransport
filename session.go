@@ -382,9 +382,7 @@ func (s *Session) handleControlMessage(msg message) error {
 		err = s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
 		err = s.handleSubscriptionResponse(m)
-	case *subscribeFinMessage:
-		panic("TODO")
-	case *subscribeRstMessage:
+	case *subscribeDoneMessage:
 		panic("TODO")
 	case *unsubscribeMessage:
 		s.handleUnsubscribe(m)
