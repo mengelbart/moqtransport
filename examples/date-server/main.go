@@ -41,12 +41,12 @@ func run(ctx context.Context, addr string, wt bool, certFile, keyFile string) er
 		tlsConfig = generateTLSConfig()
 	}
 	if wt {
-		panic("TODO")
+		return listenWebTransport(addr, tlsConfig)
 	}
 	return listenQUIC(ctx, addr, tlsConfig)
 }
 
-func listenWebTransport(ctx context.Context, addr string, tlsConfig *tls.Config) error {
+func listenWebTransport(addr string, tlsConfig *tls.Config) error {
 	wt := webtransport.Server{
 		H3: http3.Server{
 			Addr:       addr,
