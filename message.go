@@ -62,8 +62,7 @@ const (
 	announceErrorMessageType        messageType = 0x08
 	unannounceMessageType           messageType = 0x09
 	unsubscribeMessageType          messageType = 0x0a
-	subscribeFinMessageType         messageType = 0x0b
-	subscribeRstMessageType         messageType = 0x0c
+	subscribeDoneMessageType        messageType = 0x0c
 	goAwayMessageType               messageType = 0x10
 	clientSetupMessageType          messageType = 0x40
 	serverSetupMessageType          messageType = 0x41
@@ -93,10 +92,8 @@ func (mt messageType) String() string {
 		return "AnannounceMessage"
 	case unsubscribeMessageType:
 		return "UnsubscribeMessage"
-	case subscribeFinMessageType:
-		return "SubscribeFinMessage"
-	case subscribeRstMessageType:
-		return "SubscribeRstMessage"
+	case subscribeDoneMessageType:
+		return "SubscribeDoneMessage"
 	case goAwayMessageType:
 		return "GoAwayMessage"
 	case clientSetupMessageType:
@@ -152,10 +149,8 @@ func (p *loggingParser) parse() (msg message, err error) {
 		msg, err = p.parseUnannounceMessage()
 	case unsubscribeMessageType:
 		msg, err = p.parseUnsubscribeMessage()
-	case subscribeFinMessageType:
-		msg, err = p.parseSubscribeFinMessage()
-	case subscribeRstMessageType:
-		msg, err = p.parseSubscribeRstMessage()
+	case subscribeDoneMessageType:
+		msg, err = p.parseSubscribeDoneMessage()
 	case goAwayMessageType:
 		msg, err = p.parseGoAwayMessage()
 	case clientSetupMessageType:
@@ -434,8 +429,11 @@ func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
 }
 
 type subscribeOkMessage struct {
-	SubscribeID uint64
-	Expires     time.Duration
+	SubscribeID   uint64
+	Expires       time.Duration
+	ContentExists bool
+	FinalGroup    uint64
+	FinalObject   uint64
 }
 
 func (m subscribeOkMessage) String() string {
@@ -454,6 +452,13 @@ func (m *subscribeOkMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(subscribeOkMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, uint64(m.Expires))
+	if m.ContentExists {
+		buf = append(buf, 1)
+		buf = quicvarint.Append(buf, m.FinalGroup)
+		buf = quicvarint.Append(buf, m.FinalObject)
+		return buf
+	}
+	buf = append(buf, 0)
 	return buf
 }
 
@@ -469,9 +474,42 @@ func (p *loggingParser) parseSubscribeOkMessage() (*subscribeOkMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	contentExistsByte, err := p.reader.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	var contentExists bool
+	switch contentExistsByte {
+	case 0:
+		contentExists = false
+	case 1:
+		contentExists = true
+	default:
+		return nil, errors.New("invalid use of ContentExists byte")
+	}
+	if !contentExists {
+		return &subscribeOkMessage{
+			SubscribeID:   subscribeID,
+			Expires:       time.Duration(expires) * time.Millisecond,
+			ContentExists: contentExists,
+			FinalGroup:    0,
+			FinalObject:   0,
+		}, nil
+	}
+	finalGroup, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	finalObject, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
 	return &subscribeOkMessage{
-		SubscribeID: subscribeID,
-		Expires:     time.Duration(expires) * time.Millisecond,
+		SubscribeID:   subscribeID,
+		Expires:       time.Duration(expires) * time.Millisecond,
+		ContentExists: contentExists,
+		FinalGroup:    finalGroup,
+		FinalObject:   finalObject,
 	}, nil
 }
 
@@ -556,78 +594,39 @@ func (p *loggingParser) parseUnsubscribeMessage() (*unsubscribeMessage, error) {
 	}, err
 }
 
-type subscribeFinMessage struct {
-	SubscribeID uint64
-	FinalGroup  uint64
-	FinalObject uint64
+type subscribeDoneMessage struct {
+	SusbcribeID   uint64
+	StatusCode    uint64
+	ReasonPhrase  string
+	ContentExists bool
+	FinalGroup    uint64
+	FinalObject   uint64
 }
 
-func (m subscribeFinMessage) String() string {
+func (m subscribeDoneMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
-		return "json.Marshal of subscribeFinMessage failed"
+		return "json.Marshal of subscribeDoneMessage failed"
 	}
-	return fmt.Sprintf("%v:%v", subscribeFinMessageType.String(), string(buf))
+	return fmt.Sprintf("%v:%v", subscribeDoneMessageType.String(), string(buf))
 }
 
-func (m *subscribeFinMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeFinMessageType))
-	buf = quicvarint.Append(buf, m.SubscribeID)
-	buf = quicvarint.Append(buf, m.FinalGroup)
-	buf = quicvarint.Append(buf, m.FinalObject)
-	return buf
-}
-
-func (p *loggingParser) parseSubscribeFinMessage() (*subscribeFinMessage, error) {
-	if p.reader == nil {
-		return nil, errInvalidMessageReader
-	}
-	subscribeID, err := quicvarint.Read(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	finalGroup, err := quicvarint.Read(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	finalObject, err := quicvarint.Read(p.reader)
-	if err != nil {
-		return nil, err
-	}
-	return &subscribeFinMessage{
-		SubscribeID: subscribeID,
-		FinalGroup:  finalGroup,
-		FinalObject: finalObject,
-	}, nil
-}
-
-type subscribeRstMessage struct {
-	SusbcribeID  uint64
-	ErrorCode    uint64
-	ReasonPhrase string
-	FinalGroup   uint64
-	FinalObject  uint64
-}
-
-func (m subscribeRstMessage) String() string {
-	buf, err := json.Marshal(m)
-	if err != nil {
-		return "json.Marshal of subscribeRstMessage failed"
-	}
-	return fmt.Sprintf("%v:%v", subscribeRstMessageType.String(), string(buf))
-}
-
-func (m *subscribeRstMessage) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeRstMessageType))
+func (m *subscribeDoneMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(subscribeDoneMessageType))
 	buf = quicvarint.Append(buf, m.SusbcribeID)
-	buf = quicvarint.Append(buf, m.ErrorCode)
+	buf = quicvarint.Append(buf, m.StatusCode)
 	buf = appendVarIntString(buf, m.ReasonPhrase)
-	buf = quicvarint.Append(buf, m.FinalGroup)
-	buf = quicvarint.Append(buf, m.FinalObject)
+	if m.ContentExists {
+		buf = append(buf, 1)
+		buf = quicvarint.Append(buf, m.FinalGroup)
+		buf = quicvarint.Append(buf, m.FinalObject)
+		return buf
+	}
+	buf = append(buf, 0)
 	return buf
 }
 
-func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error) {
+func (p *loggingParser) parseSubscribeDoneMessage() (*subscribeDoneMessage, error) {
 	if p.reader == nil {
 		return nil, errInvalidMessageReader
 	}
@@ -635,7 +634,7 @@ func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error)
 	if err != nil {
 		return nil, err
 	}
-	errCode, err := quicvarint.Read(p.reader)
+	statusCode, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
@@ -643,6 +642,29 @@ func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error)
 	if err != nil {
 		return nil, err
 	}
+	contentExistsByte, err := p.reader.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	var contentExists bool
+	switch contentExistsByte {
+	case 0:
+		contentExists = false
+	case 1:
+		contentExists = true
+	default:
+		return nil, errors.New("invalid use of ContentExists byte")
+	}
+	if !contentExists {
+		return &subscribeDoneMessage{
+			SusbcribeID:   subscribeID,
+			StatusCode:    statusCode,
+			ReasonPhrase:  reasonPhrase,
+			ContentExists: contentExists,
+			FinalGroup:    0,
+			FinalObject:   0,
+		}, nil
+	}
 	finalGroup, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
@@ -651,12 +673,13 @@ func (p *loggingParser) parseSubscribeRstMessage() (*subscribeRstMessage, error)
 	if err != nil {
 		return nil, err
 	}
-	return &subscribeRstMessage{
-		SusbcribeID:  subscribeID,
-		ErrorCode:    errCode,
-		ReasonPhrase: reasonPhrase,
-		FinalGroup:   finalGroup,
-		FinalObject:  finalObject,
+	return &subscribeDoneMessage{
+		SusbcribeID:   subscribeID,
+		StatusCode:    statusCode,
+		ReasonPhrase:  reasonPhrase,
+		ContentExists: contentExists,
+		FinalGroup:    finalGroup,
+		FinalObject:   finalObject,
 	}, nil
 }
 
