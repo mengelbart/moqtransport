@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -101,7 +100,7 @@ func handle(p *moqtransport.Session) {
 		}
 		log.Printf("got subscription: %v", s)
 		if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
-			s.Reject(errors.New("unknown namespace/trackname"))
+			s.Reject(moqtransport.SubscribeErrorUnknownTrack, "unknown namespace/trackname")
 		}
 		s.Accept()
 		go func() {

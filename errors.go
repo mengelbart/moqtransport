@@ -1,29 +1,25 @@
 package moqtransport
 
-type errorCode uint64
+import "fmt"
 
-const (
-	noErrorErrorCode                 = 0x00
-	internalErrorErrorCode           = 0x01
-	unauthorizedErrorCode            = 0x02
-	protocolViolationErrorCode       = 0x03
-	duplicateTracksAliasErrorCode    = 0x04
-	parameterLengthMismatchErrorCode = 0x05
-	goAwayTimeoutErrorCode           = 0x10
-)
-
-var (
-	errUnsupportedVersion = &moqError{
-		code:    internalErrorErrorCode,
-		message: "unsupported version",
-	}
-)
-
-type moqError struct {
-	code    errorCode
+type ProtocolError struct {
+	code    uint64
 	message string
 }
 
-func (e *moqError) Error() string {
+func (e ProtocolError) Error() string {
 	return e.message
+}
+
+func (e ProtocolError) Code() uint64 {
+	return e.code
+}
+
+type ApplicationError struct {
+	code   uint64
+	mesage string
+}
+
+func (e ApplicationError) Error() string {
+	return fmt.Sprintf("MoQ Application Error %v: %v", e.code, e.mesage)
 }

@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -125,7 +124,7 @@ func TestIntegration(t *testing.T) {
 		a, err := client.ReadAnnouncement(ctx)
 		assert.NoError(t, err)
 		assert.Equal(t, "/namespace", a.Namespace())
-		a.Reject(errors.New("TEST_ERR"))
+		a.Reject(moqtransport.SubscribeErrorUnknownTrack, "TEST_ERR")
 		<-receivedAnnounceError
 		assert.NoError(t, client.Close())
 		wg.Wait()

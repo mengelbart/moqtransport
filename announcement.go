@@ -1,7 +1,12 @@
 package moqtransport
 
+type announcementError struct {
+	code   uint64
+	reason string
+}
+
 type Announcement struct {
-	errorCh chan error
+	errorCh chan *announcementError
 	closeCh chan struct{}
 
 	namespace  string
@@ -15,10 +20,13 @@ func (a *Announcement) Accept() {
 	}
 }
 
-func (a *Announcement) Reject(err error) {
+func (a *Announcement) Reject(code uint64, reason string) {
 	select {
 	case <-a.closeCh:
-	case a.errorCh <- err:
+	case a.errorCh <- &announcementError{
+		code:   code,
+		reason: reason,
+	}:
 	}
 }
 
