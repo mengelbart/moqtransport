@@ -184,7 +184,7 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 	_, ok = msg.SetupParameters[roleParameterKey]
 	if !ok {
 		return nil, &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "missing role parameter",
 		}
 	}
@@ -376,7 +376,7 @@ func (s *Session) handleControlMessage(msg message) error {
 		panic("TODO")
 	default:
 		return &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "received unexpected message type on control stream",
 		}
 	}
@@ -389,7 +389,7 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 	s.receiveSubscriptionsLock.RUnlock()
 	if !ok {
 		return &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "received subscription response message to an unknown subscription",
 		}
 	}
@@ -408,7 +408,7 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	s.announcementsLock.RUnlock()
 	if !ok {
 		return &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "received announcement response message to an unknown announcement",
 		}
 	}
@@ -597,7 +597,7 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	if resp.subscribeID() != sm.SubscribeID {
 		s.logger.Error("internal error: received response message for wrong subscription ID.", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
 		return nil, &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "internal error",
 		}
 	}
@@ -611,7 +611,7 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		return nil, errors.New(v.ReasonPhrase)
 	}
 	return nil, &moqError{
-		code:    genericErrorErrorCode,
+		code:    internalErrorErrorCode,
 		message: "received unexpected response message type to subscribeRequestMessage",
 	}
 }
@@ -645,7 +645,7 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	if resp.trackNamespace() != am.TrackNamespace {
 		s.logger.Error("internal error: received response message for wrong announce track namespace.", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
 		return &moqError{
-			code:    genericErrorErrorCode,
+			code:    internalErrorErrorCode,
 			message: "internal error",
 		}
 	}
@@ -656,7 +656,7 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 		return errors.New(v.ReasonPhrase)
 	}
 	return &moqError{
-		code:    genericErrorErrorCode,
+		code:    internalErrorErrorCode,
 		message: "received unexpected response message type to announceMessage",
 	}
 }

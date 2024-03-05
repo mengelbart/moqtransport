@@ -4,7 +4,7 @@ type errorCode uint64
 
 const (
 	noErrorErrorCode                 = 0x00
-	genericErrorErrorCode            = 0x01
+	internalErrorErrorCode           = 0x01
 	unauthorizedErrorCode            = 0x02
 	protocolViolationErrorCode       = 0x03
 	duplicateTracksAliasErrorCode    = 0x04
@@ -14,7 +14,7 @@ const (
 
 var (
 	errUnsupportedVersion = &moqError{
-		code:    genericErrorErrorCode,
+		code:    internalErrorErrorCode,
 		message: "unsupported version",
 	}
 )
