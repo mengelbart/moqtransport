@@ -33,7 +33,12 @@ type Client struct {
 }
 
 func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
-	conn, err := quic.DialAddr(ctx, addr, &tls.Config{}, &quic.Config{})
+	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"moq-00"},
+	}, &quic.Config{
+		EnableDatagrams: true,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -36,7 +36,7 @@ func run(ctx context.Context, addr string, wt bool) error {
 	if err != nil {
 		return err
 	}
-	session, err = moqtransport.NewClientSession(conn, moqtransport.IngestionDeliveryRole, true)
+	session, err = moqtransport.NewClientSession(conn, moqtransport.IngestionDeliveryRole, !wt)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,12 @@ func run(ctx context.Context, addr string, wt bool) error {
 }
 
 func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error) {
-	conn, err := quic.DialAddr(ctx, addr, &tls.Config{}, &quic.Config{})
+	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"moq-00"},
+	}, &quic.Config{
+		EnableDatagrams: true,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +88,7 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 		RoundTripper: &http3.RoundTripper{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
+				NextProtos:         []string{"moq-00"},
 			},
 			QuicConfig:      &quic.Config{},
 			EnableDatagrams: false,
