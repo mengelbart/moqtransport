@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,10 +16,6 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
-)
-
-var (
-	errUnknownChat = errors.New("unknwon chat id")
 )
 
 type Server struct {
@@ -97,12 +92,12 @@ func (s *Server) handle(p *moqtransport.Session) {
 			}
 			uri := strings.SplitN(a.Namespace(), "/", 3)
 			if len(uri) < 3 {
-				a.Reject(errors.New("invalid announcement"))
+				a.Reject(0, "invalid announcement")
 				continue
 			}
 			moq_chat, id, username := uri[0], uri[1], uri[2]
 			if moq_chat != "moq-chat" {
-				a.Reject(errors.New("invalid moq-chat namespace"))
+				a.Reject(0, "invalid moq-chat namespace")
 				continue
 			}
 			a.Accept()
@@ -125,22 +120,22 @@ func (s *Server) handle(p *moqtransport.Session) {
 			if len(name) == 0 {
 				// Subscribe requires a username which has to be announced
 				// before subscribing
-				sub.Reject(errors.New("subscribe without prior announcement"))
+				sub.Reject(moqtransport.SubscribeErrorUnknownTrack, "subscribe without prior announcement")
 				continue
 			}
 			parts := strings.SplitN(sub.Namespace(), "/", 2)
 			if len(parts) < 2 {
-				sub.Reject(errors.New("invalid trackname"))
+				sub.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid trackname")
 				continue
 			}
 			moq_chat, id := parts[0], parts[1]
 			if moq_chat != "moq-chat" {
-				sub.Reject(errors.New("invalid moq-chat namespace"))
+				sub.Reject(0, "invalid moq-chat namespace")
 				continue
 			}
 			r, ok := s.chatRooms[id]
 			if !ok {
-				sub.Reject(errUnknownChat)
+				sub.Reject(moqtransport.SubscribeErrorUnknownTrack, "unknown chat id")
 				continue
 			}
 			if sub.Trackname() == "/catalog" {

@@ -37,7 +37,7 @@ func (p *publisher) subscribe(username string, sub *moqtransport.SendSubscriptio
 	defer p.lock.Unlock()
 	_, ok := p.subscribers[username]
 	if ok {
-		sub.Reject(errDuplicateSubscriber)
+		sub.Reject(moqtransport.SubscribeErrorInternal, "username is already subscribed to publisher")
 	}
 	sub.Accept()
 	p.subscribers[username] = sub

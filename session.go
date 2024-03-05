@@ -13,7 +13,10 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var errClosed = errors.New("session closed")
+var (
+	errClosed             = errors.New("session closed")
+	errUnsupportedVersion = errors.New("unsupported version")
+)
 
 type messageHandler func(message) error
 
@@ -139,10 +142,12 @@ func NewClientSession(conn Connection, clientRole Role, enableDatagrams bool) (*
 	}
 	ssm, ok := msg.(*serverSetupMessage)
 	if !ok {
-		return nil, &moqError{
-			code:    protocolViolationErrorCode,
+		pe := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
 			message: "received unexpected first message on control stream",
 		}
+		_ = conn.CloseWithError(pe.code, pe.message)
+		return nil, pe
 	}
 	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
 		return nil, errUnsupportedVersion
@@ -172,10 +177,12 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 	}
 	msg, ok := m.(*clientSetupMessage)
 	if !ok {
-		return nil, &moqError{
-			code:    protocolViolationErrorCode,
+		pe := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
 			message: "received unexpected first message on control stream",
 		}
+		_ = conn.CloseWithError(pe.code, pe.message)
+		return nil, pe
 	}
 	// TODO: Algorithm to select best matching version
 	if !slices.Contains(msg.SupportedVersions, CURRENT_VERSION) {
@@ -183,10 +190,12 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 	}
 	_, ok = msg.SetupParameters[roleParameterKey]
 	if !ok {
-		return nil, &moqError{
-			code:    internalErrorErrorCode,
+		pe := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
 			message: "missing role parameter",
 		}
+		_ = conn.CloseWithError(pe.code, pe.message)
+		return nil, pe
 	}
 	// TODO: save role parameter
 	ssm := &serverSetupMessage{
@@ -250,7 +259,7 @@ func (s *Session) acceptUnidirectionalStreams() {
 		stream, err := s.acceptUnidirectionalStream()
 		if err != nil {
 			s.logger.Error("failed to accept uni stream", "error", err)
-			s.peerClosed(err)
+			s.peerClosed()
 			return
 		}
 		go s.handleIncomingUniStream(stream)
@@ -315,14 +324,14 @@ func (s *Session) acceptDatagrams() {
 		dgram, err := s.acceptDatagram()
 		if err != nil {
 			s.logger.Error("failed to receive datagram", "error", err)
-			s.peerClosed(err)
+			s.peerClosed()
 			return
 		}
-		go s.readMessages(bytes.NewReader(dgram), s.handleObjectMessage)
+		go s.readObjectMessages(bytes.NewReader(dgram))
 	}
 }
 
-func (s *Session) readMessages(r messageReader, handle messageHandler) {
+func (s *Session) readObjectMessages(r messageReader) {
 	msgParser := newParser(r)
 	for {
 		msg, err := msgParser.parse()
@@ -330,10 +339,25 @@ func (s *Session) readMessages(r messageReader, handle messageHandler) {
 			if err == io.EOF {
 				return
 			}
-			s.logger.Error("TODO", "error", err)
+			s.logger.Error("failed to parse message", "error", err)
+			pe := &ProtocolError{
+				code:    ErrorCodeProtocolViolation,
+				message: "invalid message format",
+			}
+			_ = s.conn.CloseWithError(pe.code, pe.message)
 			return
 		}
-		if err = handle(msg); err != nil {
+		o, ok := msg.(*objectMessage)
+		if !ok {
+			pe := &ProtocolError{
+				code:    ErrorCodeProtocolViolation,
+				message: "received unexpected control message on object stream or datagram",
+			}
+			// TODO: Set error on session to surface to application?
+			_ = s.conn.CloseWithError(pe.code, pe.message)
+			return
+		}
+		if err = s.handleObjectMessage(o); err != nil {
 			s.logger.Info("failed to handle message", "error", err)
 			return
 		}
@@ -344,10 +368,11 @@ func (s *Session) handleControlMessage(msg message) error {
 	var err error
 	switch m := msg.(type) {
 	case *objectMessage:
-		return &moqError{
-			code:    protocolViolationErrorCode,
+		pe := &ProtocolError{
+			code:    ErrorCodeProtocolViolation,
 			message: "received object message on control stream",
 		}
+		return pe
 	case *subscribeMessage:
 		r := s.handleSubscribe(m)
 		if r != nil {
@@ -375,8 +400,8 @@ func (s *Session) handleControlMessage(msg message) error {
 	case *goAwayMessage:
 		panic("TODO")
 	default:
-		return &moqError{
-			code:    internalErrorErrorCode,
+		return &ProtocolError{
+			code:    ErrorCodeInternal,
 			message: "received unexpected message type on control stream",
 		}
 	}
@@ -388,8 +413,8 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 	sub, ok := s.receiveSubscriptions[msg.subscribeID()]
 	s.receiveSubscriptionsLock.RUnlock()
 	if !ok {
-		return &moqError{
-			code:    internalErrorErrorCode,
+		return &ProtocolError{
+			code:    ErrorCodeInternal,
 			message: "received subscription response message to an unknown subscription",
 		}
 	}
@@ -407,8 +432,8 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	a, ok := s.announcements[msg.trackNamespace()]
 	s.announcementsLock.RUnlock()
 	if !ok {
-		return &moqError{
-			code:    internalErrorErrorCode,
+		return &ProtocolError{
+			code:    ErrorCodeInternal,
 			message: "received announcement response message to an unknown announcement",
 		}
 	}
@@ -424,7 +449,7 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 func (s *Session) handleSubscribe(msg *subscribeMessage) message {
 	sub := &SendSubscription{
 		lock:        sync.RWMutex{},
-		responseCh:  make(chan error),
+		responseCh:  make(chan *subscribeError),
 		closeCh:     make(chan struct{}),
 		expires:     0,
 		conn:        s.conn,
@@ -454,8 +479,8 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) message {
 		if err != nil {
 			return &subscribeErrorMessage{
 				SubscribeID:  msg.SubscribeID,
-				ErrorCode:    0,
-				ReasonPhrase: fmt.Sprintf("subscription rejected: %v", err),
+				ErrorCode:    err.code,
+				ReasonPhrase: err.reason,
 				TrackAlias:   msg.TrackAlias,
 			}
 		}
@@ -480,7 +505,7 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) {
 
 func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
 	a := &Announcement{
-		errorCh:    make(chan error),
+		errorCh:    make(chan *announcementError),
 		closeCh:    make(chan struct{}),
 		namespace:  msg.TrackNamespace,
 		parameters: msg.TrackRequestParameters,
@@ -498,8 +523,8 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
 		if err != nil {
 			return &announceErrorMessage{
 				TrackNamespace: a.namespace,
-				ErrorCode:      0, // TODO: Implement a custom error type including the code?
-				ReasonPhrase:   fmt.Sprintf("announcement rejected: %v", err),
+				ErrorCode:      err.code,
+				ReasonPhrase:   err.reason,
 			}
 		}
 	}
@@ -508,14 +533,7 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
 	}
 }
 
-func (s *Session) handleObjectMessage(m message) error {
-	o, ok := m.(*objectMessage)
-	if !ok {
-		return &moqError{
-			code:    protocolViolationErrorCode,
-			message: "received unexpected control message on object stream",
-		}
-	}
+func (s *Session) handleObjectMessage(o *objectMessage) error {
 	s.receiveSubscriptionsLock.RLock()
 	sub, ok := s.receiveSubscriptions[o.SubscribeID]
 	s.receiveSubscriptionsLock.RUnlock()
@@ -533,10 +551,19 @@ func (s *Session) unsubscribe(id uint64) error {
 	})
 }
 
-func (s *Session) peerClosed(err error) {
+func (s *Session) peerClosed() {
 	s.closeOnce.Do(func() {
 		close(s.closed)
 	})
+}
+
+func (s *Session) CloseWithError(code uint64, msg string) error {
+	s.peerClosed()
+	return s.conn.CloseWithError(code, msg)
+}
+
+func (s *Session) Close() error {
+	return s.CloseWithError(0, "")
 }
 
 func (s *Session) ReadSubscription(ctx context.Context) (*SendSubscription, error) {
@@ -595,11 +622,10 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	case resp = <-sub.responseCh:
 	}
 	if resp.subscribeID() != sm.SubscribeID {
-		s.logger.Error("internal error: received response message for wrong subscription ID.", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
-		return nil, &moqError{
-			code:    internalErrorErrorCode,
-			message: "internal error",
-		}
+		// Should never happen, because messages are routed based on subscribe
+		// ID. Wrong IDs would thus never end up here.
+		s.logger.Error("internal error: received response message for wrong subscription ID", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
+		return nil, errors.New("internal error: received response message for wrong subscription ID")
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
@@ -608,12 +634,15 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		s.receiveSubscriptionsLock.Lock()
 		delete(s.receiveSubscriptions, sm.subscribeID())
 		s.receiveSubscriptionsLock.Unlock()
-		return nil, errors.New(v.ReasonPhrase)
+		return nil, ApplicationError{
+			code:   v.ErrorCode,
+			mesage: v.ReasonPhrase,
+		}
 	}
-	return nil, &moqError{
-		code:    internalErrorErrorCode,
-		message: "received unexpected response message type to subscribeRequestMessage",
-	}
+	// Should never happen, because only subscribeMessage, subscribeOkMessage
+	// and susbcribeErrorMessage implement the SubscribeIDer interface and
+	// subscribeMessages should not be routed to this method.
+	return nil, errors.New("received unexpected response message type to subscribeRequestMessage")
 }
 
 func (s *Session) Announce(ctx context.Context, namespace string) error {
@@ -643,25 +672,22 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	case resp = <-responseCh:
 	}
 	if resp.trackNamespace() != am.TrackNamespace {
-		s.logger.Error("internal error: received response message for wrong announce track namespace.", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
-		return &moqError{
-			code:    internalErrorErrorCode,
-			message: "internal error",
-		}
+		// Should never happen, because messages are routed based on trackname.
+		// Wrong tracknames would thus never end up here.
+		s.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
+		return errors.New("internal error: received response message for wrong announce track namespace")
 	}
 	switch v := resp.(type) {
 	case *announceOkMessage:
 		return nil
 	case *announceErrorMessage:
-		return errors.New(v.ReasonPhrase)
+		return ApplicationError{
+			code:   v.ErrorCode,
+			mesage: v.ReasonPhrase,
+		}
 	}
-	return &moqError{
-		code:    internalErrorErrorCode,
-		message: "received unexpected response message type to announceMessage",
-	}
-}
-
-func (s *Session) Close() error {
-	s.peerClosed(nil)
-	return s.conn.CloseWithError(0, "")
+	// Should never happen, because only announceMessage, announceOkMessage
+	// and announceErrorMessage implement the trackNamespacer interface and
+	// announceMessages should not be routed to this method.
+	return errors.New("received unexpected response message type to announceMessage")
 }

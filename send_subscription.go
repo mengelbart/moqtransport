@@ -10,9 +10,14 @@ import (
 
 var errUnsubscribed = errors.New("peer unsubscribed")
 
+type subscribeError struct {
+	code   uint64
+	reason string
+}
+
 type SendSubscription struct {
 	lock       sync.RWMutex
-	responseCh chan error
+	responseCh chan *subscribeError
 	closeCh    chan struct{}
 	expires    time.Duration
 
@@ -32,10 +37,13 @@ func (s *SendSubscription) Accept() {
 	}
 }
 
-func (s *SendSubscription) Reject(err error) {
+func (s *SendSubscription) Reject(code uint64, reason string) {
 	select {
 	case <-s.closeCh:
-	case s.responseCh <- err:
+	case s.responseCh <- &subscribeError{
+		code:   code,
+		reason: reason,
+	}:
 	}
 }
 

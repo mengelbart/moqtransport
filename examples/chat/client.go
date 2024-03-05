@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -94,16 +93,16 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 			}
 			parts := strings.SplitN(s.Namespace(), "/", 2)
 			if len(parts) < 2 {
-				s.Reject(errors.New("invalid trackname"))
+				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid trackname")
 				continue
 			}
 			moq_chat, id := parts[0], parts[1]
 			if moq_chat != "moq-chat" {
-				s.Reject(errors.New("invalid moq-chat namespace"))
+				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid moq-chat namespace")
 				continue
 			}
 			if _, ok := c.rooms[id]; !ok {
-				s.Reject(errors.New("invalid subscribe request"))
+				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid subscribe request")
 				continue
 			}
 			s.Accept()
