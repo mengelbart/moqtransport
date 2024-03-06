@@ -63,6 +63,7 @@ const (
 	unannounceMessageType        messageType = 0x09
 	unsubscribeMessageType       messageType = 0x0a
 	subscribeDoneMessageType     messageType = 0x0b
+	announceCancelMessageType    messageType = 0x0c
 	goAwayMessageType            messageType = 0x10
 	clientSetupMessageType       messageType = 0x40
 	serverSetupMessageType       messageType = 0x41
@@ -104,6 +105,8 @@ func (mt messageType) String() string {
 		return "StreamHeaderTrackMessage"
 	case streamHeaderGroupMessageType:
 		return "streamHeaderGroupMessage"
+	case announceCancelMessageType:
+		return "announceCancelMessageType"
 	}
 	return "unknown message type"
 }
@@ -161,6 +164,8 @@ func (p *loggingParser) parse() (msg message, err error) {
 		msg, err = p.parseStreamHeaderTrackMessage()
 	case streamHeaderGroupMessageType:
 		msg, err = p.parseStreamHeaderGroupMessage()
+	case announceCancelMessageType:
+		msg, err = p.parseAnnounceCancelMessage()
 	default:
 		p.logger.Info("failed to parse message", "message_type", mt)
 		return nil, errUnknownMessage
@@ -1029,5 +1034,36 @@ func (p *loggingParser) parseStreamHeaderGroupObject() (*streamHeaderGroupObject
 	return &streamHeaderGroupObject{
 		ObjectID:      objectID,
 		ObjectPayload: objectPayload,
+	}, nil
+}
+
+type announceCancelMessage struct {
+	TrackNamespace string
+}
+
+func (m announceCancelMessage) String() string {
+	buf, err := json.Marshal(m)
+	if err != nil {
+		return "json.Marshal of unannounceMessage failed"
+	}
+	return fmt.Sprintf("%v:%v", announceCancelMessageType.String(), string(buf))
+}
+
+func (m *announceCancelMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(announceCancelMessageType))
+	buf = appendVarIntString(buf, m.TrackNamespace)
+	return buf
+}
+
+func (p *loggingParser) parseAnnounceCancelMessage() (*announceCancelMessage, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	namespace, err := parseVarIntString(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &announceCancelMessage{
+		TrackNamespace: namespace,
 	}, nil
 }

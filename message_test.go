@@ -1626,3 +1626,83 @@ func TestParseGoAwayMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnounceCancelMessageAppend(t *testing.T) {
+	cases := []struct {
+		acm    announceCancelMessage
+		buf    []byte
+		expect []byte
+	}{
+		{
+			acm: announceCancelMessage{
+				TrackNamespace: "",
+			},
+			buf: []byte{},
+			expect: []byte{
+				byte(announceCancelMessageType), 0x00,
+			},
+		},
+		{
+			acm: announceCancelMessage{
+				TrackNamespace: "tracknamespace",
+			},
+			buf:    []byte{0x0a, 0x0b},
+			expect: []byte{0x0a, 0x0b, byte(announceCancelMessageType), 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e'},
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			res := tc.acm.append(tc.buf)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
+
+func TestParseAnnounceCancelMessage(t *testing.T) {
+	cases := []struct {
+		r      messageReader
+		expect *announceCancelMessage
+		err    error
+	}{
+		{
+			r:      nil,
+			expect: nil,
+			err:    errInvalidMessageReader,
+		},
+		{
+			r: bytes.NewReader(append([]byte{0x0E}, "tracknamespace"...)),
+			expect: &announceCancelMessage{
+				TrackNamespace: "tracknamespace",
+			},
+			err: nil,
+		},
+		{
+			r: bytes.NewReader(append([]byte{0x05}, "tracknamespace"...)),
+			expect: &announceCancelMessage{
+				TrackNamespace: "track",
+			},
+			err: nil,
+		},
+		{
+			r:      bytes.NewReader(append([]byte{0x0F}, "tracknamespace"...)),
+			expect: nil,
+			err:    io.EOF,
+		},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
+			p := loggingParser{
+				logger: slog.Default(),
+				reader: tc.r,
+			}
+			res, err := p.parseAnnounceCancelMessage()
+			if tc.err != nil {
+				assert.Equal(t, tc.err, err)
+				assert.Equal(t, tc.expect, res)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expect, res)
+		})
+	}
+}
