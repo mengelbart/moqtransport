@@ -1023,7 +1023,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			srm: subscribeDoneMessage{
@@ -1036,7 +1036,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x0c,
+				0x0b,
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -1053,7 +1053,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
 				0x0a, 0x0b, 0x0c, 0x0d,
-				0x0c,
+				0x0b,
 				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -1070,7 +1070,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
+			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
 		},
 		{
 			srm: subscribeDoneMessage{
@@ -1083,7 +1083,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x0c,
+				0x0b,
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -1104,7 +1104,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
 				0x0a, 0x0b, 0x0c, 0x0d,
-				0x0c,
+				0x0b,
 				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',

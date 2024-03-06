@@ -62,7 +62,7 @@ const (
 	announceErrorMessageType        messageType = 0x08
 	unannounceMessageType           messageType = 0x09
 	unsubscribeMessageType          messageType = 0x0a
-	subscribeDoneMessageType        messageType = 0x0c
+	subscribeDoneMessageType        messageType = 0x0b
 	goAwayMessageType               messageType = 0x10
 	clientSetupMessageType          messageType = 0x40
 	serverSetupMessageType          messageType = 0x41
