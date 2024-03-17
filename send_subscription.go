@@ -101,7 +101,7 @@ func (s *SendSubscription) NewObjectPreferDatagram(groupID, objectID, objectSend
 	default:
 	}
 	o := objectMessage{
-		preferDatagram:  true,
+		datagram:        true,
 		SubscribeID:     s.subscribeID,
 		TrackAlias:      s.trackAlias,
 		GroupID:         groupID,
