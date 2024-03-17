@@ -6,7 +6,7 @@ type objectStream struct {
 
 func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
 	osm := &objectMessage{
-		preferDatagram:  false,
+		datagram:        false,
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		GroupID:         groupID,

@@ -52,30 +52,30 @@ type message interface {
 type messageType uint64
 
 const (
-	objectStreamMessageType         messageType = 0x00
-	objectPreferDatagramMessageType messageType = 0x01
-	subscribeMessageType            messageType = 0x03
-	subscribeOkMessageType          messageType = 0x04
-	subscribeErrorMessageType       messageType = 0x05
-	announceMessageType             messageType = 0x06
-	announceOkMessageType           messageType = 0x07
-	announceErrorMessageType        messageType = 0x08
-	unannounceMessageType           messageType = 0x09
-	unsubscribeMessageType          messageType = 0x0a
-	subscribeDoneMessageType        messageType = 0x0b
-	goAwayMessageType               messageType = 0x10
-	clientSetupMessageType          messageType = 0x40
-	serverSetupMessageType          messageType = 0x41
-	streamHeaderTrackMessageType    messageType = 0x50
-	streamHeaderGroupMessageType    messageType = 0x51
+	objectStreamMessageType      messageType = 0x00
+	objectDatagramMessageType    messageType = 0x01
+	subscribeMessageType         messageType = 0x03
+	subscribeOkMessageType       messageType = 0x04
+	subscribeErrorMessageType    messageType = 0x05
+	announceMessageType          messageType = 0x06
+	announceOkMessageType        messageType = 0x07
+	announceErrorMessageType     messageType = 0x08
+	unannounceMessageType        messageType = 0x09
+	unsubscribeMessageType       messageType = 0x0a
+	subscribeDoneMessageType     messageType = 0x0b
+	goAwayMessageType            messageType = 0x10
+	clientSetupMessageType       messageType = 0x40
+	serverSetupMessageType       messageType = 0x41
+	streamHeaderTrackMessageType messageType = 0x50
+	streamHeaderGroupMessageType messageType = 0x51
 )
 
 func (mt messageType) String() string {
 	switch mt {
 	case objectStreamMessageType:
 		return "ObjectStreamMessage"
-	case objectPreferDatagramMessageType:
-		return "objectPreferDatagram"
+	case objectDatagramMessageType:
+		return "objectDatagram"
 	case subscribeMessageType:
 		return "SubscribeMessage"
 	case subscribeOkMessageType:
@@ -131,7 +131,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 		return nil, err
 	}
 	switch messageType(mt) {
-	case objectStreamMessageType, objectPreferDatagramMessageType:
+	case objectStreamMessageType, objectDatagramMessageType:
 		msg, err = p.parseObjectMessage(messageType(mt))
 	case subscribeMessageType:
 		msg, err = p.parseSubscribeMessage()
@@ -172,7 +172,7 @@ func (p *loggingParser) parse() (msg message, err error) {
 }
 
 type objectMessage struct {
-	preferDatagram  bool
+	datagram        bool
 	SubscribeID     uint64
 	TrackAlias      uint64
 	GroupID         uint64
@@ -194,8 +194,8 @@ func (m objectMessage) String() string {
 }
 
 func (m *objectMessage) append(buf []byte) []byte {
-	if m.preferDatagram {
-		buf = quicvarint.Append(buf, uint64(objectPreferDatagramMessageType))
+	if m.datagram {
+		buf = quicvarint.Append(buf, uint64(objectDatagramMessageType))
 	} else {
 		buf = quicvarint.Append(buf, uint64(objectStreamMessageType))
 	}
@@ -239,7 +239,7 @@ func (p *loggingParser) parseObjectMessage(mt messageType) (*objectMessage, erro
 		return nil, err
 	}
 	return &objectMessage{
-		preferDatagram:  mt == objectPreferDatagramMessageType,
+		datagram:        mt == objectDatagramMessageType,
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		GroupID:         groupID,
