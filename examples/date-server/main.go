@@ -156,8 +156,9 @@ func handle(p *moqtransport.Session) {
 		s.Accept()
 		go func() {
 			ticker := time.NewTicker(time.Second)
+			id := uint64(0)
 			for ts := range ticker.C {
-				w, err := s.NewObjectStream(0, 0, 0) // TODO: Use meaningful values
+				w, err := s.NewObjectStream(id, 0, 0) // TODO: Use meaningful values
 				if err != nil {
 					log.Println(err)
 					return
@@ -170,6 +171,7 @@ func handle(p *moqtransport.Session) {
 					log.Println(err)
 					return
 				}
+				id++
 			}
 		}()
 	}()
