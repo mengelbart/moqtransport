@@ -19,6 +19,7 @@ func main() {
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
 	addr := flag.String("addr", "localhost:8080", "listen address")
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
+	quic := flag.Bool("quic", false, "Serve QUIC only")
 	flag.Parse()
 
 	tlsConfig, err := generateTLSConfigWithCertAndKey(*certFile, *keyFile)
@@ -34,7 +35,13 @@ func main() {
 		}
 		return
 	}
-	if err := s.ListenQUIC(context.TODO(), *addr, tlsConfig); err != nil {
+	if *quic {
+		if err := s.ListenQUIC(context.TODO(), *addr, tlsConfig); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if err := s.Listen(context.TODO(), *addr, tlsConfig); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -70,6 +77,6 @@ func generateTLSConfig() *tls.Config {
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"moq-00"},
+		NextProtos:   []string{"moq-00", "h3"},
 	}
 }
