@@ -48,7 +48,7 @@ func (r *room) join(username string, p *moqtransport.Session) error {
 	if _, ok := r.publishers[username]; ok {
 		return errors.New("username already taken")
 	}
-	t, err := p.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v", r.id), username, "")
+	t, err := p.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v/participant/%v", r.id, username), "", "")
 	if err != nil {
 		return err
 	}
