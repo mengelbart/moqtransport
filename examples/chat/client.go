@@ -81,7 +81,6 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 	}
 	go func() {
 		for {
-			var a *moqtransport.Announcement
 			a, err := c.session.ReadAnnouncement(context.Background())
 			if err != nil {
 				panic(err)
@@ -96,7 +95,7 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 			if err != nil {
 				panic(err)
 			}
-			parts := strings.SplitN(s.Namespace(), "/", 2)
+			parts := strings.SplitN(s.Namespace(), "/", 4)
 			if len(parts) < 2 {
 				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid trackname")
 				continue
@@ -108,9 +107,12 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 			}
 			if _, ok := c.rooms[id]; !ok {
 				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid subscribe request")
+				log.Printf("got subscribe request for unknown room: %v", id)
 				continue
 			}
 			s.Accept()
+			// TODO: Should add to a list instead of overwriting or at least end
+			// previous subscriptions?
 			c.rooms[id].st = s
 		}
 	}()
@@ -128,11 +130,12 @@ func (c *Client) handleCatalogDeltas(roomID, username string, catalogTrack *moqt
 		if err != nil {
 			return err
 		}
+		log.Printf("got catalog delta: %v", delta)
 		for _, p := range delta.joined {
 			if p == username {
 				continue
 			}
-			t, err := c.session.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v", roomID), p, username)
+			t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p), "", username)
 			if err != nil {
 				return err
 			}
@@ -178,11 +181,12 @@ func (c *Client) joinRoom(roomID, username string) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("got catalog: %v", participants)
 	for p := range participants.participants {
 		if p == username {
 			continue
 		}
-		t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v", roomID), p, username)
+		t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p), "", username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}
@@ -231,9 +235,13 @@ func (c *Client) Run() error {
 				fmt.Println("invalid msg command, usage: 'msg <room id> <msg>'")
 				continue
 			}
+			if c.rooms[fields[1]].st == nil {
+				fmt.Println("server not subscribed, dropping message")
+				continue
+			}
 			w, err := c.rooms[fields[1]].st.NewObjectStream(0, 0, 0) // TODO
 			if err != nil {
-				fmt.Printf("failed to send object: %v", err)
+				fmt.Printf("failed to send object: %v\n", err)
 				continue
 			}
 			if _, err = w.Write([]byte(strings.TrimSpace(msg))); err != nil {

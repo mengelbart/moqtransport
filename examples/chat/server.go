@@ -137,13 +137,13 @@ func (s *Server) handle(p *moqtransport.Session) {
 			if err != nil {
 				panic(err)
 			}
-			uri := strings.SplitN(a.Namespace(), "/", 3)
-			if len(uri) < 3 {
+			uri := strings.SplitN(a.Namespace(), "/", 4)
+			if len(uri) < 4 {
 				a.Reject(0, "invalid announcement")
 				continue
 			}
-			moq_chat, id, username := uri[0], uri[1], uri[2]
-			if moq_chat != "moq-chat" {
+			moq_chat, id, participant, username := uri[0], uri[1], uri[2], uri[3]
+			if moq_chat != "moq-chat" || participant != "participant" {
 				a.Reject(0, "invalid moq-chat namespace")
 				continue
 			}
@@ -170,7 +170,7 @@ func (s *Server) handle(p *moqtransport.Session) {
 				sub.Reject(moqtransport.SubscribeErrorUnknownTrack, "subscribe without prior announcement")
 				continue
 			}
-			parts := strings.SplitN(sub.Namespace(), "/", 2)
+			parts := strings.SplitN(sub.Namespace(), "/", 4)
 			if len(parts) < 2 {
 				sub.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid trackname")
 				continue
@@ -198,7 +198,12 @@ func (s *Server) handle(p *moqtransport.Session) {
 
 			r.lock.Lock()
 			log.Printf("subscribing user %v to publisher %v", name, sub.Trackname())
-			r.publishers[sub.Trackname()].subscribe(name, sub)
+			if len(parts) < 4 {
+				sub.Reject(0, "invalid subscriptions namespace, expected 'moq-chat/<room-id>/participants/<username>")
+				continue
+			}
+			username := parts[3]
+			r.publishers[username].subscribe(name, sub)
 			r.lock.Unlock()
 		}
 	}()
