@@ -200,7 +200,12 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 	// TODO: save role parameter
 	ssm := &serverSetupMessage{
 		SelectedVersion: CURRENT_VERSION,
-		SetupParameters: map[uint64]parameter{},
+		SetupParameters: map[uint64]parameter{
+			roleParameterKey: varintParameter{
+				k: roleParameterKey,
+				v: uint64(IngestionDeliveryRole),
+			},
+		},
 	}
 	if err = ctrlStreamHandler.send(ssm); err != nil {
 		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
