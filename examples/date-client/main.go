@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"io"
 	"log"
 
 	"github.com/mengelbart/moqtransport"
@@ -17,14 +18,16 @@ import (
 func main() {
 	addr := flag.String("addr", "localhost:8080", "address to connect to")
 	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
+	namespace := flag.String("namespace", "clock", "Namespace to subscribe to")
+	trackname := flag.String("trackname", "second", "Track to subscribe to")
 	flag.Parse()
 
-	if err := run(context.Background(), *addr, *wt); err != nil {
+	if err := run(context.Background(), *addr, *wt, *namespace, *trackname); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context, addr string, wt bool) error {
+func run(ctx context.Context, addr string, wt bool, namespace, trackname string) error {
 	var session *moqtransport.Session
 	var conn moqtransport.Connection
 	var err error
@@ -56,14 +59,19 @@ func run(ctx context.Context, addr string, wt bool) error {
 	}
 
 	log.Println("subscribing")
-	rs, err := session.Subscribe(context.Background(), 0, 0, "clock", "second", "")
+	rs, err := session.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
 		panic(err)
 	}
+	log.Println("got subscription")
 	buf := make([]byte, 64_000)
 	for {
 		n, err := rs.Read(buf)
 		if err != nil {
+			if err == io.EOF {
+				log.Printf("got last object")
+				return nil
+			}
 			panic(err)
 		}
 		log.Printf("got object: %v\n", string(buf[:n]))
