@@ -3,7 +3,7 @@ module github.com/mengelbart/moqtransport
 go 1.22.0
 
 require (
-	github.com/quic-go/quic-go v0.41.0
+	github.com/quic-go/quic-go v0.43.1
 	github.com/quic-go/webtransport-go v0.6.1-0.20231105134933-9074577ba782
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
@@ -18,7 +18,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	go.uber.org/goleak v1.2.1
-	go.uber.org/mock v0.3.0
+	go.uber.org/mock v0.4.0
 	golang.org/x/crypto v0.17.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
