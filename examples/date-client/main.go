@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"flag"
 	"io"
 	"log"
@@ -45,18 +44,13 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 	}
 	defer session.Close()
 
-	for {
-		_, err = session.ReadAnnouncement(context.Background(), func(a *moqtransport.Announcement) error {
-			if a.Namespace() == "clock" {
-				return nil
-			}
-			return errors.New("reject")
-		})
-		if err != nil {
-			continue
+	session.HandleAnnouncements(moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		if a.Namespace() == "clock" {
+			arw.Accept()
+			return
 		}
-		break
-	}
+		arw.Reject(0, "invalid namespace")
+	}))
 	log.Println("got Announcement")
 	log.Println("subscribing")
 	rs, err := session.Subscribe(context.Background(), 0, 0, namespace, trackname, "")

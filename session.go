@@ -97,6 +97,9 @@ type Session struct {
 
 	enableDatagrams bool
 
+	mutex               sync.Mutex
+	announcementHandler AnnouncementHandler
+
 	sendSubscriptions    *subscriptionMap[*SendSubscription]
 	receiveSubscriptions *subscriptionMap[*ReceiveSubscription]
 	localAnnouncements   *announcementMap
@@ -361,7 +364,8 @@ func (s *Session) handleControlMessage(msg message) error {
 	case *unsubscribeMessage:
 		return s.handleUnsubscribe(m)
 	case *announceMessage:
-		return s.handleAnnounceMessage(m)
+		s.handleAnnounceMessage(m)
+		return nil
 	case *announceOkMessage:
 		return s.handleAnnouncementResponse(m)
 	case *announceErrorMessage:
@@ -446,13 +450,38 @@ func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) error {
 	return s.receiveSubscriptions.delete(msg.SusbcribeID)
 }
 
-func (s *Session) handleAnnounceMessage(msg *announceMessage) error {
+func (s *Session) handleAnnounceMessage(msg *announceMessage) {
 	a := &Announcement{
 		responseCh: make(chan trackNamespacer),
 		namespace:  msg.TrackNamespace,
 		parameters: msg.TrackRequestParameters,
 	}
-	return s.remoteAnnouncements.add(a.namespace, a)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	h := s.announcementHandler
+	if h != nil {
+		go h.Handle(a, &defaultAnnouncementResponseWriter{
+			a: a,
+			s: s,
+		})
+	}
+}
+
+func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string) error {
+	return s.cms.send(&announceErrorMessage{
+		TrackNamespace: a.namespace,
+		ErrorCode:      code,
+		ReasonPhrase:   reason,
+	})
+}
+
+func (s *Session) acceptAnnouncement(a *Announcement) error {
+	if err := s.remoteAnnouncements.add(a.namespace, a); err != nil {
+		return err
+	}
+	return s.cms.send(&announceOkMessage{
+		TrackNamespace: a.namespace,
+	})
 }
 
 func (s *Session) handleObjectMessage(o *objectMessage) error {
@@ -514,25 +543,10 @@ func (s *Session) ReadSubscription(ctx context.Context, accept func(*SendSubscri
 	return sub, err
 }
 
-func (s *Session) ReadAnnouncement(ctx context.Context, accept func(*Announcement) error) (*Announcement, error) {
-	a, err := s.remoteAnnouncements.getNext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err = accept(a); err != nil {
-		if err = s.cms.send(&announceErrorMessage{
-			TrackNamespace: a.namespace,
-			ErrorCode:      0,
-			ReasonPhrase:   err.Error(),
-		}); err != nil {
-			panic(err)
-		}
-		return nil, err
-	}
-	err = s.cms.send(&announceOkMessage{
-		TrackNamespace: a.namespace,
-	})
-	return a, err
+func (s *Session) HandleAnnouncements(handler AnnouncementHandler) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.announcementHandler = handler
 }
 
 func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {

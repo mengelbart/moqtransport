@@ -1,7 +1,6 @@
 package moqtransport
 
 import (
-	"context"
 	"errors"
 	"sync"
 )
@@ -36,17 +35,4 @@ func (m *announcementMap) get(name string) (*Announcement, bool) {
 	defer m.mutex.Unlock()
 	a, ok := m.announcements[name]
 	return a, ok
-}
-
-func (m *announcementMap) getNext(ctx context.Context) (*Announcement, error) {
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case id := <-m.newAnnouncementChan:
-			if sub, ok := m.get(id); ok {
-				return sub, nil
-			}
-		}
-	}
 }

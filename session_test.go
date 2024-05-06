@@ -131,6 +131,11 @@ func TestSession(t *testing.T) {
 		}).Do(func(_ message) {
 			close(done)
 		})
+		s.HandleAnnouncements(AnnouncementHandlerFunc(func(a *Announcement, arw AnnouncementResponseWriter) {
+			err := arw.Accept()
+			assert.NoError(t, err)
+			assert.NotNil(t, a)
+		}))
 		go func() {
 			err := s.handleControlMessage(&announceMessage{
 				TrackNamespace:         "namespace",
@@ -138,11 +143,6 @@ func TestSession(t *testing.T) {
 			})
 			assert.NoError(t, err)
 		}()
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		a, err := s.ReadAnnouncement(ctx, func(a *Announcement) error { return nil })
-		assert.NoError(t, err)
-		assert.NotNil(t, a)
 		select {
 		case <-time.After(time.Second):
 			assert.Fail(t, "test timed out")

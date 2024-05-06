@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -89,9 +88,11 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		client := quicClientSession(t, ctx, addr)
-		a, err := client.ReadAnnouncement(ctx, func(a *moqtransport.Announcement) error { return nil })
-		assert.NoError(t, err)
-		assert.Equal(t, "/namespace", a.Namespace())
+		client.HandleAnnouncements(moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			assert.Equal(t, "/namespace", a.Namespace())
+			err := arw.Accept()
+			assert.NoError(t, err)
+		}))
 		<-receivedAnnounceOK
 		assert.NoError(t, client.Close())
 		wg.Wait()
@@ -121,9 +122,10 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		client := quicClientSession(t, ctx, addr)
-		a, err := client.ReadAnnouncement(ctx, func(a *moqtransport.Announcement) error { return errors.New("TEST_ERR") })
-		assert.NoError(t, err)
-		assert.Nil(t, a)
+		client.HandleAnnouncements(moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			err := arw.Reject(0, "TEST_ERR")
+			assert.NoError(t, err)
+		}))
 		<-receivedAnnounceError
 		assert.NoError(t, client.Close())
 		wg.Wait()
