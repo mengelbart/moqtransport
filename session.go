@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	errClosed             = errors.New("session closed")
-	errUnsupportedVersion = errors.New("unsupported version")
+	errClosed              = errors.New("session closed")
+	errUnsupportedVersion  = errors.New("unsupported version")
+	errUnknownSubscription = errors.New("unknown subscription")
 )
 
 type messageHandler func(message) error
@@ -388,7 +389,7 @@ func (s *Session) handleControlMessage(msg message) error {
 	case *subscribeErrorMessage:
 		err = s.handleSubscriptionResponse(m)
 	case *subscribeDoneMessage:
-		panic("TODO")
+		err = s.handleSubscribeDone(m)
 	case *unsubscribeMessage:
 		s.handleUnsubscribe(m)
 	case *announceMessage:
@@ -496,14 +497,26 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) message {
 
 func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) {
 	s.sendSubscriptionsLock.Lock()
+	defer s.sendSubscriptionsLock.Unlock()
 	sub, ok := s.sendSubscriptions[msg.SubscribeID]
 	if !ok {
 		s.logger.Info("got unsubscribe for unknown subscribe ID", "id", msg.SubscribeID)
 		return
 	}
 	delete(s.sendSubscriptions, msg.SubscribeID)
-	s.sendSubscriptionsLock.Unlock()
 	sub.unsubscribe()
+}
+
+func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) error {
+	s.receiveSubscriptionsLock.Lock()
+	defer s.receiveSubscriptionsLock.Unlock()
+	sub, ok := s.receiveSubscriptions[msg.SusbcribeID]
+	if !ok {
+		s.logger.Info("got subscribe done for unknown subscribe ID", "id", msg.SusbcribeID)
+		return errUnknownSubscription
+	}
+	delete(s.receiveSubscriptions, msg.SusbcribeID)
+	return sub.Done()
 }
 
 func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
