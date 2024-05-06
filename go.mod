@@ -27,3 +27,7 @@ require (
 	golang.org/x/tools v0.20.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/quic-go/webtransport-go v0.8.0 => github.com/mengelbart/webtransport-go v0.0.0-20240506103312-a51356f9fd4d
+
+replace github.com/quic-go/qpack v0.4.0 => github.com/mengelbart/qpack v0.0.0-20240506103124-f96c091e8d77
