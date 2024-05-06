@@ -13,19 +13,16 @@ import (
 
 func session(conn Connection, ctrlStream controlStreamHandler) *Session {
 	return &Session{
-		logger:                   slog.Default(),
-		closed:                   make(chan struct{}),
-		conn:                     conn,
-		cms:                      ctrlStream,
-		enableDatagrams:          false,
-		subscriptionCh:           make(chan *SendSubscription),
-		announcementCh:           make(chan *Announcement),
-		sendSubscriptionsLock:    sync.RWMutex{},
-		sendSubscriptions:        map[uint64]*SendSubscription{},
-		receiveSubscriptionsLock: sync.RWMutex{},
-		receiveSubscriptions:     map[uint64]*ReceiveSubscription{},
-		announcementsLock:        sync.RWMutex{},
-		announcements:            map[string]*announcement{},
+		logger:               slog.Default(),
+		closeOnce:            sync.Once{},
+		closed:               make(chan struct{}),
+		conn:                 conn,
+		cms:                  ctrlStream,
+		enableDatagrams:      false,
+		sendSubscriptions:    newSubscriptionMap[*SendSubscription](),
+		receiveSubscriptions: newSubscriptionMap[*ReceiveSubscription](),
+		localAnnouncements:   newAnnouncementMap(),
+		remoteAnnouncements:  newAnnouncementMap(),
 	}
 }
 
@@ -35,7 +32,8 @@ func TestSession(t *testing.T) {
 		mc := NewMockConnection(ctrl)
 		csh := NewMockControlStreamHandler(ctrl)
 		s := *session(mc, csh)
-		s.receiveSubscriptions[0] = newReceiveSubscription(0, &s)
+		err := s.receiveSubscriptions.add(0, newReceiveSubscription(0, &s))
+		assert.NoError(t, err)
 		object := &objectMessage{
 			SubscribeID:     0,
 			TrackAlias:      0,
@@ -47,12 +45,14 @@ func TestSession(t *testing.T) {
 		done := make(chan struct{})
 		go func() {
 			buf := make([]byte, 1024)
-			n, err := s.receiveSubscriptions[0].Read(buf)
-			assert.NoError(t, err)
+			sub, ok := s.receiveSubscriptions.get(0)
+			assert.True(t, ok)
+			n, err1 := sub.Read(buf)
+			assert.NoError(t, err1)
 			assert.Equal(t, object.payload(), buf[:n])
 			close(done)
 		}()
-		err := s.handleObjectMessage(object)
+		err = s.handleObjectMessage(object)
 		assert.NoError(t, err)
 		select {
 		case <-done:
@@ -84,8 +84,11 @@ func TestSession(t *testing.T) {
 		s := session(mc, csh)
 		done := make(chan struct{})
 		csh.EXPECT().send(&subscribeOkMessage{
-			SubscribeID: 17,
-			Expires:     time.Second,
+			SubscribeID:   17,
+			Expires:       0,
+			ContentExists: false,
+			FinalGroup:    0,
+			FinalObject:   0,
 		}).Do(func(_ message) {
 			close(done)
 		})
@@ -105,11 +108,12 @@ func TestSession(t *testing.T) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		sub, err := s.ReadSubscription(ctx)
+		sub, err := s.ReadSubscription(ctx, func(ss *SendSubscription) error {
+			return nil
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, sub)
 		sub.SetExpires(time.Second)
-		sub.Accept()
 		select {
 		case <-time.After(time.Second):
 			assert.Fail(t, "test timed out")
@@ -136,10 +140,9 @@ func TestSession(t *testing.T) {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		a, err := s.ReadAnnouncement(ctx)
+		a, err := s.ReadAnnouncement(ctx, func(a *Announcement) error { return nil })
 		assert.NoError(t, err)
 		assert.NotNil(t, a)
-		a.Accept()
 		select {
 		case <-time.After(time.Second):
 			assert.Fail(t, "test timed out")

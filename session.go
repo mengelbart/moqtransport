@@ -77,10 +77,6 @@ type parser interface {
 	parse() (message, error)
 }
 
-type announcement struct {
-	responseCh chan trackNamespacer
-}
-
 type subscribeIDer interface {
 	message
 	subscribeID() uint64
@@ -101,17 +97,10 @@ type Session struct {
 
 	enableDatagrams bool
 
-	subscriptionCh chan *SendSubscription
-	announcementCh chan *Announcement
-
-	sendSubscriptionsLock sync.RWMutex
-	sendSubscriptions     map[uint64]*SendSubscription
-
-	receiveSubscriptionsLock sync.RWMutex
-	receiveSubscriptions     map[uint64]*ReceiveSubscription
-
-	announcementsLock sync.RWMutex
-	announcements     map[string]*announcement
+	sendSubscriptions    *subscriptionMap[*SendSubscription]
+	receiveSubscriptions *subscriptionMap[*ReceiveSubscription]
+	localAnnouncements   *announcementMap
+	remoteAnnouncements  *announcementMap
 }
 
 func NewClientSession(conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
@@ -221,19 +210,15 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 
 func newSession(conn Connection, cms controlStreamHandler, enableDatagrams bool, logger *slog.Logger) *Session {
 	s := &Session{
-		logger:                   logger,
-		closed:                   make(chan struct{}),
-		conn:                     conn,
-		cms:                      cms,
-		enableDatagrams:          enableDatagrams,
-		subscriptionCh:           make(chan *SendSubscription),
-		announcementCh:           make(chan *Announcement),
-		sendSubscriptionsLock:    sync.RWMutex{},
-		sendSubscriptions:        map[uint64]*SendSubscription{},
-		receiveSubscriptionsLock: sync.RWMutex{},
-		receiveSubscriptions:     map[uint64]*ReceiveSubscription{},
-		announcementsLock:        sync.RWMutex{},
-		announcements:            map[string]*announcement{},
+		logger:               logger,
+		closed:               make(chan struct{}),
+		conn:                 conn,
+		cms:                  cms,
+		enableDatagrams:      enableDatagrams,
+		sendSubscriptions:    newSubscriptionMap[*SendSubscription](),
+		receiveSubscriptions: newSubscriptionMap[*ReceiveSubscription](),
+		localAnnouncements:   newAnnouncementMap(),
+		remoteAnnouncements:  newAnnouncementMap(),
 	}
 	return s
 }
@@ -280,9 +265,7 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 	}
 	switch h := msg.(type) {
 	case *objectMessage:
-		s.receiveSubscriptionsLock.RLock()
-		sub, ok := s.receiveSubscriptions[h.SubscribeID]
-		s.receiveSubscriptionsLock.RUnlock()
+		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
 			s.logger.Warn("got object for unknown subscribe ID")
 			return
@@ -291,18 +274,14 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 			panic(err)
 		}
 	case *streamHeaderTrackMessage:
-		s.receiveSubscriptionsLock.RLock()
-		sub, ok := s.receiveSubscriptions[h.SubscribeID]
-		s.receiveSubscriptionsLock.RUnlock()
+		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
 			s.logger.Warn("got stream header track message for unknown subscription")
 			return
 		}
 		sub.readTrackHeaderStream(stream)
 	case *streamHeaderGroupMessage:
-		s.receiveSubscriptionsLock.RLock()
-		sub, ok := s.receiveSubscriptions[h.SubscribeID]
-		s.receiveSubscriptionsLock.RUnlock()
+		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
 			s.logger.Warn("got stream header track message for unknown subscription")
 			return
@@ -370,51 +349,34 @@ func (s *Session) readObjectMessages(r messageReader) {
 }
 
 func (s *Session) handleControlMessage(msg message) error {
-	var err error
 	switch m := msg.(type) {
-	case *objectMessage:
-		pe := &ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "received object message on control stream",
-		}
-		return pe
 	case *subscribeMessage:
-		r := s.handleSubscribe(m)
-		if r != nil {
-			err = s.cms.send(r)
-		}
+		return s.handleSubscribe(m)
 	case *subscribeOkMessage:
-		err = s.handleSubscriptionResponse(m)
+		return s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
-		err = s.handleSubscriptionResponse(m)
+		return s.handleSubscriptionResponse(m)
 	case *subscribeDoneMessage:
-		panic("TODO")
+		return s.handleSubscribeDone(m)
 	case *unsubscribeMessage:
-		s.handleUnsubscribe(m)
+		return s.handleUnsubscribe(m)
 	case *announceMessage:
-		r := s.handleAnnounceMessage(m)
-		if r != nil {
-			err = s.cms.send(r)
-		}
+		return s.handleAnnounceMessage(m)
 	case *announceOkMessage:
-		err = s.handleAnnouncementResponse(m)
+		return s.handleAnnouncementResponse(m)
 	case *announceErrorMessage:
-		err = s.handleAnnouncementResponse(m)
+		return s.handleAnnouncementResponse(m)
 	case *goAwayMessage:
 		panic("TODO")
-	default:
-		return &ProtocolError{
-			code:    ErrorCodeInternal,
-			message: "received unexpected message type on control stream",
-		}
 	}
-	return err
+	return &ProtocolError{
+		code:    ErrorCodeInternal,
+		message: "received unexpected message type on control stream",
+	}
 }
 
 func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
-	s.receiveSubscriptionsLock.RLock()
-	sub, ok := s.receiveSubscriptions[msg.subscribeID()]
-	s.receiveSubscriptionsLock.RUnlock()
+	sub, ok := s.receiveSubscriptions.get(msg.subscribeID())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -431,9 +393,7 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 }
 
 func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
-	s.announcementsLock.RLock()
-	a, ok := s.announcements[msg.trackNamespace()]
-	s.announcementsLock.RUnlock()
+	a, ok := s.localAnnouncements.get(msg.trackNamespace())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -449,10 +409,9 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	return nil
 }
 
-func (s *Session) handleSubscribe(msg *subscribeMessage) message {
+func (s *Session) handleSubscribe(msg *subscribeMessage) error {
 	sub := &SendSubscription{
 		lock:        sync.RWMutex{},
-		responseCh:  make(chan *subscribeError),
 		closeCh:     make(chan struct{}),
 		expires:     0,
 		conn:        s.conn,
@@ -466,80 +425,38 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) message {
 		endObject:   msg.EndObject,
 		parameters:  msg.Parameters,
 	}
-	s.sendSubscriptionsLock.Lock()
-	s.sendSubscriptions[sub.subscribeID] = sub
-	s.sendSubscriptionsLock.Unlock()
-	select {
-	case <-s.closed:
-		return nil
-	case s.subscriptionCh <- sub:
-	}
-	select {
-	case <-s.closed:
-		close(sub.closeCh)
-		return nil
-	case err := <-sub.responseCh:
-		if err != nil {
-			return &subscribeErrorMessage{
-				SubscribeID:  msg.SubscribeID,
-				ErrorCode:    err.code,
-				ReasonPhrase: err.reason,
-				TrackAlias:   msg.TrackAlias,
-			}
-		}
-	}
-	return &subscribeOkMessage{
-		SubscribeID: msg.SubscribeID,
-		Expires:     sub.expires,
-	}
+	return s.sendSubscriptions.add(sub.subscribeID, sub)
 }
 
-func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) {
-	s.sendSubscriptionsLock.Lock()
-	sub, ok := s.sendSubscriptions[msg.SubscribeID]
-	if !ok {
-		s.logger.Info("got unsubscribe for unknown subscribe ID", "id", msg.SubscribeID)
-		return
+func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
+	if err := s.sendSubscriptions.delete(msg.SubscribeID); err != nil {
+		return err
 	}
-	delete(s.sendSubscriptions, msg.SubscribeID)
-	s.sendSubscriptionsLock.Unlock()
-	sub.unsubscribe()
+	return s.cms.send(&subscribeDoneMessage{
+		SusbcribeID:   msg.SubscribeID,
+		StatusCode:    0,
+		ReasonPhrase:  "unsubscribed",
+		ContentExists: false,
+		FinalGroup:    0,
+		FinalObject:   0,
+	})
 }
 
-func (s *Session) handleAnnounceMessage(msg *announceMessage) message {
+func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) error {
+	return s.receiveSubscriptions.delete(msg.SusbcribeID)
+}
+
+func (s *Session) handleAnnounceMessage(msg *announceMessage) error {
 	a := &Announcement{
-		errorCh:    make(chan *announcementError),
-		closeCh:    make(chan struct{}),
+		responseCh: make(chan trackNamespacer),
 		namespace:  msg.TrackNamespace,
 		parameters: msg.TrackRequestParameters,
 	}
-	select {
-	case <-s.closed:
-		return nil
-	case s.announcementCh <- a:
-	}
-	select {
-	case <-s.closed:
-		close(a.closeCh)
-		return nil
-	case err := <-a.errorCh:
-		if err != nil {
-			return &announceErrorMessage{
-				TrackNamespace: a.namespace,
-				ErrorCode:      err.code,
-				ReasonPhrase:   err.reason,
-			}
-		}
-	}
-	return &announceOkMessage{
-		TrackNamespace: a.namespace,
-	}
+	return s.remoteAnnouncements.add(a.namespace, a)
 }
 
 func (s *Session) handleObjectMessage(o *objectMessage) error {
-	s.receiveSubscriptionsLock.RLock()
-	sub, ok := s.receiveSubscriptions[o.SubscribeID]
-	s.receiveSubscriptionsLock.RUnlock()
+	sub, ok := s.receiveSubscriptions.get(o.SubscribeID)
 	if ok {
 		_, err := sub.push(o)
 		return err
@@ -569,26 +486,53 @@ func (s *Session) Close() error {
 	return s.CloseWithError(0, "")
 }
 
-func (s *Session) ReadSubscription(ctx context.Context) (*SendSubscription, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-s.closed:
-		return nil, errClosed // TODO: Better error message including a reason?
-	case s := <-s.subscriptionCh:
-		return s, nil
+// TODO: Acceptor func should not pass the complete subscription object but only
+// the relevant header info
+func (s *Session) ReadSubscription(ctx context.Context, accept func(*SendSubscription) error) (*SendSubscription, error) {
+	sub, err := s.sendSubscriptions.getNext(ctx)
+	if err != nil {
+		return nil, err
 	}
+	if err = accept(sub); err != nil {
+		if err = s.cms.send(&subscribeErrorMessage{
+			SubscribeID:  sub.subscribeID,
+			ErrorCode:    0,
+			ReasonPhrase: err.Error(),
+			TrackAlias:   sub.trackAlias,
+		}); err != nil {
+			panic(err)
+		}
+		return nil, s.sendSubscriptions.delete(sub.subscribeID)
+	}
+	err = s.cms.send(&subscribeOkMessage{
+		SubscribeID:   sub.subscribeID,
+		Expires:       0,     // TODO: Let user set these values?
+		ContentExists: false, // TODO: Let user set these values?
+		FinalGroup:    0,     // TODO: Let user set these values?
+		FinalObject:   0,     // TODO: Let user set these values?
+	})
+	return sub, err
 }
 
-func (s *Session) ReadAnnouncement(ctx context.Context) (*Announcement, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-s.closed:
-		return nil, errClosed // TODO: Better error message including a reason?
-	case a := <-s.announcementCh:
-		return a, nil
+func (s *Session) ReadAnnouncement(ctx context.Context, accept func(*Announcement) error) (*Announcement, error) {
+	a, err := s.remoteAnnouncements.getNext(ctx)
+	if err != nil {
+		return nil, err
 	}
+	if err = accept(a); err != nil {
+		if err = s.cms.send(&announceErrorMessage{
+			TrackNamespace: a.namespace,
+			ErrorCode:      0,
+			ReasonPhrase:   err.Error(),
+		}); err != nil {
+			panic(err)
+		}
+		return nil, err
+	}
+	err = s.cms.send(&announceOkMessage{
+		TrackNamespace: a.namespace,
+	})
+	return a, err
 }
 
 func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
@@ -610,9 +554,9 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		}
 	}
 	sub := newReceiveSubscription(sm.SubscribeID, s)
-	s.receiveSubscriptionsLock.Lock()
-	s.receiveSubscriptions[sm.subscribeID()] = sub
-	s.receiveSubscriptionsLock.Unlock()
+	if err := s.receiveSubscriptions.add(sm.SubscribeID, sub); err != nil {
+		return nil, err
+	}
 	if err := s.cms.send(sm); err != nil {
 		return nil, err
 	}
@@ -634,9 +578,7 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	case *subscribeOkMessage:
 		return sub, nil
 	case *subscribeErrorMessage:
-		s.receiveSubscriptionsLock.Lock()
-		delete(s.receiveSubscriptions, sm.subscribeID())
-		s.receiveSubscriptionsLock.Unlock()
+		_ = s.receiveSubscriptions.delete(sm.SubscribeID)
 		return nil, ApplicationError{
 			code:   v.ErrorCode,
 			mesage: v.ReasonPhrase,
@@ -657,12 +599,12 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 		TrackRequestParameters: map[uint64]parameter{},
 	}
 	responseCh := make(chan trackNamespacer)
-	t := &announcement{
+	a := &Announcement{
 		responseCh: responseCh,
 	}
-	s.announcementsLock.Lock()
-	s.announcements[am.TrackNamespace] = t
-	s.announcementsLock.Unlock()
+	if err := s.localAnnouncements.add(am.TrackNamespace, a); err != nil {
+		return err
+	}
 	if err := s.cms.send(am); err != nil {
 		return err
 	}

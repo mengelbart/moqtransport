@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -88,10 +89,9 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		client := quicClientSession(t, ctx, addr)
-		a, err := client.ReadAnnouncement(ctx)
+		a, err := client.ReadAnnouncement(ctx, func(a *moqtransport.Announcement) error { return nil })
 		assert.NoError(t, err)
 		assert.Equal(t, "/namespace", a.Namespace())
-		a.Accept()
 		<-receivedAnnounceOK
 		assert.NoError(t, client.Close())
 		wg.Wait()
@@ -121,10 +121,9 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		client := quicClientSession(t, ctx, addr)
-		a, err := client.ReadAnnouncement(ctx)
+		a, err := client.ReadAnnouncement(ctx, func(a *moqtransport.Announcement) error { return errors.New("TEST_ERR") })
 		assert.NoError(t, err)
-		assert.Equal(t, "/namespace", a.Namespace())
-		a.Reject(moqtransport.SubscribeErrorUnknownTrack, "TEST_ERR")
+		assert.Nil(t, a)
 		<-receivedAnnounceError
 		assert.NoError(t, client.Close())
 		wg.Wait()
@@ -145,11 +144,10 @@ func TestIntegration(t *testing.T) {
 			assert.NoError(t, err)
 			server, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
 			assert.NoError(t, err)
-			sub, err := server.ReadSubscription(ctx)
+			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
 			assert.NoError(t, err)
 			assert.Equal(t, "namespace", sub.Namespace())
 			assert.Equal(t, "track", sub.Trackname())
-			sub.Accept()
 			<-receivedSubscribeOK
 			assert.NoError(t, server.Close())
 		}()
@@ -178,11 +176,10 @@ func TestIntegration(t *testing.T) {
 			assert.NoError(t, err)
 			server, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
 			assert.NoError(t, err)
-			sub, err := server.ReadSubscription(ctx)
+			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
 			assert.NoError(t, err)
 			assert.Equal(t, "namespace", sub.Namespace())
 			assert.Equal(t, "track", sub.Trackname())
-			sub.Accept()
 			s, err := sub.NewObjectStream(0, 0, 0)
 			assert.NoError(t, err)
 			_, err = s.Write([]byte("hello world"))
@@ -220,11 +217,10 @@ func TestIntegration(t *testing.T) {
 			assert.NoError(t, err)
 			server, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
 			assert.NoError(t, err)
-			sub, err := server.ReadSubscription(ctx)
+			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
 			assert.NoError(t, err)
 			assert.Equal(t, "namespace", sub.Namespace())
 			assert.Equal(t, "track", sub.Trackname())
-			sub.Accept()
 			for i := 0; i < 10; i++ {
 				err = sub.NewObjectPreferDatagram(0, 0, 0, nil)
 				if err != nil {
