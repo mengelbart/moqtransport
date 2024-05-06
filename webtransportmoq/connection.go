@@ -40,11 +40,11 @@ func (c *webTransportConn) AcceptUniStream(ctx context.Context) (moqtransport.Re
 }
 
 func (c *webTransportConn) SendDatagram(b []byte) error {
-	panic("SendMessage is not implemented for WebTransport")
+	return c.session.SendDatagram(b)
 }
 
 func (c *webTransportConn) ReceiveDatagram(ctx context.Context) ([]byte, error) {
-	panic("ReceiveMessage is not implemented for WebTransport")
+	return c.session.ReceiveDatagram(ctx)
 }
 
 func (c *webTransportConn) CloseWithError(e uint64, msg string) error {
