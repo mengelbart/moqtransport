@@ -15,7 +15,6 @@ import (
 	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/mengelbart/moqtransport/webtransportmoq"
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -51,14 +50,9 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 
 func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
 	dialer := webtransport.Dialer{
-		RoundTripper: &http3.RoundTripper{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-			QuicConfig:      &quic.Config{},
-			EnableDatagrams: false,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
 		},
-		StreamReorderingTimeout: 0,
 	}
 	_, session, err := dialer.Dial(ctx, addr, nil)
 	if err != nil {

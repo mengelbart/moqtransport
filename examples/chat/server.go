@@ -44,9 +44,8 @@ func (s *Server) Listen(ctx context.Context, addr string, tlsConfig *tls.Config)
 	}
 	wt := webtransport.Server{
 		H3: http3.Server{
-			Addr:       addr,
-			TLSConfig:  tlsConfig,
-			QuicConfig: &quic.Config{},
+			Addr:      addr,
+			TLSConfig: tlsConfig,
 		},
 	}
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
@@ -105,9 +104,8 @@ func (s *Server) ListenQUIC(ctx context.Context, addr string, tlsConfig *tls.Con
 func (s *Server) ListenWebTransport(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 	wt := webtransport.Server{
 		H3: http3.Server{
-			Addr:       addr,
-			TLSConfig:  tlsConfig,
-			QuicConfig: &quic.Config{},
+			Addr:      addr,
+			TLSConfig: tlsConfig,
 		},
 	}
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
