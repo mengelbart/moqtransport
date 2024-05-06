@@ -990,15 +990,19 @@ func (p *loggingParser) parseStreamHeaderTrackObject() (*streamHeaderTrackObject
 	if err != nil {
 		return nil, err
 	}
-	// TODO: make the message type an io.Reader and let the user read
-	objectPayload, err := io.ReadAll(p.reader)
+	objectLen, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, objectLen)
+	_, err = io.ReadFull(p.reader, buf)
 	if err != nil {
 		return nil, err
 	}
 	return &streamHeaderTrackObject{
 		GroupID:       groupID,
 		ObjectID:      objectID,
-		ObjectPayload: objectPayload,
+		ObjectPayload: buf,
 	}, nil
 }
 
@@ -1026,14 +1030,18 @@ func (p *loggingParser) parseStreamHeaderGroupObject() (*streamHeaderGroupObject
 	if err != nil {
 		return nil, err
 	}
-	// TODO: make the message type an io.Reader and let the user read
-	objectPayload, err := io.ReadAll(p.reader)
+	objectLen, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, objectLen)
+	_, err = io.ReadFull(p.reader, buf)
 	if err != nil {
 		return nil, err
 	}
 	return &streamHeaderGroupObject{
 		ObjectID:      objectID,
-		ObjectPayload: objectPayload,
+		ObjectPayload: buf,
 	}, nil
 }
 
