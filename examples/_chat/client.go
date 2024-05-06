@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -85,26 +86,25 @@ func NewClient(p *moqtransport.Session) (*Client, error) {
 	}()
 	go func() {
 		for {
-			s, err := c.session.ReadSubscription(context.Background())
+			var id string
+			s, err := c.session.ReadSubscription(context.Background(), func(s *moqtransport.SendSubscription) error {
+				parts := strings.SplitN(s.Namespace(), "/", 4)
+				if len(parts) < 2 {
+					return errors.New("invalid trackname")
+				}
+				var moq_chat string
+				moq_chat, id = parts[0], parts[1]
+				if moq_chat != "moq-chat" {
+					return errors.New("invalid moq-chat namespace")
+				}
+				if _, ok := c.rooms[id]; !ok {
+					return errors.New("invalid subscribe request")
+				}
+				return nil
+			})
 			if err != nil {
-				panic(err)
-			}
-			parts := strings.SplitN(s.Namespace(), "/", 4)
-			if len(parts) < 2 {
-				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid trackname")
 				continue
 			}
-			moq_chat, id := parts[0], parts[1]
-			if moq_chat != "moq-chat" {
-				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid moq-chat namespace")
-				continue
-			}
-			if _, ok := c.rooms[id]; !ok {
-				s.Reject(moqtransport.SubscribeErrorUnknownTrack, "invalid subscribe request")
-				log.Printf("got subscribe request for unknown room: %v", id)
-				continue
-			}
-			s.Accept()
 			// TODO: Should add to a list instead of overwriting or at least end
 			// previous subscriptions?
 			c.rooms[id].st = s

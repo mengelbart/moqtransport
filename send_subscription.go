@@ -10,16 +10,10 @@ import (
 
 var errUnsubscribed = errors.New("peer unsubscribed")
 
-type subscribeError struct {
-	code   uint64
-	reason string
-}
-
 type SendSubscription struct {
-	lock       sync.RWMutex
-	responseCh chan *subscribeError
-	closeCh    chan struct{}
-	expires    time.Duration
+	lock    sync.RWMutex
+	closeCh chan struct{}
+	expires time.Duration
 
 	conn Connection
 
@@ -28,23 +22,6 @@ type SendSubscription struct {
 	startGroup, startObject Location
 	endGroup, endObject     Location
 	parameters              parameters
-}
-
-func (s *SendSubscription) Accept() {
-	select {
-	case <-s.closeCh:
-	case s.responseCh <- nil:
-	}
-}
-
-func (s *SendSubscription) Reject(code uint64, reason string) {
-	select {
-	case <-s.closeCh:
-	case s.responseCh <- &subscribeError{
-		code:   code,
-		reason: reason,
-	}:
-	}
 }
 
 func (s *SendSubscription) SetExpires(d time.Duration) {
@@ -77,8 +54,9 @@ func (s *SendSubscription) EndObject() Location {
 	return s.endObject
 }
 
-func (s *SendSubscription) unsubscribe() {
+func (s *SendSubscription) unsubscribe() error {
 	close(s.closeCh)
+	return nil
 }
 
 func (s *SendSubscription) NewObjectStream(groupID, objectID, objectSendOrder uint64) (*objectStream, error) {

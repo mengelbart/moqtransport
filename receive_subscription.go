@@ -41,10 +41,11 @@ func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 }
 
 func (s *ReceiveSubscription) Unsubscribe() error {
-	if err := s.writeBuffer.Close(); err != nil {
-		return err
-	}
 	return s.session.unsubscribe(s.subscribeID)
+}
+
+func (s *ReceiveSubscription) unsubscribe() error {
+	return s.writeBuffer.Close()
 }
 
 func (s *ReceiveSubscription) readTrackHeaderStream(rs ReceiveStream) {

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -143,15 +144,16 @@ func listenQUIC(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 
 func handle(p *moqtransport.Session) {
 	go func() {
-		s, err := p.ReadSubscription(context.Background())
+		s, err := p.ReadSubscription(context.Background(), func(s *moqtransport.SendSubscription) error {
+			if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
+				return errors.New("unknown namespace/trackname")
+			}
+			return nil
+		})
 		if err != nil {
 			panic(err)
 		}
 		log.Printf("got subscription: %v", s)
-		if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
-			s.Reject(moqtransport.SubscribeErrorUnknownTrack, "unknown namespace/trackname")
-		}
-		s.Accept()
 		go func() {
 			ticker := time.NewTicker(time.Second)
 			id := uint64(0)
