@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -56,6 +55,8 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			TLSConfig: tlsConfig,
 		},
 	}
+	track := moqtransport.NewLocalTrack(0, "clock", "second")
+	defer track.Close()
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 		session, err := wt.Upgrade(w, r)
 		if err != nil {
@@ -72,8 +73,22 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		go handle(moqSession)
+		go handle(moqSession, track)
 	})
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		id := uint64(0)
+		for ts := range ticker.C {
+			log.Printf("tick: %v, subscribers: %v\n", ts, track.SubscriberCount())
+			track.WriteObject(ctx, moqtransport.Object{
+				GroupID:         id,
+				ObjectID:        0,
+				ObjectSendOrder: 0,
+				Payload:         []byte(fmt.Sprintf("%v", ts)),
+			})
+			id++
+		}
+	}()
 	for {
 		conn, err := listener.Accept(ctx)
 		if err != nil {
@@ -90,45 +105,16 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			if err := s.RunServer(ctx); err != nil {
 				return err
 			}
-			go handle(s)
+			go handle(s, track)
 		}
 	}
 }
 
-func handle(p *moqtransport.Session) {
-	go func() {
-		s, err := p.ReadSubscription(context.Background(), func(s *moqtransport.SendSubscription) error {
-			if fmt.Sprintf("%v/%v", s.Namespace(), s.Trackname()) != "clock/second" {
-				return errors.New("unknown namespace/trackname")
-			}
-			return nil
-		})
-		if err != nil {
-			panic(err)
-		}
-		log.Printf("got subscription: %v", s)
-		go func() {
-			ticker := time.NewTicker(time.Second)
-			id := uint64(0)
-			for ts := range ticker.C {
-				w, err := s.NewObjectStream(id, 0, 0) // TODO: Use meaningful values
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				if _, err := fmt.Fprintf(w, "%v", ts); err != nil {
-					log.Println(err)
-					return
-				}
-				if err := w.Close(); err != nil {
-					log.Println(err)
-					return
-				}
-				id++
-			}
-		}()
-	}()
-	if err := p.Announce(context.Background(), "clock"); err != nil {
+func handle(s *moqtransport.Session, t *moqtransport.LocalTrack) {
+	if err := s.AddLocalTrack(t); err != nil {
+		panic(err)
+	}
+	if err := s.Announce(context.Background(), "clock"); err != nil {
 		panic(err)
 	}
 }

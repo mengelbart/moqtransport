@@ -149,18 +149,27 @@ func TestIntegration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
+			track := moqtransport.NewLocalTrack(0, "namespace", "track")
+			defer track.Close()
+			err := server.AddLocalTrack(track)
 			assert.NoError(t, err)
-			assert.Equal(t, "namespace", sub.Namespace())
-			assert.Equal(t, "track", sub.Trackname())
+			err = server.Announce(ctx, "namespace")
+			assert.NoError(t, err)
 			<-receivedSubscribeOK
 			assert.NoError(t, server.Close())
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		client := quicClientSession(t, ctx, addr, nil)
-		_, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
+		announcementCh := make(chan struct{})
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			assert.Equal(t, "namespace", a.Namespace())
+			arw.Accept()
+			close(announcementCh)
+		}))
+		<-announcementCh
+		r, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
+		assert.NotNil(t, r)
 		close(receivedSubscribeOK)
 		assert.NoError(t, client.Close())
 		wg.Wait()
@@ -172,29 +181,44 @@ func TestIntegration(t *testing.T) {
 		listener, addr, teardown := setup()
 		defer teardown()
 		wg.Add(1)
+		subscribedCh := make(chan struct{})
 		receivedObject := make(chan struct{})
 		go func() {
 			defer wg.Done()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
+			track := moqtransport.NewLocalTrack(0, "namespace", "track")
+			defer track.Close()
+			err := server.AddLocalTrack(track)
 			assert.NoError(t, err)
-			assert.Equal(t, "namespace", sub.Namespace())
-			assert.Equal(t, "track", sub.Trackname())
-			s, err := sub.NewObjectStream(0, 0, 0)
+			err = server.Announce(ctx, "namespace")
 			assert.NoError(t, err)
-			_, err = s.Write([]byte("hello world"))
+			<-subscribedCh
+			err = track.WriteObject(ctx, moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             0,
+				ObjectSendOrder:      0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world"),
+			})
 			assert.NoError(t, err)
-			assert.NoError(t, s.Close())
 			<-receivedObject
+			assert.NoError(t, track.Close())
 			assert.NoError(t, server.Close())
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		client := quicClientSession(t, ctx, addr, nil)
+		announcementCh := make(chan struct{})
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			assert.Equal(t, "namespace", a.Namespace())
+			arw.Accept()
+			close(announcementCh)
+		}))
+		<-announcementCh
 		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
+		close(subscribedCh)
 		buf := make([]byte, 1500)
 		n, err := sub.Read(buf)
 		assert.NoError(t, err)
@@ -210,36 +234,75 @@ func TestIntegration(t *testing.T) {
 		listener, addr, teardown := setup()
 		defer teardown()
 		wg.Add(1)
-		receivedUnsubscribe := make(chan struct{})
+		receivedSubscribeCh := make(chan struct{})
+		receivedUnsubscribeCh := make(chan struct{})
+		subscribedCh := make(chan struct{})
+		unsubscribedCh := make(chan struct{})
 		go func() {
 			defer wg.Done()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			sub, err := server.ReadSubscription(ctx, func(ss *moqtransport.SendSubscription) error { return nil })
+			track := moqtransport.NewLocalTrack(0, "namespace", "track")
+			defer track.Close()
+			err := server.AddLocalTrack(track)
 			assert.NoError(t, err)
-			assert.Equal(t, "namespace", sub.Namespace())
-			assert.Equal(t, "track", sub.Trackname())
-			for i := 0; i < 10; i++ {
-				err = sub.NewObjectPreferDatagram(0, 0, 0, nil)
-				if err != nil {
+			err = server.Announce(ctx, "namespace")
+			assert.NoError(t, err)
+			err = track.WriteObject(ctx, moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             0,
+				ObjectSendOrder:      0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world"),
+			})
+			assert.NoError(t, err)
+			<-subscribedCh
+			assert.Equal(t, 1, track.SubscriberCount())
+			err = track.WriteObject(ctx, moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             0,
+				ObjectSendOrder:      0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world"),
+			})
+			assert.NoError(t, err)
+			close(receivedSubscribeCh)
+			<-unsubscribedCh
+			err = track.WriteObject(ctx, moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             0,
+				ObjectSendOrder:      0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world"),
+			})
+			for i := 0; i < 3; i++ {
+				if track.SubscriberCount() == 0 {
 					break
 				}
 				time.Sleep(10 * time.Millisecond)
 			}
-			assert.Error(t, err)
-			assert.ErrorContains(t, err, "peer unsubscribed")
-			close(receivedUnsubscribe)
+			assert.NoError(t, err)
+			assert.Equal(t, 0, track.SubscriberCount())
+			close(receivedUnsubscribeCh)
 			assert.NoError(t, server.Close())
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		client := quicClientSession(t, ctx, addr, nil)
+		announcementCh := make(chan struct{})
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			assert.Equal(t, "namespace", a.Namespace())
+			arw.Accept()
+			close(announcementCh)
+		}))
+		<-announcementCh
 		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
+		close(subscribedCh)
+		<-receivedSubscribeCh
 		sub.Unsubscribe()
-		<-receivedUnsubscribe
-		assert.NoError(t, err)
+		close(unsubscribedCh)
+		<-receivedUnsubscribeCh
 		assert.NoError(t, client.Close())
 		wg.Wait()
 	})

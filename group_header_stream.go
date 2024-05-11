@@ -22,10 +22,14 @@ func newGroupHeaderStream(stream SendStream, subscribeID, trackAlias, groupID, o
 	}, nil
 }
 
-func (s *groupHeaderStream) NewObject() *groupHeaderStreamObject {
-	return &groupHeaderStreamObject{
-		stream: s.stream,
+func (s *groupHeaderStream) writeObject(objectID uint64, payload []byte) (int, error) {
+	shgo := streamHeaderGroupObject{
+		ObjectID:      objectID,
+		ObjectPayload: payload,
 	}
+	buf := make([]byte, 0, 16+len(payload))
+	buf = shgo.append(buf)
+	return s.stream.Write(buf)
 }
 
 func (s *groupHeaderStream) Close() error {

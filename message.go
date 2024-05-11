@@ -22,6 +22,7 @@ const (
 
 	// Errors not included in current draft
 	ErrorCodeUnsupportedVersion = 0xff01
+	ErrorCodeTrackNotFound      = 0xff02
 )
 
 const (
