@@ -21,12 +21,15 @@ func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSend
 	}, nil
 }
 
-func (s *TrackHeaderStream) NewObject(groupID, objectID uint64) *TrackHeaderStreamObject {
-	return &TrackHeaderStreamObject{
-		stream:   s.stream,
-		groupID:  groupID,
-		objectID: objectID,
+func (s *TrackHeaderStream) writeObject(groupID, objectID uint64, payload []byte) (int, error) {
+	shto := streamHeaderTrackObject{
+		GroupID:       groupID,
+		ObjectID:      objectID,
+		ObjectPayload: payload,
 	}
+	buf := make([]byte, 0, 32+len(payload))
+	buf = shto.append(buf)
+	return s.stream.Write(buf)
 }
 
 func (s *TrackHeaderStream) Close() error {

@@ -92,7 +92,11 @@ func TestSession(t *testing.T) {
 		}).Do(func(_ message) {
 			close(done)
 		})
-		err := s.handleControlMessage(&clientSetupMessage{
+		track := NewLocalTrack(0, "namespace", "track")
+		defer track.Close()
+		err := s.AddLocalTrack(track)
+		assert.NoError(t, err)
+		err = s.handleControlMessage(&clientSetupMessage{
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
@@ -114,14 +118,6 @@ func TestSession(t *testing.T) {
 			Parameters:     map[uint64]parameter{},
 		})
 		assert.NoError(t, err)
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		sub, err := s.ReadSubscription(ctx, func(ss *SendSubscription) error {
-			return nil
-		})
-		assert.NoError(t, err)
-		assert.NotNil(t, sub)
-		sub.SetExpires(time.Second)
 		select {
 		case <-time.After(time.Second):
 			assert.Fail(t, "test timed out")

@@ -32,10 +32,6 @@ type payloader interface {
 	payload() []byte
 }
 
-func (s *ReceiveSubscription) push(p payloader) (int, error) {
-	return s.writeBuffer.Write(p.payload())
-}
-
 func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 	return s.readBuffer.Read(buf)
 }
@@ -44,8 +40,12 @@ func (s *ReceiveSubscription) Unsubscribe() {
 	s.session.unsubscribe(s.subscribeID)
 }
 
-func (s *ReceiveSubscription) unsubscribe() error {
-	return s.writeBuffer.Close()
+func (s *ReceiveSubscription) close() {
+	s.writeBuffer.Close()
+}
+
+func (s *ReceiveSubscription) push(p payloader) (int, error) {
+	return s.writeBuffer.Write(p.payload())
 }
 
 func (s *ReceiveSubscription) readTrackHeaderStream(rs ReceiveStream) {

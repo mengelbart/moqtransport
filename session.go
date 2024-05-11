@@ -36,16 +36,22 @@ type trackNamespacer interface {
 	trackNamespace() string
 }
 
+type trackKey struct {
+	namespace string
+	trackname string
+}
+
 type sessionInternals struct {
 	logger                *slog.Logger
 	serverHandshakeDoneCh chan struct{}
 	controlStreamStoreCh  chan controlMessageSender // Needs to be buffered
 	closeOnce             sync.Once
 	closed                chan struct{}
-	sendSubscriptions     *subscriptionMap[*SendSubscription]
-	receiveSubscriptions  *subscriptionMap[*ReceiveSubscription]
-	localAnnouncements    *announcementMap
-	remoteAnnouncements   *announcementMap
+	sendSubscriptions     *syncMap[uint64, *SendSubscription]
+	receiveSubscriptions  *syncMap[uint64, *ReceiveSubscription]
+	localAnnouncements    *syncMap[string, *Announcement]
+	remoteAnnouncements   *syncMap[string, *Announcement]
+	localTracks           *syncMap[trackKey, *LocalTrack]
 }
 
 func newSessionInternals(logSuffix string) *sessionInternals {
@@ -55,10 +61,11 @@ func newSessionInternals(logSuffix string) *sessionInternals {
 		controlStreamStoreCh:  make(chan controlMessageSender, 1),
 		closeOnce:             sync.Once{},
 		closed:                make(chan struct{}),
-		sendSubscriptions:     newSubscriptionMap[*SendSubscription](),
-		receiveSubscriptions:  newSubscriptionMap[*ReceiveSubscription](),
-		localAnnouncements:    newAnnouncementMap(),
-		remoteAnnouncements:   newAnnouncementMap(),
+		sendSubscriptions:     newSyncMap[uint64, *SendSubscription](),
+		receiveSubscriptions:  newSyncMap[uint64, *ReceiveSubscription](),
+		localAnnouncements:    newSyncMap[string, *Announcement](),
+		remoteAnnouncements:   newSyncMap[string, *Announcement](),
+		localTracks:           newSyncMap[trackKey, *LocalTrack](),
 	}
 }
 
@@ -346,29 +353,30 @@ func (s *Session) handleControlMessage(msg message) error {
 func (s *Session) handleNonSetupMessage(msg message) error {
 	switch m := msg.(type) {
 	case *subscribeMessage:
-		return s.handleSubscribe(m)
+		s.handleSubscribe(m)
 	case *subscribeOkMessage:
 		return s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
 		return s.handleSubscriptionResponse(m)
 	case *subscribeDoneMessage:
-		return s.handleSubscribeDone(m)
+		s.handleSubscribeDone(m)
 	case *unsubscribeMessage:
 		return s.handleUnsubscribe(m)
 	case *announceMessage:
 		s.handleAnnounceMessage(m)
-		return nil
 	case *announceOkMessage:
 		return s.handleAnnouncementResponse(m)
 	case *announceErrorMessage:
 		return s.handleAnnouncementResponse(m)
 	case *goAwayMessage:
 		panic("TODO")
+	default:
+		return &ProtocolError{
+			code:    ErrorCodeInternal,
+			message: "received unexpected message type on control stream",
+		}
 	}
-	return &ProtocolError{
-		code:    ErrorCodeInternal,
-		message: "received unexpected message type on control stream",
-	}
+	return nil
 }
 
 func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
@@ -405,42 +413,89 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	return nil
 }
 
-func (s *Session) handleSubscribe(msg *subscribeMessage) error {
-	sub := &SendSubscription{
-		lock:        sync.RWMutex{},
-		closeCh:     make(chan struct{}),
-		expires:     0,
-		conn:        s.Conn,
-		subscribeID: msg.SubscribeID,
-		trackAlias:  msg.TrackAlias,
-		namespace:   msg.TrackNamespace,
-		trackname:   msg.TrackName,
-		startGroup:  msg.StartGroup,
-		startObject: msg.StartObject,
-		endGroup:    msg.EndGroup,
-		endObject:   msg.EndObject,
-		parameters:  msg.Parameters,
+func (s *Session) handleSubscribe(msg *subscribeMessage) {
+	t, ok := s.si.localTracks.get(trackKey{
+		namespace: msg.TrackNamespace,
+		trackname: msg.TrackName,
+	})
+	if !ok {
+		s.controlStream.enqueue(&subscribeErrorMessage{
+			SubscribeID:  msg.SubscribeID,
+			ErrorCode:    ErrorCodeTrackNotFound,
+			ReasonPhrase: "track not found",
+			TrackAlias:   msg.TrackAlias,
+		})
+		return
 	}
-	return s.si.sendSubscriptions.add(sub.subscribeID, sub)
+	sub := newSendSubscription(s.Conn, msg.SubscribeID, msg.TrackAlias, msg.TrackNamespace, msg.TrackName)
+	if err := s.si.sendSubscriptions.add(sub.subscribeID, sub); err != nil {
+		s.controlStream.enqueue(&subscribeErrorMessage{
+			SubscribeID:  msg.SubscribeID,
+			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
+			ReasonPhrase: "internal error",
+			TrackAlias:   msg.TrackAlias,
+		})
+		return
+	}
+	if err := t.subscribe(
+		msg.SubscribeID,
+		msg.SubscribeID,
+		sub,
+	); err != nil {
+		s.controlStream.enqueue(&subscribeErrorMessage{
+			SubscribeID:  msg.SubscribeID,
+			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
+			ReasonPhrase: "internal error",
+			TrackAlias:   msg.TrackAlias,
+		})
+		return
+	}
+	s.controlStream.enqueue(&subscribeOkMessage{
+		SubscribeID:   msg.SubscribeID,
+		Expires:       0,     // TODO
+		ContentExists: false, // TODO
+		FinalGroup:    0,     // TODO
+		FinalObject:   0,     // TODO
+	})
 }
 
 func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
-	if err := s.si.sendSubscriptions.delete(msg.SubscribeID); err != nil {
-		return err
+	sub, ok := s.si.sendSubscriptions.get(msg.SubscribeID)
+	if !ok {
+		return errors.New("subscription not found")
 	}
+	track, ok := s.si.localTracks.get(trackKey{
+		namespace: sub.namespace,
+		trackname: sub.trackname,
+	})
+	if !ok {
+		return errors.New("no track related to subscription found")
+	}
+	err := track.unsubscribe(sub.trackAlias, sub.subscribeID)
+	if err != nil {
+		panic(err)
+	}
+	sub.Close()
+	s.si.sendSubscriptions.delete(msg.SubscribeID)
 	s.controlStream.enqueue(&subscribeDoneMessage{
 		SusbcribeID:   msg.SubscribeID,
 		StatusCode:    0,
 		ReasonPhrase:  "unsubscribed",
-		ContentExists: false,
-		FinalGroup:    0,
-		FinalObject:   0,
+		ContentExists: false, // TODO
+		FinalGroup:    0,     // TODO
+		FinalObject:   0,     // TODO
 	})
-	return nil
+	return err
 }
 
-func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) error {
-	return s.si.receiveSubscriptions.delete(msg.SusbcribeID)
+func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) {
+	sub, ok := s.si.receiveSubscriptions.get(msg.SusbcribeID)
+	if !ok {
+		s.si.logger.Info("got SubscribeDone for unknown subscription")
+		return
+	}
+	sub.close()
+	s.si.receiveSubscriptions.delete(msg.SusbcribeID)
 }
 
 func (s *Session) handleAnnounceMessage(msg *announceMessage) {
@@ -509,30 +564,11 @@ func (s *Session) Close() error {
 	return s.CloseWithError(0, "")
 }
 
-// TODO: Acceptor func should not pass the complete subscription object but only
-// the relevant header info
-func (s *Session) ReadSubscription(ctx context.Context, accept func(*SendSubscription) error) (*SendSubscription, error) {
-	sub, err := s.si.sendSubscriptions.getNext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err = accept(sub); err != nil {
-		s.controlStream.enqueue(&subscribeErrorMessage{
-			SubscribeID:  sub.subscribeID,
-			ErrorCode:    0,
-			ReasonPhrase: err.Error(),
-			TrackAlias:   sub.trackAlias,
-		})
-		return nil, s.si.sendSubscriptions.delete(sub.subscribeID)
-	}
-	s.controlStream.enqueue(&subscribeOkMessage{
-		SubscribeID:   sub.subscribeID,
-		Expires:       0,     // TODO: Let user set these values?
-		ContentExists: false, // TODO: Let user set these values?
-		FinalGroup:    0,     // TODO: Let user set these values?
-		FinalObject:   0,     // TODO: Let user set these values?
-	})
-	return sub, err
+func (s *Session) AddLocalTrack(t *LocalTrack) error {
+	return s.si.localTracks.add(trackKey{
+		namespace: t.Namespace,
+		trackname: t.Name,
+	}, t)
 }
 
 func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
@@ -576,7 +612,7 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	case *subscribeOkMessage:
 		return sub, nil
 	case *subscribeErrorMessage:
-		_ = s.si.receiveSubscriptions.delete(sm.SubscribeID)
+		s.si.receiveSubscriptions.delete(sm.SubscribeID)
 		return nil, ApplicationError{
 			code:   v.ErrorCode,
 			mesage: v.ReasonPhrase,
