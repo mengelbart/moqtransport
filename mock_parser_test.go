@@ -5,6 +5,7 @@
 //
 //	mockgen -build_flags=-tags=gomock -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_parser_test.go github.com/mengelbart/moqtransport Parser
 //
+
 // Package moqtransport is a generated GoMock package.
 package moqtransport
 

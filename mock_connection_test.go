@@ -5,6 +5,7 @@
 //
 //	mockgen -build_flags=-tags=gomock -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_connection_test.go github.com/mengelbart/moqtransport Connection
 //
+
 // Package moqtransport is a generated GoMock package.
 package moqtransport
 
@@ -145,28 +146,28 @@ func (mr *MockConnectionMockRecorder) OpenUniStreamSync(arg0 any) *gomock.Call {
 // ReceiveDatagram mocks base method.
 func (m *MockConnection) ReceiveDatagram(arg0 context.Context) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReceiveMessage", arg0)
+	ret := m.ctrl.Call(m, "ReceiveDatagram", arg0)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ReceiveMessage indicates an expected call of ReceiveMessage.
-func (mr *MockConnectionMockRecorder) ReceiveMessage(arg0 any) *gomock.Call {
+// ReceiveDatagram indicates an expected call of ReceiveDatagram.
+func (mr *MockConnectionMockRecorder) ReceiveDatagram(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReceiveMessage", reflect.TypeOf((*MockConnection)(nil).ReceiveDatagram), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReceiveDatagram", reflect.TypeOf((*MockConnection)(nil).ReceiveDatagram), arg0)
 }
 
 // SendDatagram mocks base method.
 func (m *MockConnection) SendDatagram(arg0 []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SendMessage", arg0)
+	ret := m.ctrl.Call(m, "SendDatagram", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// SendMessage indicates an expected call of SendMessage.
-func (mr *MockConnectionMockRecorder) SendMessage(arg0 any) *gomock.Call {
+// SendDatagram indicates an expected call of SendDatagram.
+func (mr *MockConnectionMockRecorder) SendDatagram(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendMessage", reflect.TypeOf((*MockConnection)(nil).SendDatagram), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendDatagram", reflect.TypeOf((*MockConnection)(nil).SendDatagram), arg0)
 }

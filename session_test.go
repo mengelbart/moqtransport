@@ -2,8 +2,6 @@ package moqtransport
 
 import (
 	"context"
-	"log/slog"
-	"sync"
 	"testing"
 	"time"
 
@@ -11,28 +9,28 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func session(conn Connection, ctrlStream controlStreamHandler) *Session {
-	return &Session{
-		logger:               slog.Default(),
-		closeOnce:            sync.Once{},
-		closed:               make(chan struct{}),
-		conn:                 conn,
-		cms:                  ctrlStream,
-		enableDatagrams:      false,
-		sendSubscriptions:    newSubscriptionMap[*SendSubscription](),
-		receiveSubscriptions: newSubscriptionMap[*ReceiveSubscription](),
-		localAnnouncements:   newAnnouncementMap(),
-		remoteAnnouncements:  newAnnouncementMap(),
+func session(conn Connection, ctrl controlMessageSender, h AnnouncementHandler) *Session {
+	s := &Session{
+		Conn:                conn,
+		EnableDatagrams:     false,
+		LocalRole:           0,
+		RemoteRole:          0,
+		AnnouncementHandler: h,
+		HandshakeDone:       false,
+		isClient:            false,
+		si:                  newSessionInternals("SERVER"),
 	}
+	s.storeControlStream(ctrl)
+	return s
 }
 
 func TestSession(t *testing.T) {
 	t.Run("handle_object", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := *session(mc, csh)
-		err := s.receiveSubscriptions.add(0, newReceiveSubscription(0, &s))
+		done := make(chan struct{})
+		s := session(mc, nil, nil)
+		err := s.si.receiveSubscriptions.add(0, newReceiveSubscription(0, s))
 		assert.NoError(t, err)
 		object := &objectMessage{
 			SubscribeID:     0,
@@ -42,10 +40,9 @@ func TestSession(t *testing.T) {
 			ObjectSendOrder: 0,
 			ObjectPayload:   []byte{0x0a, 0x0b},
 		}
-		done := make(chan struct{})
 		go func() {
 			buf := make([]byte, 1024)
-			sub, ok := s.receiveSubscriptions.get(0)
+			sub, ok := s.si.receiveSubscriptions.get(0)
 			assert.True(t, ok)
 			n, err1 := sub.Read(buf)
 			assert.NoError(t, err1)
@@ -62,8 +59,10 @@ func TestSession(t *testing.T) {
 	t.Run("handle_client_setup", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := session(mc, csh)
+		csh := NewMockControlMessageSender(ctrl)
+		csh.EXPECT().enqueue(gomock.Any()).AnyTimes()
+		done := make(chan struct{})
+		s := session(mc, csh, nil)
 		csm := &clientSetupMessage{
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
@@ -74,16 +73,17 @@ func TestSession(t *testing.T) {
 			},
 		}
 		err := s.handleControlMessage(csm)
-		assert.Error(t, err)
-		assert.EqualError(t, err, "received unexpected message type on control stream")
+		assert.NoError(t, err)
+		close(done)
 	})
 	t.Run("handle_subscribe_request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := session(mc, csh)
+		csh := NewMockControlMessageSender(ctrl)
+		s := session(mc, csh, nil)
 		done := make(chan struct{})
-		csh.EXPECT().send(&subscribeOkMessage{
+		csh.EXPECT().enqueue(gomock.Any()).Times(1) // Setup message
+		csh.EXPECT().enqueue(&subscribeOkMessage{
 			SubscribeID:   17,
 			Expires:       0,
 			ContentExists: false,
@@ -92,20 +92,28 @@ func TestSession(t *testing.T) {
 		}).Do(func(_ message) {
 			close(done)
 		})
-		go func() {
-			err := s.handleControlMessage(&subscribeMessage{
-				SubscribeID:    17,
-				TrackAlias:     0,
-				TrackNamespace: "namespace",
-				TrackName:      "track",
-				StartGroup:     Location{},
-				StartObject:    Location{},
-				EndGroup:       Location{},
-				EndObject:      Location{},
-				Parameters:     map[uint64]parameter{},
-			})
-			assert.NoError(t, err)
-		}()
+		err := s.handleControlMessage(&clientSetupMessage{
+			SupportedVersions: []version{CURRENT_VERSION},
+			SetupParameters: map[uint64]parameter{
+				roleParameterKey: varintParameter{
+					k: roleParameterKey,
+					v: uint64(IngestionDeliveryRole),
+				},
+			},
+		})
+		assert.NoError(t, err)
+		err = s.handleControlMessage(&subscribeMessage{
+			SubscribeID:    17,
+			TrackAlias:     0,
+			TrackNamespace: "namespace",
+			TrackName:      "track",
+			StartGroup:     Location{},
+			StartObject:    Location{},
+			EndGroup:       Location{},
+			EndObject:      Location{},
+			Parameters:     map[uint64]parameter{},
+		})
+		assert.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		sub, err := s.ReadSubscription(ctx, func(ss *SendSubscription) error {
@@ -123,26 +131,33 @@ func TestSession(t *testing.T) {
 	t.Run("handle_announcement", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := session(mc, csh)
+		csh := NewMockControlMessageSender(ctrl)
+		s := session(mc, csh, AnnouncementHandlerFunc(func(a *Announcement, arw AnnouncementResponseWriter) {
+			assert.NotNil(t, a)
+			arw.Accept()
+		}))
 		done := make(chan struct{})
-		csh.EXPECT().send(&announceOkMessage{
+		csh.EXPECT().enqueue(gomock.Any()).Times(1) // setup message
+		csh.EXPECT().enqueue(&announceOkMessage{
 			TrackNamespace: "namespace",
 		}).Do(func(_ message) {
 			close(done)
 		})
-		s.HandleAnnouncements(AnnouncementHandlerFunc(func(a *Announcement, arw AnnouncementResponseWriter) {
-			err := arw.Accept()
-			assert.NoError(t, err)
-			assert.NotNil(t, a)
-		}))
-		go func() {
-			err := s.handleControlMessage(&announceMessage{
-				TrackNamespace:         "namespace",
-				TrackRequestParameters: map[uint64]parameter{},
-			})
-			assert.NoError(t, err)
-		}()
+		err := s.handleControlMessage(&clientSetupMessage{
+			SupportedVersions: []version{CURRENT_VERSION},
+			SetupParameters: map[uint64]parameter{
+				roleParameterKey: varintParameter{
+					k: roleParameterKey,
+					v: uint64(IngestionDeliveryRole),
+				},
+			},
+		})
+		assert.NoError(t, err)
+		err = s.handleControlMessage(&announceMessage{
+			TrackNamespace:         "namespace",
+			TrackRequestParameters: map[uint64]parameter{},
+		})
+		assert.NoError(t, err)
 		select {
 		case <-time.After(time.Second):
 			assert.Fail(t, "test timed out")
@@ -152,10 +167,11 @@ func TestSession(t *testing.T) {
 	t.Run("subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := session(mc, csh)
+		csh := NewMockControlMessageSender(ctrl)
+		s := session(mc, csh, nil)
 		done := make(chan struct{})
-		csh.EXPECT().send(&subscribeMessage{
+		csh.EXPECT().enqueue(gomock.Any()).Times(1)
+		csh.EXPECT().enqueue(&subscribeMessage{
 			SubscribeID:    17,
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
@@ -175,19 +191,34 @@ func TestSession(t *testing.T) {
 				close(done)
 			}()
 		})
+		err := s.handleControlMessage(&clientSetupMessage{
+			SupportedVersions: []version{CURRENT_VERSION},
+			SetupParameters: map[uint64]parameter{
+				roleParameterKey: varintParameter{
+					k: roleParameterKey,
+					v: uint64(IngestionDeliveryRole),
+				},
+			},
+		})
+		assert.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		track, err := s.Subscribe(ctx, 17, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, track)
-		<-done
+		select {
+		case <-time.After(time.Second):
+			assert.Fail(t, "test timed out")
+		case <-done:
+		}
 	})
 	t.Run("announce", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
-		csh := NewMockControlStreamHandler(ctrl)
-		s := session(mc, csh)
-		csh.EXPECT().send(&announceMessage{
+		csh := NewMockControlMessageSender(ctrl)
+		s := session(mc, csh, nil)
+		csh.EXPECT().enqueue(gomock.Any()).Times(1)
+		csh.EXPECT().enqueue(&announceMessage{
 			TrackNamespace:         "namespace",
 			TrackRequestParameters: map[uint64]parameter{},
 		}).Do(func(_ message) {
@@ -198,9 +229,19 @@ func TestSession(t *testing.T) {
 				assert.NoError(t, err)
 			}()
 		})
+		err := s.handleControlMessage(&clientSetupMessage{
+			SupportedVersions: []version{CURRENT_VERSION},
+			SetupParameters: map[uint64]parameter{
+				roleParameterKey: varintParameter{
+					k: roleParameterKey,
+					v: uint64(IngestionDeliveryRole),
+				},
+			},
+		})
+		assert.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		err := s.Announce(ctx, "namespace")
+		err = s.Announce(ctx, "namespace")
 		assert.NoError(t, err)
 	})
 }

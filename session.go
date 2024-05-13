@@ -13,65 +13,14 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var (
-	errClosed             = errors.New("session closed")
-	errUnsupportedVersion = errors.New("unsupported version")
+const (
+	serverLoggingSuffix = "SERVER"
+	clientLoggingSuffix = "CLIENT"
 )
 
-type messageHandler func(message) error
-
-type controlStreamHandler interface {
-	io.Reader
-	send(message) error
-	readMessages(handler messageHandler)
-}
-
-type defaultCtrlStreamHandler struct {
-	logger *slog.Logger
-	stream Stream
-	parser parser
-}
-
-func (h *defaultCtrlStreamHandler) readNext() (message, error) {
-	msg, err := h.parser.parse()
-	h.logger.Info("handling message", "message", msg)
-	return msg, err
-}
-
-func (h *defaultCtrlStreamHandler) readMessages(handler messageHandler) {
-	for {
-		msg, err := h.readNext()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			h.logger.Error("TODO", "error", err)
-			return
-		}
-		if err = handler(msg); err != nil {
-			h.logger.Error("TODO", "error", err)
-			return
-		}
-	}
-}
-
-func (h *defaultCtrlStreamHandler) Read(buf []byte) (int, error) {
-	return h.stream.Read(buf)
-}
-
-func (s defaultCtrlStreamHandler) send(msg message) error {
-	s.logger.Info("sending message", "message", msg)
-	return sendOnStream(s.stream, msg)
-}
-
-func sendOnStream(stream SendStream, msg message) error {
-	buf := make([]byte, 0, 1500)
-	buf = msg.append(buf)
-	if _, err := stream.Write(buf); err != nil {
-		return err
-	}
-	return nil
-}
+var (
+	errClosed = errors.New("session closed")
+)
 
 type parser interface {
 	parse() (message, error)
@@ -87,109 +36,150 @@ type trackNamespacer interface {
 	trackNamespace() string
 }
 
-type Session struct {
-	logger *slog.Logger
-
-	closeOnce sync.Once
-	closed    chan struct{}
-	conn      Connection
-	cms       controlStreamHandler
-
-	enableDatagrams bool
-
-	mutex               sync.Mutex
-	announcementHandler AnnouncementHandler
-
-	sendSubscriptions    *subscriptionMap[*SendSubscription]
-	receiveSubscriptions *subscriptionMap[*ReceiveSubscription]
-	localAnnouncements   *announcementMap
-	remoteAnnouncements  *announcementMap
+type sessionInternals struct {
+	logger                *slog.Logger
+	serverHandshakeDoneCh chan struct{}
+	controlStreamStoreCh  chan controlMessageSender // Needs to be buffered
+	closeOnce             sync.Once
+	closed                chan struct{}
+	sendSubscriptions     *subscriptionMap[*SendSubscription]
+	receiveSubscriptions  *subscriptionMap[*ReceiveSubscription]
+	localAnnouncements    *announcementMap
+	remoteAnnouncements   *announcementMap
 }
 
-func NewClientSession(conn Connection, clientRole Role, enableDatagrams bool) (*Session, error) {
-	ctrlStream, err := conn.OpenStreamSync(context.TODO())
+func newSessionInternals(logSuffix string) *sessionInternals {
+	return &sessionInternals{
+		logger:                defaultLogger.WithGroup(fmt.Sprintf("MOQ_SESSION_%v", logSuffix)),
+		serverHandshakeDoneCh: make(chan struct{}),
+		controlStreamStoreCh:  make(chan controlMessageSender, 1),
+		closeOnce:             sync.Once{},
+		closed:                make(chan struct{}),
+		sendSubscriptions:     newSubscriptionMap[*SendSubscription](),
+		receiveSubscriptions:  newSubscriptionMap[*ReceiveSubscription](),
+		localAnnouncements:    newAnnouncementMap(),
+		remoteAnnouncements:   newAnnouncementMap(),
+	}
+}
+
+type controlMessageSender interface {
+	enqueue(message)
+	close()
+}
+
+type Session struct {
+	Conn                Connection
+	EnableDatagrams     bool
+	LocalRole           Role
+	RemoteRole          Role
+	AnnouncementHandler AnnouncementHandler
+	HandshakeDone       bool
+
+	controlStream controlMessageSender
+	isClient      bool
+	si            *sessionInternals
+}
+
+func (s *Session) initRole() {
+	switch s.LocalRole {
+	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+	default:
+		s.LocalRole = IngestionDeliveryRole
+	}
+	switch s.RemoteRole {
+	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+	default:
+		s.RemoteRole = IngestionDeliveryRole
+	}
+}
+
+func (s *Session) validateRemoteRoleParameter(setupParameters parameters) error {
+	remoteRoleParam, ok := setupParameters[roleParameterKey]
+	if !ok {
+		return s.CloseWithError(ErrorCodeProtocolViolation, "missing role parameter")
+	}
+	remoteRoleParamValue, ok := remoteRoleParam.(varintParameter)
+	if !ok {
+		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter type")
+	}
+	switch Role(remoteRoleParamValue.v) {
+	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+		s.RemoteRole = Role(remoteRoleParamValue.v)
+	default:
+		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter value")
+	}
+	return nil
+}
+
+func (s *Session) storeControlStream(cs controlMessageSender) {
+	s.si.controlStreamStoreCh <- cs
+}
+
+func (s *Session) loadControlStream() controlMessageSender {
+	return <-s.si.controlStreamStoreCh
+}
+
+func (s *Session) RunClient() error {
+	s.si = newSessionInternals(clientLoggingSuffix)
+	s.isClient = true
+	s.initRole()
+	controlStream, err := s.Conn.OpenStream()
 	if err != nil {
-		return nil, fmt.Errorf("opening control stream failed: %w", err)
+		return err
 	}
-	ctrlStreamHandler := &defaultCtrlStreamHandler{
-		logger: defaultLogger.WithGroup("MOQ_CONTROL_STREAM"),
-		stream: ctrlStream,
-		parser: newParser(quicvarint.NewReader(ctrlStream)),
-	}
-	csm := &clientSetupMessage{
+	s.controlStream = newControlStream(controlStream, s.handleControlMessage)
+	s.controlStream.enqueue(&clientSetupMessage{
 		SupportedVersions: []version{CURRENT_VERSION},
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				k: roleParameterKey,
-				v: uint64(clientRole),
+				v: uint64(s.LocalRole),
 			},
 		},
-	}
-	if err = ctrlStreamHandler.send(csm); err != nil {
-		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
-	}
-	msg, err := ctrlStreamHandler.readNext()
-	if err != nil {
-		return nil, fmt.Errorf("parsing message filed: %w", err)
-	}
-	ssm, ok := msg.(*serverSetupMessage)
-	if !ok {
-		pe := ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "received unexpected first message on control stream",
-		}
-		_ = conn.CloseWithError(pe.code, pe.message)
-		return nil, pe
-	}
-	if !slices.Contains(csm.SupportedVersions, ssm.SelectedVersion) {
-		return nil, errUnsupportedVersion
-	}
-	l := defaultLogger.WithGroup("MOQ_CLIENT_SESSION")
-	s, err := newSession(conn, ctrlStreamHandler, enableDatagrams, l), nil
-	if err != nil {
-		return nil, err
-	}
-	s.run()
-	return s, nil
+	})
+	go s.run()
+	return nil
 }
 
-func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
-	ctrlStream, err := conn.AcceptStream(context.TODO())
+func (s *Session) RunServer(ctx context.Context) error {
+	s.si = newSessionInternals(serverLoggingSuffix)
+	s.isClient = false
+	s.initRole()
+	controlStream, err := s.Conn.AcceptStream(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("accepting control stream failed: %w", err)
+		return err
 	}
-	ctrlStreamHandler := &defaultCtrlStreamHandler{
-		logger: defaultLogger.WithGroup("MOQ_CONTROL_STREAM"),
-		stream: ctrlStream,
-		parser: newParser(quicvarint.NewReader(ctrlStream)),
+	s.si.controlStreamStoreCh <- newControlStream(controlStream, s.handleControlMessage)
+	select {
+	case <-ctx.Done():
+		s.Close()
+		return ctx.Err()
+	case <-s.si.serverHandshakeDoneCh:
 	}
-	m, err := ctrlStreamHandler.readNext()
-	if err != nil {
-		return nil, fmt.Errorf("parsing message failed: %w", err)
+	s.si.logger.Info("server handshake done")
+	go s.run()
+	return nil
+}
+
+func (s *Session) initClient(setup *serverSetupMessage) error {
+	if setup.SelectedVersion != CURRENT_VERSION {
+		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
-	msg, ok := m.(*clientSetupMessage)
-	if !ok {
-		pe := ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "received unexpected first message on control stream",
-		}
-		_ = conn.CloseWithError(pe.code, pe.message)
-		return nil, pe
+	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
+		return err
 	}
-	// TODO: Algorithm to select best matching version
-	if !slices.Contains(msg.SupportedVersions, CURRENT_VERSION) {
-		return nil, errUnsupportedVersion
+	s.HandshakeDone = true
+	return nil
+}
+
+func (s *Session) initServer(setup *clientSetupMessage) error {
+	s.controlStream = s.loadControlStream()
+	if !slices.Contains(setup.SupportedVersions, CURRENT_VERSION) {
+		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
-	_, ok = msg.SetupParameters[roleParameterKey]
-	if !ok {
-		pe := ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "missing role parameter",
-		}
-		_ = conn.CloseWithError(pe.code, pe.message)
-		return nil, pe
+	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
+		return err
 	}
-	// TODO: save role parameter
 	ssm := &serverSetupMessage{
 		SelectedVersion: CURRENT_VERSION,
 		SetupParameters: map[uint64]parameter{
@@ -199,39 +189,17 @@ func NewServerSession(conn Connection, enableDatagrams bool) (*Session, error) {
 			},
 		},
 	}
-	if err = ctrlStreamHandler.send(ssm); err != nil {
-		return nil, fmt.Errorf("sending message on control stream failed: %w", err)
-	}
-	l := defaultLogger.WithGroup("MOQ_SERVER_SESSION")
-	s, err := newSession(conn, ctrlStreamHandler, enableDatagrams, l), nil
-	if err != nil {
-		return nil, err
-	}
-	s.run()
-	return s, nil
-}
-
-func newSession(conn Connection, cms controlStreamHandler, enableDatagrams bool, logger *slog.Logger) *Session {
-	s := &Session{
-		logger:               logger,
-		closed:               make(chan struct{}),
-		conn:                 conn,
-		cms:                  cms,
-		enableDatagrams:      enableDatagrams,
-		sendSubscriptions:    newSubscriptionMap[*SendSubscription](),
-		receiveSubscriptions: newSubscriptionMap[*ReceiveSubscription](),
-		localAnnouncements:   newAnnouncementMap(),
-		remoteAnnouncements:  newAnnouncementMap(),
-	}
-	return s
+	s.controlStream.enqueue(ssm)
+	s.HandshakeDone = true
+	close(s.si.serverHandshakeDoneCh)
+	return nil
 }
 
 func (s *Session) run() {
 	go s.acceptUnidirectionalStreams()
-	if s.enableDatagrams {
+	if s.EnableDatagrams {
 		go s.acceptDatagrams()
 	}
-	go s.cms.readMessages(s.handleControlMessage)
 }
 
 func (s *Session) acceptUnidirectionalStream() (ReceiveStream, error) {
@@ -239,19 +207,19 @@ func (s *Session) acceptUnidirectionalStream() (ReceiveStream, error) {
 	defer cancel()
 	go func() {
 		select {
-		case <-s.closed:
+		case <-s.si.closed:
 			cancel()
 		case <-ctx.Done():
 		}
 	}()
-	return s.conn.AcceptUniStream(ctx)
+	return s.Conn.AcceptUniStream(ctx)
 }
 
 func (s *Session) acceptUnidirectionalStreams() {
 	for {
 		stream, err := s.acceptUnidirectionalStream()
 		if err != nil {
-			s.logger.Error("failed to accept uni stream", "error", err)
+			s.si.logger.Error("failed to accept uni stream", "error", err)
 			s.peerClosed()
 			return
 		}
@@ -263,30 +231,30 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 	p := newParser(quicvarint.NewReader(stream))
 	msg, err := p.parse()
 	if err != nil {
-		s.logger.Error("failed to parse message", "error", err)
+		s.si.logger.Error("failed to parse message", "error", err)
 		return
 	}
 	switch h := msg.(type) {
 	case *objectMessage:
-		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
+		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
-			s.logger.Warn("got object for unknown subscribe ID")
+			s.si.logger.Warn("got object for unknown subscribe ID")
 			return
 		}
 		if _, err := sub.push(h); err != nil {
 			panic(err)
 		}
 	case *streamHeaderTrackMessage:
-		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
+		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
-			s.logger.Warn("got stream header track message for unknown subscription")
+			s.si.logger.Warn("got stream header track message for unknown subscription")
 			return
 		}
 		sub.readTrackHeaderStream(stream)
 	case *streamHeaderGroupMessage:
-		sub, ok := s.receiveSubscriptions.get(h.SubscribeID)
+		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
-			s.logger.Warn("got stream header track message for unknown subscription")
+			s.si.logger.Warn("got stream header track message for unknown subscription")
 			return
 		}
 		sub.readGroupHeaderStream(stream)
@@ -298,19 +266,19 @@ func (s *Session) acceptDatagram() ([]byte, error) {
 	defer cancel()
 	go func() {
 		select {
-		case <-s.closed:
+		case <-s.si.closed:
 			cancel()
 		case <-ctx.Done():
 		}
 	}()
-	return s.conn.ReceiveDatagram(ctx)
+	return s.Conn.ReceiveDatagram(ctx)
 }
 
 func (s *Session) acceptDatagrams() {
 	for {
 		dgram, err := s.acceptDatagram()
 		if err != nil {
-			s.logger.Error("failed to receive datagram", "error", err)
+			s.si.logger.Error("failed to receive datagram", "error", err)
 			s.peerClosed()
 			return
 		}
@@ -326,12 +294,12 @@ func (s *Session) readObjectMessages(r messageReader) {
 			if err == io.EOF {
 				return
 			}
-			s.logger.Error("failed to parse message", "error", err)
+			s.si.logger.Error("failed to parse message", "error", err)
 			pe := &ProtocolError{
 				code:    ErrorCodeProtocolViolation,
 				message: "invalid message format",
 			}
-			_ = s.conn.CloseWithError(pe.code, pe.message)
+			_ = s.Conn.CloseWithError(pe.code, pe.message)
 			return
 		}
 		o, ok := msg.(*objectMessage)
@@ -341,17 +309,41 @@ func (s *Session) readObjectMessages(r messageReader) {
 				message: "received unexpected control message on object stream or datagram",
 			}
 			// TODO: Set error on session to surface to application?
-			_ = s.conn.CloseWithError(pe.code, pe.message)
+			_ = s.Conn.CloseWithError(pe.code, pe.message)
 			return
 		}
 		if err = s.handleObjectMessage(o); err != nil {
-			s.logger.Info("failed to handle message", "error", err)
+			s.si.logger.Info("failed to handle message", "error", err)
 			return
 		}
 	}
 }
 
 func (s *Session) handleControlMessage(msg message) error {
+	s.si.logger.Info("received message", "message", msg)
+	if s.HandshakeDone {
+		if err := s.handleNonSetupMessage(msg); err != nil {
+			return err
+		}
+		return nil
+	}
+	switch mt := msg.(type) {
+	case *serverSetupMessage:
+		return s.initClient(mt)
+	case *clientSetupMessage:
+		return s.initServer(mt)
+	}
+	s.si.logger.Info("received message during handshake", "message", msg)
+	pe := ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "received unexpected first message on control stream",
+	}
+	s.controlStream.close()
+	_ = s.Conn.CloseWithError(pe.code, pe.message)
+	return pe
+}
+
+func (s *Session) handleNonSetupMessage(msg message) error {
 	switch m := msg.(type) {
 	case *subscribeMessage:
 		return s.handleSubscribe(m)
@@ -380,7 +372,7 @@ func (s *Session) handleControlMessage(msg message) error {
 }
 
 func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
-	sub, ok := s.receiveSubscriptions.get(msg.subscribeID())
+	sub, ok := s.si.receiveSubscriptions.get(msg.subscribeID())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -390,14 +382,14 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 	// TODO: Run a goroutine to avoid blocking here?
 	select {
 	case sub.responseCh <- msg:
-	case <-s.closed:
+	case <-s.si.closed:
 		return errClosed
 	}
 	return nil
 }
 
 func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
-	a, ok := s.localAnnouncements.get(msg.trackNamespace())
+	a, ok := s.si.localAnnouncements.get(msg.trackNamespace())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -407,7 +399,7 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	// TODO: Run a goroutine to avoid blocking here?
 	select {
 	case a.responseCh <- msg:
-	case <-s.closed:
+	case <-s.si.closed:
 		return errClosed
 	}
 	return nil
@@ -418,7 +410,7 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) error {
 		lock:        sync.RWMutex{},
 		closeCh:     make(chan struct{}),
 		expires:     0,
-		conn:        s.conn,
+		conn:        s.Conn,
 		subscribeID: msg.SubscribeID,
 		trackAlias:  msg.TrackAlias,
 		namespace:   msg.TrackNamespace,
@@ -429,14 +421,14 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) error {
 		endObject:   msg.EndObject,
 		parameters:  msg.Parameters,
 	}
-	return s.sendSubscriptions.add(sub.subscribeID, sub)
+	return s.si.sendSubscriptions.add(sub.subscribeID, sub)
 }
 
 func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
-	if err := s.sendSubscriptions.delete(msg.SubscribeID); err != nil {
+	if err := s.si.sendSubscriptions.delete(msg.SubscribeID); err != nil {
 		return err
 	}
-	return s.cms.send(&subscribeDoneMessage{
+	s.controlStream.enqueue(&subscribeDoneMessage{
 		SusbcribeID:   msg.SubscribeID,
 		StatusCode:    0,
 		ReasonPhrase:  "unsubscribed",
@@ -444,10 +436,11 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 		FinalGroup:    0,
 		FinalObject:   0,
 	})
+	return nil
 }
 
 func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) error {
-	return s.receiveSubscriptions.delete(msg.SusbcribeID)
+	return s.si.receiveSubscriptions.delete(msg.SusbcribeID)
 }
 
 func (s *Session) handleAnnounceMessage(msg *announceMessage) {
@@ -456,59 +449,60 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) {
 		namespace:  msg.TrackNamespace,
 		parameters: msg.TrackRequestParameters,
 	}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	h := s.announcementHandler
-	if h != nil {
-		go h.Handle(a, &defaultAnnouncementResponseWriter{
+	if err := s.si.remoteAnnouncements.add(a.namespace, a); err != nil {
+		s.si.logger.Error("dropping announcement", "error", err)
+		return
+	}
+	if s.AnnouncementHandler != nil {
+		go s.AnnouncementHandler.Handle(a, &defaultAnnouncementResponseWriter{
 			a: a,
 			s: s,
 		})
 	}
 }
 
-func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string) error {
-	return s.cms.send(&announceErrorMessage{
+func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string) {
+	s.si.remoteAnnouncements.delete(a.namespace)
+	s.controlStream.enqueue(&announceErrorMessage{
 		TrackNamespace: a.namespace,
 		ErrorCode:      code,
 		ReasonPhrase:   reason,
 	})
 }
 
-func (s *Session) acceptAnnouncement(a *Announcement) error {
-	if err := s.remoteAnnouncements.add(a.namespace, a); err != nil {
-		return err
-	}
-	return s.cms.send(&announceOkMessage{
+func (s *Session) acceptAnnouncement(a *Announcement) {
+	s.controlStream.enqueue(&announceOkMessage{
 		TrackNamespace: a.namespace,
 	})
 }
 
 func (s *Session) handleObjectMessage(o *objectMessage) error {
-	sub, ok := s.receiveSubscriptions.get(o.SubscribeID)
+	sub, ok := s.si.receiveSubscriptions.get(o.SubscribeID)
 	if ok {
 		_, err := sub.push(o)
 		return err
 	}
-	s.logger.Warn("dropping object message for unknown track")
+	s.si.logger.Warn("dropping object message for unknown track")
 	return nil
 }
 
-func (s *Session) unsubscribe(id uint64) error {
-	return s.cms.send(&unsubscribeMessage{
+func (s *Session) unsubscribe(id uint64) {
+	s.controlStream.enqueue(&unsubscribeMessage{
 		SubscribeID: id,
 	})
 }
 
 func (s *Session) peerClosed() {
-	s.closeOnce.Do(func() {
-		close(s.closed)
+	s.si.logger.Info("peerClosed called")
+	s.si.closeOnce.Do(func() {
+		close(s.si.closed)
+		s.controlStream.close()
 	})
 }
 
 func (s *Session) CloseWithError(code uint64, msg string) error {
 	s.peerClosed()
-	return s.conn.CloseWithError(code, msg)
+	return s.Conn.CloseWithError(code, msg)
 }
 
 func (s *Session) Close() error {
@@ -518,22 +512,20 @@ func (s *Session) Close() error {
 // TODO: Acceptor func should not pass the complete subscription object but only
 // the relevant header info
 func (s *Session) ReadSubscription(ctx context.Context, accept func(*SendSubscription) error) (*SendSubscription, error) {
-	sub, err := s.sendSubscriptions.getNext(ctx)
+	sub, err := s.si.sendSubscriptions.getNext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if err = accept(sub); err != nil {
-		if err = s.cms.send(&subscribeErrorMessage{
+		s.controlStream.enqueue(&subscribeErrorMessage{
 			SubscribeID:  sub.subscribeID,
 			ErrorCode:    0,
 			ReasonPhrase: err.Error(),
 			TrackAlias:   sub.trackAlias,
-		}); err != nil {
-			panic(err)
-		}
-		return nil, s.sendSubscriptions.delete(sub.subscribeID)
+		})
+		return nil, s.si.sendSubscriptions.delete(sub.subscribeID)
 	}
-	err = s.cms.send(&subscribeOkMessage{
+	s.controlStream.enqueue(&subscribeOkMessage{
 		SubscribeID:   sub.subscribeID,
 		Expires:       0,     // TODO: Let user set these values?
 		ContentExists: false, // TODO: Let user set these values?
@@ -541,12 +533,6 @@ func (s *Session) ReadSubscription(ctx context.Context, accept func(*SendSubscri
 		FinalObject:   0,     // TODO: Let user set these values?
 	})
 	return sub, err
-}
-
-func (s *Session) HandleAnnouncements(handler AnnouncementHandler) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.announcementHandler = handler
 }
 
 func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
@@ -568,31 +554,29 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		}
 	}
 	sub := newReceiveSubscription(sm.SubscribeID, s)
-	if err := s.receiveSubscriptions.add(sm.SubscribeID, sub); err != nil {
+	if err := s.si.receiveSubscriptions.add(sm.SubscribeID, sub); err != nil {
 		return nil, err
 	}
-	if err := s.cms.send(sm); err != nil {
-		return nil, err
-	}
+	s.controlStream.enqueue(sm)
 	var resp subscribeIDer
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-s.closed:
+	case <-s.si.closed:
 		return nil, errClosed
 	case resp = <-sub.responseCh:
 	}
 	if resp.subscribeID() != sm.SubscribeID {
 		// Should never happen, because messages are routed based on subscribe
 		// ID. Wrong IDs would thus never end up here.
-		s.logger.Error("internal error: received response message for wrong subscription ID", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
+		s.si.logger.Error("internal error: received response message for wrong subscription ID", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
 		return nil, errors.New("internal error: received response message for wrong subscription ID")
 	}
 	switch v := resp.(type) {
 	case *subscribeOkMessage:
 		return sub, nil
 	case *subscribeErrorMessage:
-		_ = s.receiveSubscriptions.delete(sm.SubscribeID)
+		_ = s.si.receiveSubscriptions.delete(sm.SubscribeID)
 		return nil, ApplicationError{
 			code:   v.ErrorCode,
 			mesage: v.ReasonPhrase,
@@ -616,24 +600,22 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	a := &Announcement{
 		responseCh: responseCh,
 	}
-	if err := s.localAnnouncements.add(am.TrackNamespace, a); err != nil {
+	if err := s.si.localAnnouncements.add(am.TrackNamespace, a); err != nil {
 		return err
 	}
-	if err := s.cms.send(am); err != nil {
-		return err
-	}
+	s.controlStream.enqueue(am)
 	var resp trackNamespacer
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-s.closed:
+	case <-s.si.closed:
 		return errClosed
 	case resp = <-responseCh:
 	}
 	if resp.trackNamespace() != am.TrackNamespace {
 		// Should never happen, because messages are routed based on trackname.
 		// Wrong tracknames would thus never end up here.
-		s.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
+		s.si.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
 		return errors.New("internal error: received response message for wrong announce track namespace")
 	}
 	switch v := resp.(type) {

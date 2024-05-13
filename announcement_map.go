@@ -36,3 +36,9 @@ func (m *announcementMap) get(name string) (*Announcement, bool) {
 	a, ok := m.announcements[name]
 	return a, ok
 }
+
+func (m *announcementMap) delete(name string) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	delete(m.announcements, name)
+}
