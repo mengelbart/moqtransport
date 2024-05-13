@@ -1,8 +1,8 @@
 package moqtransport
 
 type AnnouncementResponseWriter interface {
-	Accept() error
-	Reject(code uint64, reason string) error
+	Accept()
+	Reject(code uint64, reason string)
 }
 
 type defaultAnnouncementResponseWriter struct {
@@ -10,12 +10,12 @@ type defaultAnnouncementResponseWriter struct {
 	s *Session
 }
 
-func (a *defaultAnnouncementResponseWriter) Accept() error {
-	return a.s.acceptAnnouncement(a.a)
+func (a *defaultAnnouncementResponseWriter) Accept() {
+	a.s.acceptAnnouncement(a.a)
 }
 
-func (a *defaultAnnouncementResponseWriter) Reject(code uint64, reason string) error {
-	return a.s.rejectAnnouncement(a.a, code, reason)
+func (a *defaultAnnouncementResponseWriter) Reject(code uint64, reason string) {
+	a.s.rejectAnnouncement(a.a, code, reason)
 }
 
 type AnnouncementHandler interface {

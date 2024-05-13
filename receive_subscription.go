@@ -40,8 +40,8 @@ func (s *ReceiveSubscription) Read(buf []byte) (int, error) {
 	return s.readBuffer.Read(buf)
 }
 
-func (s *ReceiveSubscription) Unsubscribe() error {
-	return s.session.unsubscribe(s.subscribeID)
+func (s *ReceiveSubscription) Unsubscribe() {
+	s.session.unsubscribe(s.subscribeID)
 }
 
 func (s *ReceiveSubscription) unsubscribe() error {

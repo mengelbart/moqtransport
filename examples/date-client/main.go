@@ -27,7 +27,6 @@ func main() {
 }
 
 func run(ctx context.Context, addr string, wt bool, namespace, trackname string) error {
-	var session *moqtransport.Session
 	var conn moqtransport.Connection
 	var err error
 	if wt {
@@ -38,24 +37,31 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 	if err != nil {
 		return err
 	}
-	session, err = moqtransport.NewClientSession(conn, moqtransport.IngestionDeliveryRole, !wt)
-	if err != nil {
+	announcementWaitCh := make(chan *moqtransport.Announcement)
+	session := &moqtransport.Session{
+		Conn:            conn,
+		EnableDatagrams: true,
+		LocalRole:       moqtransport.DeliveryRole,
+		AnnouncementHandler: moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+			if a.Namespace() == "clock" {
+				arw.Accept()
+				announcementWaitCh <- a
+				return
+			}
+			arw.Reject(0, "invalid namespace")
+		}),
+	}
+	if err = session.RunClient(); err != nil {
 		return err
 	}
 	defer session.Close()
 
-	session.HandleAnnouncements(moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-		if a.Namespace() == "clock" {
-			arw.Accept()
-			return
-		}
-		arw.Reject(0, "invalid namespace")
-	}))
-	log.Println("got Announcement")
+	a := <-announcementWaitCh
+	log.Printf("got Announcement: %v\n", a)
 	log.Println("subscribing")
 	rs, err := session.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
-		panic(err)
+		return err
 	}
 	log.Println("got subscription")
 	buf := make([]byte, 64_000)
@@ -66,7 +72,7 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 				log.Printf("got last object")
 				return nil
 			}
-			panic(err)
+			return err
 		}
 		log.Printf("got object: %v\n", string(buf[:n]))
 	}

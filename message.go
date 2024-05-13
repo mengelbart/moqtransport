@@ -19,6 +19,9 @@ const (
 	ErrorCodeDuplicateTrackAlias     = 0x04
 	ErrorCodeParameterLengthMismatch = 0x05
 	ErrorCodeGoAwayTimeout           = 0x10
+
+	// Errors not included in current draft
+	ErrorCodeUnsupportedVersion = 0xff01
 )
 
 const (

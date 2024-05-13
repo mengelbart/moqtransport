@@ -5,6 +5,7 @@
 //
 //	mockgen -build_flags=-tags=gomock -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_send_stream_test.go github.com/mengelbart/moqtransport SendStream
 //
+
 // Package moqtransport is a generated GoMock package.
 package moqtransport
 

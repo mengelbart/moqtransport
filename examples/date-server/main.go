@@ -27,26 +27,18 @@ func main() {
 	certFile := flag.String("cert", "localhost.pem", "TLS certificate file")
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
 	addr := flag.String("addr", "localhost:8080", "listen address")
-	wt := flag.Bool("webtransport", false, "Serve WebTransport only")
-	quic := flag.Bool("quic", false, "Serve QUIC only")
 	flag.Parse()
 
-	if err := run(context.Background(), *addr, *wt, *quic, *certFile, *keyFile); err != nil {
+	if err := run(context.Background(), *addr, *certFile, *keyFile); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context, addr string, wt, quic bool, certFile, keyFile string) error {
+func run(ctx context.Context, addr string, certFile, keyFile string) error {
 	tlsConfig, err := generateTLSConfigWithCertAndKey(certFile, keyFile)
 	if err != nil {
 		log.Printf("failed to generate TLS config from cert file and key, generating in memory certs: %v", err)
 		tlsConfig = generateTLSConfig()
-	}
-	if wt {
-		return listenWebTransport(addr, tlsConfig)
-	}
-	if quic {
-		return listenQUIC(ctx, addr, tlsConfig)
 	}
 	return listen(ctx, addr, tlsConfig)
 }
@@ -71,8 +63,11 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		moqSession, err := moqtransport.NewServerSession(webtransportmoq.New(session), false)
-		if err != nil {
+		moqSession := &moqtransport.Session{
+			Conn:            webtransportmoq.New(session),
+			EnableDatagrams: true,
+		}
+		if err := moqSession.RunServer(ctx); err != nil {
 			log.Printf("MoQ Session initialization failed: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -88,57 +83,15 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			go wt.ServeQUICConn(conn)
 		}
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "moq-00" {
-			s, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
-			if err != nil {
+			s := &moqtransport.Session{
+				Conn:            quicmoq.New(conn),
+				EnableDatagrams: true,
+			}
+			if err := s.RunServer(ctx); err != nil {
 				return err
 			}
 			go handle(s)
 		}
-	}
-}
-
-func listenWebTransport(addr string, tlsConfig *tls.Config) error {
-	wt := webtransport.Server{
-		H3: http3.Server{
-			Addr:      addr,
-			TLSConfig: tlsConfig,
-		},
-	}
-	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
-		session, err := wt.Upgrade(w, r)
-		if err != nil {
-			log.Printf("upgrading to webtransport failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		moqSession, err := moqtransport.NewServerSession(webtransportmoq.New(session), false)
-		if err != nil {
-			log.Printf("MoQ Session initialization failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		go handle(moqSession)
-	})
-	return wt.ListenAndServe()
-}
-
-func listenQUIC(ctx context.Context, addr string, tlsConfig *tls.Config) error {
-	listener, err := quic.ListenAddr(addr, tlsConfig, &quic.Config{
-		EnableDatagrams: true,
-	})
-	if err != nil {
-		return err
-	}
-	for {
-		conn, err := listener.Accept(ctx)
-		if err != nil {
-			return err
-		}
-		s, err := moqtransport.NewServerSession(quicmoq.New(conn), true)
-		if err != nil {
-			return err
-		}
-		go handle(s)
 	}
 }
 
