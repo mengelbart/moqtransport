@@ -1,10 +1,10 @@
 package moqtransport
 
-type TrackHeaderStream struct {
+type trackHeaderStream struct {
 	stream SendStream
 }
 
-func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSendOrder uint64) (*TrackHeaderStream, error) {
+func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSendOrder uint64) (*trackHeaderStream, error) {
 	shtm := &streamHeaderTrackMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
@@ -16,12 +16,12 @@ func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSend
 	if err != nil {
 		return nil, err
 	}
-	return &TrackHeaderStream{
+	return &trackHeaderStream{
 		stream: stream,
 	}, nil
 }
 
-func (s *TrackHeaderStream) writeObject(groupID, objectID uint64, payload []byte) (int, error) {
+func (s *trackHeaderStream) writeObject(groupID, objectID uint64, payload []byte) (int, error) {
 	shto := streamHeaderTrackObject{
 		GroupID:       groupID,
 		ObjectID:      objectID,
@@ -32,6 +32,6 @@ func (s *TrackHeaderStream) writeObject(groupID, objectID uint64, payload []byte
 	return s.stream.Write(buf)
 }
 
-func (s *TrackHeaderStream) Close() error {
+func (s *trackHeaderStream) Close() error {
 	return s.stream.Close()
 }

@@ -23,7 +23,7 @@ type sendSubscription struct {
 	namespace, trackname    string
 	conn                    Connection
 	objectCh                chan Object
-	trackHeaderStream       *TrackHeaderStream
+	trackHeaderStream       *trackHeaderStream
 	groupHeaderStreams      map[uint64]*groupHeaderStream
 }
 
