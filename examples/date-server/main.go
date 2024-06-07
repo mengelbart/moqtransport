@@ -57,6 +57,20 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 	}
 	track := moqtransport.NewLocalTrack(0, "clock", "second")
 	defer track.Close()
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		id := uint64(0)
+		for ts := range ticker.C {
+			log.Printf("tick: %v, subscribers: %v\n", ts, track.SubscriberCount())
+			track.WriteObject(ctx, moqtransport.Object{
+				GroupID:         id,
+				ObjectID:        0,
+				ObjectSendOrder: 0,
+				Payload:         []byte(fmt.Sprintf("%v", ts)),
+			})
+			id++
+		}
+	}()
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 		session, err := wt.Upgrade(w, r)
 		if err != nil {
@@ -75,20 +89,6 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 		}
 		go handle(moqSession, track)
 	})
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		id := uint64(0)
-		for ts := range ticker.C {
-			log.Printf("tick: %v, subscribers: %v\n", ts, track.SubscriberCount())
-			track.WriteObject(ctx, moqtransport.Object{
-				GroupID:         id,
-				ObjectID:        0,
-				ObjectSendOrder: 0,
-				Payload:         []byte(fmt.Sprintf("%v", ts)),
-			})
-			id++
-		}
-	}()
 	for {
 		conn, err := listener.Accept(ctx)
 		if err != nil {

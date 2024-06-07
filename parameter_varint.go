@@ -7,22 +7,22 @@ import (
 )
 
 type varintParameter struct {
-	k uint64
-	v uint64
+	K uint64
+	V uint64
 }
 
 func (r varintParameter) String() string {
-	return fmt.Sprintf("key: %v, value: %v", r.k, r.v)
+	return fmt.Sprintf("key: %v, value: %v", r.K, r.V)
 }
 
 func (r varintParameter) key() uint64 {
-	return r.k
+	return r.K
 }
 
 func (r varintParameter) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, r.k)
-	buf = quicvarint.Append(buf, uint64(quicvarint.Len(r.v)))
-	buf = quicvarint.Append(buf, r.v)
+	buf = quicvarint.Append(buf, r.K)
+	buf = quicvarint.Append(buf, uint64(quicvarint.Len(r.V)))
+	buf = quicvarint.Append(buf, r.V)
 	return buf
 }
 
@@ -38,7 +38,7 @@ func parseVarintParameter(r messageReader, key uint64) (varintParameter, error) 
 		return varintParameter{}, err
 	}
 	return varintParameter{
-		k: key,
-		v: v,
+		K: key,
+		V: v,
 	}, nil
 }

@@ -1,4 +1,4 @@
-package chat
+package main
 
 import (
 	"bufio"
@@ -20,17 +20,17 @@ var (
 	errUnknownParticipantLeft     = errors.New("an unknown participant left the chat")
 )
 
-type chatalog struct {
+type chatalog[V any] struct {
 	version      int
-	participants map[string]struct{}
+	participants map[string]V
 }
 
-func (c *chatalog) apply(d *delta) error {
+func (c *chatalog[V]) apply(d *delta) error {
 	for _, p := range d.joined {
 		if _, ok := c.participants[p]; ok {
 			return errDuplicateParticipantJoined
 		}
-		c.participants[p] = struct{}{}
+		c.participants[p] = *new(V)
 	}
 	for _, p := range d.left {
 		if _, ok := c.participants[p]; !ok {
@@ -41,7 +41,25 @@ func (c *chatalog) apply(d *delta) error {
 	return nil
 }
 
-func parseChatalog(in string) (*chatalog, error) {
+func (c *chatalog[V]) diff(other *chatalog[V]) *delta {
+	result := &delta{
+		joined: []string{},
+		left:   []string{},
+	}
+	for p := range c.participants {
+		if _, ok := other.participants[p]; !ok {
+			result.left = append(result.left, p)
+		}
+	}
+	for p := range other.participants {
+		if _, ok := c.participants[p]; !ok {
+			result.joined = append(result.joined, p)
+		}
+	}
+	return result
+}
+
+func parseChatalog[V any](in string) (*chatalog[V], error) {
 	scanner := bufio.NewScanner(bytes.NewReader([]byte(in)))
 	if !scanner.Scan() {
 		return nil, errInvalidVersion
@@ -54,28 +72,28 @@ func parseChatalog(in string) (*chatalog, error) {
 	if err != nil {
 		return nil, err
 	}
-	participants := map[string]struct{}{}
+	participants := make(map[string]V)
 	for scanner.Scan() {
-		participants[scanner.Text()] = struct{}{}
+		participants[scanner.Text()] = *new(V)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-	return &chatalog{
+	return &chatalog[V]{
 		version:      version,
 		participants: participants,
 	}, nil
 }
 
-func (c *chatalog) serialize() string {
-	version := ""
-	version += fmt.Sprintf("version=%v", c.version)
+func (c *chatalog[V]) serialize() string {
+	res := ""
+	res += fmt.Sprintf("version=%v", c.version)
 	if len(c.participants) == 0 {
-		return version
+		return res
 	}
 	participantList := maps.Keys(c.participants)
 	slices.Sort(participantList)
-	return version + "\n" + strings.Join(participantList, "\n")
+	return res + "\n" + strings.Join(participantList, "\n")
 }
 
 type delta struct {

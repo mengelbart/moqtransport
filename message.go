@@ -190,10 +190,6 @@ type objectMessage struct {
 	ObjectPayload   []byte
 }
 
-func (o *objectMessage) payload() []byte {
-	return o.ObjectPayload
-}
-
 func (m objectMessage) String() string {
 	buf, err := json.Marshal(m)
 	if err != nil {
@@ -268,7 +264,7 @@ func (m clientSetupMessage) String() string {
 	if err != nil {
 		return "json.Marshal of clientSetupMessage failed"
 	}
-	return fmt.Sprintf("%v:%v", clientSetupMessageType.String(), string(buf))
+	return fmt.Sprintf("%v:%s", clientSetupMessageType.String(), string(buf))
 }
 
 func (m *clientSetupMessage) append(buf []byte) []byte {
@@ -970,10 +966,6 @@ type streamHeaderTrackObject struct {
 	ObjectPayload []byte
 }
 
-func (o *streamHeaderTrackObject) payload() []byte {
-	return o.ObjectPayload
-}
-
 func (m *streamHeaderTrackObject) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
@@ -1013,10 +1005,6 @@ func (p *loggingParser) parseStreamHeaderTrackObject() (*streamHeaderTrackObject
 type streamHeaderGroupObject struct {
 	ObjectID      uint64
 	ObjectPayload []byte
-}
-
-func (o *streamHeaderGroupObject) payload() []byte {
-	return o.ObjectPayload
 }
 
 func (m *streamHeaderGroupObject) append(buf []byte) []byte {

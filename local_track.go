@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"sync"
 )
 
-type subscriberMapKey struct {
-	trackID, subscribeID uint64
+type subscriberID int
+
+func (id *subscriberID) next() subscriberID {
+	*id += 1
+	return *id
 }
 
 type subscriberAction bool
@@ -18,11 +22,16 @@ const (
 	subscriberActionRemove subscriberAction = false
 )
 
-type subscriberOp struct {
-	action                   subscriberAction
-	trackAlias, subscriberID uint64
-	subscriber               ObjectWriter
-	errCh                    chan error
+type subscribeOp struct {
+	action       subscriberAction
+	subscriberID subscriberID
+	subscriber   ObjectWriter
+	resultCh     chan subscribeOpResult
+}
+
+type subscribeOpResult struct {
+	id  subscriberID
+	err error
 }
 
 type ObjectForwardingPreference int
@@ -55,6 +64,7 @@ type ObjectWriter interface {
 // guaranteed within MultiObjectStreams. LocalTracks must be created with
 // NewLocalTrack to ensure proper initialization.
 type LocalTrack struct {
+	logger    *slog.Logger
 	ID        uint64
 	Namespace string
 	Name      string
@@ -63,53 +73,51 @@ type LocalTrack struct {
 	cancelWG  sync.WaitGroup
 	ctx       context.Context
 
-	subscriberCh      chan subscriberOp
-	subscribers       map[subscriberMapKey]ObjectWriter
+	subscriberCh      chan subscribeOp
+	subscribers       map[subscriberID]ObjectWriter
 	objectCh          chan Object
 	subscriberCountCh chan int
+
+	nextID subscriberID
 }
 
 // NewLocalTrack creates a new LocalTrack
 func NewLocalTrack(id uint64, namespace, trackname string) *LocalTrack {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	lt := &LocalTrack{
+		logger:            defaultLogger.WithGroup("MOQ_LOCAL_TRACK").With("id", id, "namespace", namespace, "trackname", trackname),
 		ID:                id,
 		Namespace:         namespace,
 		Name:              trackname,
 		cancelCtx:         cancelCtx,
 		cancelWG:          sync.WaitGroup{},
 		ctx:               ctx,
-		subscriberCh:      make(chan subscriberOp),
-		subscribers:       map[subscriberMapKey]ObjectWriter{},
+		subscriberCh:      make(chan subscribeOp),
+		subscribers:       map[subscriberID]ObjectWriter{},
 		objectCh:          make(chan Object),
 		subscriberCountCh: make(chan int),
+		nextID:            0,
 	}
 	lt.cancelWG.Add(1)
 	go lt.loop()
 	return lt
 }
 
-func (t *LocalTrack) manageSubscriber(op subscriberOp) error {
-	key := subscriberMapKey{
-		trackID:     op.trackAlias,
-		subscribeID: op.subscriberID,
-	}
-	_, ok := t.subscribers[key]
+func (t *LocalTrack) manageSubscriber(op subscribeOp) (subscriberID, error) {
+	_, ok := t.subscribers[op.subscriberID]
 	switch op.action {
 	case subscriberActionAdd:
-		if ok {
-			return errors.New("duplicate subscriber ID in session")
-		}
-		t.subscribers[key] = op.subscriber
-		return nil
+		id := t.nextID.next()
+		t.subscribers[id] = op.subscriber
+		return id, nil
 	case subscriberActionRemove:
 		if !ok {
-			return errors.New("subscriber not found")
+			return op.subscriberID, errors.New("subscriber not found")
 		}
-		delete(t.subscribers, key)
-		return nil
+		delete(t.subscribers, op.subscriberID)
+		return op.subscriberID, nil
 	}
-	return errors.New("invalid subscriber action")
+	return 0, errors.New("invalid subscriber action")
 }
 
 func (t *LocalTrack) loop() {
@@ -122,7 +130,11 @@ func (t *LocalTrack) loop() {
 			}
 			return
 		case op := <-t.subscriberCh:
-			op.errCh <- t.manageSubscriber(op)
+			id, err := t.manageSubscriber(op)
+			op.resultCh <- subscribeOpResult{
+				id:  id,
+				err: err,
+			}
 		case object := <-t.objectCh:
 			for _, v := range t.subscribers {
 				if err := v.WriteObject(object); err != nil {
@@ -136,39 +148,37 @@ func (t *LocalTrack) loop() {
 }
 
 func (t *LocalTrack) subscribe(
-	trackAlias uint64,
-	subscribeID uint64,
 	subscriber ObjectWriter,
-) error {
+) (subscriberID, error) {
 	if subscriber == nil {
-		return errors.New("subscriber MUST NOT be nil")
+		return 0, errors.New("subscriber MUST NOT be nil")
 	}
-	addOp := subscriberOp{
-		action:       subscriberActionAdd,
-		trackAlias:   trackAlias,
-		subscriberID: subscribeID,
-		subscriber:   subscriber,
-		errCh:        make(chan error),
+	addOp := subscribeOp{
+		action:     subscriberActionAdd,
+		subscriber: subscriber,
+		resultCh:   make(chan subscribeOpResult),
 	}
 	// TODO: Should this have a timeout or similar?
 	t.subscriberCh <- addOp
-	return <-addOp.errCh
+	res := <-addOp.resultCh
+	return res.id, res.err
 }
 
-func (t *LocalTrack) unsubscribe(trackAlias, subscribeID uint64) error {
-	removeOp := subscriberOp{
+func (t *LocalTrack) unsubscribe(id subscriberID) error {
+	removeOp := subscribeOp{
 		action:       subscriberActionRemove,
-		trackAlias:   trackAlias,
-		subscriberID: subscribeID,
+		subscriberID: id,
 		subscriber:   nil,
-		errCh:        make(chan error),
+		resultCh:     make(chan subscribeOpResult),
 	}
 	t.subscriberCh <- removeOp
-	return <-removeOp.errCh
+	res := <-removeOp.resultCh
+	return res.err
 }
 
-// WriteObject adds an object with forwarding preference DATAGRAM
+// WriteObject adds an object to the track
 func (t *LocalTrack) WriteObject(ctx context.Context, o Object) error {
+	t.logger.Info("write object", "object", o)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

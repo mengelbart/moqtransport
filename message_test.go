@@ -183,8 +183,8 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			csm: clientSetupMessage{
 				SupportedVersions: []version{DRAFT_IETF_MOQ_TRANSPORT_00},
 				SetupParameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
+					K: pathParameterKey,
+					V: "A",
 				}},
 			},
 			buf: []byte{},
@@ -314,8 +314,8 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			ssm: serverSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: parameters{roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionRole),
+					K: roleParameterKey,
+					V: uint64(IngestionRole),
 				}},
 			},
 			buf: []byte{},
@@ -327,8 +327,8 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			ssm: serverSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
+					K: pathParameterKey,
+					V: "A",
 				}},
 			},
 			buf: []byte{0x01, 0x02},
@@ -385,8 +385,8 @@ func TestParseServerSetupMessage(t *testing.T) {
 			expect: &serverSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
+					K: pathParameterKey,
+					V: "A",
 				}},
 			},
 			err: nil,
@@ -398,8 +398,8 @@ func TestParseServerSetupMessage(t *testing.T) {
 			expect: &serverSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: parameters{pathParameterKey: stringParameter{
-					k: pathParameterKey,
-					v: "A",
+					K: pathParameterKey,
+					V: "A",
 				}},
 			},
 			err: nil,
@@ -566,7 +566,7 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 				StartObject:    Location{},
 				EndGroup:       Location{},
 				EndObject:      Location{},
-				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
+				Parameters:     parameters{pathParameterKey: stringParameter{K: pathParameterKey, V: "A"}},
 			},
 			buf:    []byte{},
 			expect: append(append([]byte{byte(subscribeMessageType), 0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
@@ -581,7 +581,7 @@ func TestSubscribeRequestMessageAppend(t *testing.T) {
 				StartObject:    Location{},
 				EndGroup:       Location{},
 				EndObject:      Location{},
-				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
+				Parameters:     parameters{pathParameterKey: stringParameter{K: pathParameterKey, V: "A"}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
 			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, byte(subscribeMessageType), 0x00, 0x00, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A'}...),
@@ -655,7 +655,7 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 				StartObject:    Location{Mode: 1, Value: 2},
 				EndGroup:       Location{Mode: 1, Value: 2},
 				EndObject:      Location{Mode: 1, Value: 2},
-				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
+				Parameters:     parameters{pathParameterKey: stringParameter{K: pathParameterKey, V: "A"}},
 			},
 			err: nil,
 		},
@@ -672,7 +672,7 @@ func TestParseSubscribeRequestMessage(t *testing.T) {
 				StartObject:    Location{},
 				EndGroup:       Location{},
 				EndObject:      Location{},
-				Parameters:     parameters{pathParameterKey: stringParameter{k: pathParameterKey, v: "A"}},
+				Parameters:     parameters{pathParameterKey: stringParameter{K: pathParameterKey, V: "A"}},
 			},
 			err: nil,
 		},

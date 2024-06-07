@@ -42,7 +42,7 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 		Conn:            conn,
 		EnableDatagrams: true,
 		LocalRole:       moqtransport.DeliveryRole,
-		AnnouncementHandler: moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		AnnouncementHandler: moqtransport.AnnouncementHandlerFunc(func(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			if a.Namespace() == "clock" {
 				arw.Accept()
 				announcementWaitCh <- a
@@ -64,9 +64,8 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 		return err
 	}
 	log.Println("got subscription")
-	buf := make([]byte, 64_000)
 	for {
-		n, err := rs.Read(buf)
+		o, err := rs.ReadObject(ctx)
 		if err != nil {
 			if err == io.EOF {
 				log.Printf("got last object")
@@ -74,7 +73,7 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 			}
 			return err
 		}
-		log.Printf("got object: %v\n", string(buf[:n]))
+		log.Printf("got object: %v\n", string(o.Payload))
 	}
 }
 

@@ -16,7 +16,9 @@ func session(conn Connection, ctrl controlMessageSender, h AnnouncementHandler) 
 		LocalRole:           0,
 		RemoteRole:          0,
 		AnnouncementHandler: h,
-		HandshakeDone:       false,
+		SubscriptionHandler: nil,
+		handshakeDone:       false,
+		controlStream:       nil,
 		isClient:            false,
 		si:                  newSessionInternals("SERVER"),
 	}
@@ -30,27 +32,32 @@ func TestSession(t *testing.T) {
 		mc := NewMockConnection(ctrl)
 		done := make(chan struct{})
 		s := session(mc, nil, nil)
-		err := s.si.receiveSubscriptions.add(0, newReceiveSubscription(0, s))
+		err := s.si.receiveSubscriptions.add(0, newRemoteTrack(0, s))
 		assert.NoError(t, err)
-		object := &objectMessage{
-			SubscribeID:     0,
-			TrackAlias:      0,
-			GroupID:         0,
-			ObjectID:        0,
-			ObjectSendOrder: 0,
-			ObjectPayload:   []byte{0x0a, 0x0b},
+		object := Object{
+			GroupID:              0,
+			ObjectID:             0,
+			ObjectSendOrder:      0,
+			ForwardingPreference: 0,
+			Payload:              []byte{0x0a, 0x0b},
 		}
 		go func() {
-			buf := make([]byte, 1024)
 			sub, ok := s.si.receiveSubscriptions.get(0)
 			assert.True(t, ok)
-			n, err1 := sub.Read(buf)
+			o, err1 := sub.ReadObject(context.Background())
 			assert.NoError(t, err1)
-			assert.Equal(t, object.payload(), buf[:n])
+			assert.Equal(t, object, o)
 			close(done)
 		}()
-		err = s.handleObjectMessage(object)
-		assert.NoError(t, err)
+		sub, ok := s.si.receiveSubscriptions.get(0)
+		assert.True(t, ok)
+		sub.push(Object{
+			GroupID:              object.GroupID,
+			ObjectID:             object.ObjectID,
+			ObjectSendOrder:      0,
+			ForwardingPreference: ObjectForwardingPreferenceDatagram,
+			Payload:              object.Payload,
+		})
 		select {
 		case <-done:
 		case <-time.After(time.Second):
@@ -67,8 +74,8 @@ func TestSession(t *testing.T) {
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionDeliveryRole),
+					K: roleParameterKey,
+					V: uint64(IngestionDeliveryRole),
 				},
 			},
 		}
@@ -100,8 +107,8 @@ func TestSession(t *testing.T) {
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionDeliveryRole),
+					K: roleParameterKey,
+					V: uint64(IngestionDeliveryRole),
 				},
 			},
 		})
@@ -128,7 +135,7 @@ func TestSession(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mc := NewMockConnection(ctrl)
 		csh := NewMockControlMessageSender(ctrl)
-		s := session(mc, csh, AnnouncementHandlerFunc(func(a *Announcement, arw AnnouncementResponseWriter) {
+		s := session(mc, csh, AnnouncementHandlerFunc(func(s *Session, a *Announcement, arw AnnouncementResponseWriter) {
 			assert.NotNil(t, a)
 			arw.Accept()
 		}))
@@ -143,8 +150,8 @@ func TestSession(t *testing.T) {
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionDeliveryRole),
+					K: roleParameterKey,
+					V: uint64(IngestionDeliveryRole),
 				},
 			},
 		})
@@ -176,7 +183,7 @@ func TestSession(t *testing.T) {
 			StartObject:    Location{LocationModeAbsolute, 0x00},
 			EndGroup:       Location{},
 			EndObject:      Location{},
-			Parameters:     map[uint64]parameter{authorizationParameterKey: stringParameter{k: authorizationParameterKey, v: "auth"}},
+			Parameters:     map[uint64]parameter{authorizationParameterKey: stringParameter{K: authorizationParameterKey, V: "auth"}},
 		}).Do(func(_ message) {
 			go func() {
 				err := s.handleControlMessage(&subscribeOkMessage{
@@ -191,8 +198,8 @@ func TestSession(t *testing.T) {
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionDeliveryRole),
+					K: roleParameterKey,
+					V: uint64(IngestionDeliveryRole),
 				},
 			},
 		})
@@ -229,8 +236,8 @@ func TestSession(t *testing.T) {
 			SupportedVersions: []version{CURRENT_VERSION},
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
-					k: roleParameterKey,
-					v: uint64(IngestionDeliveryRole),
+					K: roleParameterKey,
+					V: uint64(IngestionDeliveryRole),
 				},
 			},
 		})
