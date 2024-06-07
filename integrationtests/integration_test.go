@@ -40,7 +40,7 @@ func quicClientSession(t *testing.T, ctx context.Context, addr string, handler m
 	session := &moqtransport.Session{
 		Conn:                quicmoq.New(conn),
 		EnableDatagrams:     true,
-		LocalRole:           moqtransport.IngestionDeliveryRole,
+		LocalRole:           moqtransport.RolePubSub,
 		AnnouncementHandler: handler,
 	}
 	err = session.RunClient()

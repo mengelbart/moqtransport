@@ -90,14 +90,14 @@ type Session struct {
 
 func (s *Session) initRole() {
 	switch s.LocalRole {
-	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+	case RolePublisher, RoleSubscriber, RolePubSub:
 	default:
-		s.LocalRole = IngestionDeliveryRole
+		s.LocalRole = RolePubSub
 	}
 	switch s.RemoteRole {
-	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+	case RolePublisher, RoleSubscriber, RolePubSub:
 	default:
-		s.RemoteRole = IngestionDeliveryRole
+		s.RemoteRole = RolePubSub
 	}
 }
 
@@ -111,7 +111,7 @@ func (s *Session) validateRemoteRoleParameter(setupParameters parameters) error 
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter type")
 	}
 	switch Role(remoteRoleParamValue.V) {
-	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
+	case RolePublisher, RoleSubscriber, RolePubSub:
 		s.RemoteRole = Role(remoteRoleParamValue.V)
 	default:
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter value")
@@ -193,7 +193,7 @@ func (s *Session) initServer(setup *clientSetupMessage) error {
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
 				K: roleParameterKey,
-				V: uint64(IngestionDeliveryRole),
+				V: uint64(RolePubSub),
 			},
 		},
 	}

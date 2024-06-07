@@ -56,8 +56,8 @@ func (s *server) run() error {
 		moqSession := &moqtransport.Session{
 			Conn:                webtransportmoq.New(session),
 			EnableDatagrams:     false,
-			LocalRole:           moqtransport.IngestionDeliveryRole,
-			RemoteRole:          moqtransport.IngestionDeliveryRole,
+			LocalRole:           moqtransport.RolePubSub,
+			RemoteRole:          moqtransport.RolePubSub,
 			AnnouncementHandler: s.sessions,
 			SubscriptionHandler: s.sessions,
 		}
@@ -80,7 +80,7 @@ func (s *server) run() error {
 			p := &moqtransport.Session{
 				Conn:                quicmoq.New(conn),
 				EnableDatagrams:     true,
-				LocalRole:           moqtransport.IngestionDeliveryRole,
+				LocalRole:           moqtransport.RolePubSub,
 				AnnouncementHandler: s.sessions,
 			}
 			if err := p.RunServer(ctx); err != nil {

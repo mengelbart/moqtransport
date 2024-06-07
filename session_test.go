@@ -75,7 +75,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					K: roleParameterKey,
-					V: uint64(IngestionDeliveryRole),
+					V: uint64(RolePubSub),
 				},
 			},
 		}
@@ -108,7 +108,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					K: roleParameterKey,
-					V: uint64(IngestionDeliveryRole),
+					V: uint64(RolePubSub),
 				},
 			},
 		})
@@ -151,7 +151,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					K: roleParameterKey,
-					V: uint64(IngestionDeliveryRole),
+					V: uint64(RolePubSub),
 				},
 			},
 		})
@@ -199,7 +199,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					K: roleParameterKey,
-					V: uint64(IngestionDeliveryRole),
+					V: uint64(RolePubSub),
 				},
 			},
 		})
@@ -237,7 +237,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]parameter{
 				roleParameterKey: varintParameter{
 					K: roleParameterKey,
-					V: uint64(IngestionDeliveryRole),
+					V: uint64(RolePubSub),
 				},
 			},
 		})

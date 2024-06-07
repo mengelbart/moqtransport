@@ -82,7 +82,7 @@ func NewClient(conn moqtransport.Connection) (*Client, error) {
 	moqSession := &moqtransport.Session{
 		Conn:                conn,
 		EnableDatagrams:     true,
-		LocalRole:           moqtransport.IngestionDeliveryRole,
+		LocalRole:           moqtransport.RolePubSub,
 		RemoteRole:          0,
 		AnnouncementHandler: rm,
 		SubscriptionHandler: nil,

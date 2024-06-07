@@ -41,7 +41,7 @@ func run(ctx context.Context, addr string, wt bool, namespace, trackname string)
 	session := &moqtransport.Session{
 		Conn:            conn,
 		EnableDatagrams: true,
-		LocalRole:       moqtransport.DeliveryRole,
+		LocalRole:       moqtransport.RoleSubscriber,
 		AnnouncementHandler: moqtransport.AnnouncementHandlerFunc(func(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			if a.Namespace() == "clock" {
 				arw.Accept()
