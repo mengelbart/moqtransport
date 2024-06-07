@@ -11,39 +11,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-const (
-	ErrorCodeNoError                 = 0x00
-	ErrorCodeInternal                = 0x01
-	ErrorCodeUnauthorized            = 0x02
-	ErrorCodeProtocolViolation       = 0x03
-	ErrorCodeDuplicateTrackAlias     = 0x04
-	ErrorCodeParameterLengthMismatch = 0x05
-	ErrorCodeGoAwayTimeout           = 0x10
-
-	// Errors not included in current draft
-	ErrorCodeUnsupportedVersion = 0xff01
-	ErrorCodeTrackNotFound      = 0xff02
-)
-
-const (
-	SubscribeStatusUnsubscribed      = 0x00
-	SubscribeStatusInternalError     = 0x01
-	SubscribeStatusUnauthorized      = 0x02
-	SubscribeStatusTrackEnded        = 0x03
-	SubscribeStatusSubscriptionEnded = 0x04
-	SubscribeStatusGoingAway         = 0x05
-	SubscribeStatusExpired           = 0x06
-)
-
-const (
-	SubscribeErrorInternal        = 0x00
-	SubscribeErrorInvalidRange    = 0x01
-	SubscribeErrorRetryTrackAlias = 0x02
-
-	// TODO: These are not specified yet, but seem useful
-	SubscribeErrorUnknownTrack = 0x03
-)
-
 var (
 	errInvalidMessageReader = errors.New("invalid message reader")
 	errUnknownMessage       = errors.New("unknown message type")

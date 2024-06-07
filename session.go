@@ -509,11 +509,10 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 	if !ok {
 		return errors.New("no track related to subscription found")
 	}
-	err := track.unsubscribe(sub.subscriptionIDinTrack)
-	if err != nil {
+	track.unsubscribe(sub.subscriptionIDinTrack)
+	if err := sub.Close(); err != nil {
 		panic(err)
 	}
-	sub.Close()
 	s.si.sendSubscriptions.delete(msg.SubscribeID)
 	s.controlStream.enqueue(&subscribeDoneMessage{
 		SusbcribeID:   msg.SubscribeID,
@@ -523,7 +522,7 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 		FinalGroup:    0,     // TODO
 		FinalObject:   0,     // TODO
 	})
-	return err
+	return nil
 }
 
 func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) {
