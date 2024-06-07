@@ -66,15 +66,11 @@ func (m *sessionManager) HandleAnnouncement(s *moqtransport.Session, a *moqtrans
 
 func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
 	parts := strings.SplitN(sub.Namespace, "/", 4)
-	switch len(parts) {
-	case 2:
-		m.handleCatalogSubscription(parts, s, sub, srw)
+	if len(parts) != 2 {
+		srw.Reject(uint64(errorCodeInvalidNamespace), "invalid namespace")
 		return
-		//case 4:
-		//	m.handleParticipantSubscription(parts, s, sub, srw)
-		//	return
 	}
-	srw.Reject(uint64(errorCodeInvalidNamespace), "invalid namespace")
+	m.handleCatalogSubscription(parts, s, sub, srw)
 }
 
 func (m *sessionManager) handleCatalogSubscription(namespaceParts []string, s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
@@ -96,28 +92,3 @@ func (m *sessionManager) handleCatalogSubscription(namespaceParts []string, s *m
 	}
 	room.subscribeCatalog(s, sub, srw)
 }
-
-/*
-func (m *sessionManager) handleParticipantSubscription(namespaceParts []string, s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-	if len(namespaceParts) != 4 {
-		panic("invalid namespace parts length")
-	}
-	moqChat, id, participant, username := namespaceParts[0], roomID(namespaceParts[1]), namespaceParts[2], namespaceParts[3]
-	if moqChat != "moq-chat" {
-		srw.Reject(uint64(errorCodeInvalidNamespace), "first part of namespace MUST equal 'moq-chat'")
-		return
-	}
-	if participant != "participant" {
-		srw.Reject(uint64(errorCodeInvalidNamespace), "third part of namespace MUST equal 'participant'")
-		return
-	}
-	m.roomsLock.Lock()
-	defer m.roomsLock.Unlock()
-	room, ok := m.rooms[id]
-	if !ok {
-		srw.Reject(uint64(errorCodeUnknownRoom), "room not found. to open a room, subscribe to its catalog")
-		return
-	}
-	// TODO: Maybe this function is not needed at all?
-}
-*/

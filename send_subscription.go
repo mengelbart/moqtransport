@@ -11,7 +11,6 @@ import (
 
 var errUnsubscribed = errors.New("peer unsubscribed")
 
-// TODO: Unexport sendSubscription type
 type sendSubscription struct {
 	logger    *slog.Logger
 	cancelCtx context.CancelFunc
