@@ -107,13 +107,10 @@ func (s *sendSubscription) sendDatagram(o Object) error {
 	buf := make([]byte, 0, 48+len(o.Payload))
 	buf = om.append(buf)
 	err := s.conn.SendDatagram(buf)
-	if err == nil {
-		return nil
-	}
 	if !errors.Is(err, &quic.DatagramTooLargeError{}) {
 		return err
 	}
-	return s.sendObjectStream(o)
+	return nil
 }
 
 func (s *sendSubscription) sendObjectStream(o Object) error {
