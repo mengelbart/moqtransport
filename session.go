@@ -47,8 +47,8 @@ type sessionInternals struct {
 	controlStreamStoreCh  chan controlMessageSender // Needs to be buffered
 	closeOnce             sync.Once
 	closed                chan struct{}
-	sendSubscriptions     *syncMap[uint64, *SendSubscription]
-	receiveSubscriptions  *syncMap[uint64, *ReceiveSubscription]
+	sendSubscriptions     *syncMap[uint64, *sendSubscription]
+	receiveSubscriptions  *syncMap[uint64, *RemoteTrack]
 	localAnnouncements    *syncMap[string, *Announcement]
 	remoteAnnouncements   *syncMap[string, *Announcement]
 	localTracks           *syncMap[trackKey, *LocalTrack]
@@ -61,8 +61,8 @@ func newSessionInternals(logSuffix string) *sessionInternals {
 		controlStreamStoreCh:  make(chan controlMessageSender, 1),
 		closeOnce:             sync.Once{},
 		closed:                make(chan struct{}),
-		sendSubscriptions:     newSyncMap[uint64, *SendSubscription](),
-		receiveSubscriptions:  newSyncMap[uint64, *ReceiveSubscription](),
+		sendSubscriptions:     newSyncMap[uint64, *sendSubscription](),
+		receiveSubscriptions:  newSyncMap[uint64, *RemoteTrack](),
 		localAnnouncements:    newSyncMap[string, *Announcement](),
 		remoteAnnouncements:   newSyncMap[string, *Announcement](),
 		localTracks:           newSyncMap[trackKey, *LocalTrack](),
@@ -80,8 +80,9 @@ type Session struct {
 	LocalRole           Role
 	RemoteRole          Role
 	AnnouncementHandler AnnouncementHandler
-	HandshakeDone       bool
+	SubscriptionHandler SubscriptionHandler
 
+	handshakeDone bool
 	controlStream controlMessageSender
 	isClient      bool
 	si            *sessionInternals
@@ -109,9 +110,9 @@ func (s *Session) validateRemoteRoleParameter(setupParameters parameters) error 
 	if !ok {
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter type")
 	}
-	switch Role(remoteRoleParamValue.v) {
+	switch Role(remoteRoleParamValue.V) {
 	case IngestionRole, DeliveryRole, IngestionDeliveryRole:
-		s.RemoteRole = Role(remoteRoleParamValue.v)
+		s.RemoteRole = Role(remoteRoleParamValue.V)
 	default:
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter value")
 	}
@@ -139,8 +140,8 @@ func (s *Session) RunClient() error {
 		SupportedVersions: []version{CURRENT_VERSION},
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
-				k: roleParameterKey,
-				v: uint64(s.LocalRole),
+				K: roleParameterKey,
+				V: uint64(s.LocalRole),
 			},
 		},
 	})
@@ -175,7 +176,7 @@ func (s *Session) initClient(setup *serverSetupMessage) error {
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
 		return err
 	}
-	s.HandshakeDone = true
+	s.handshakeDone = true
 	return nil
 }
 
@@ -191,13 +192,13 @@ func (s *Session) initServer(setup *clientSetupMessage) error {
 		SelectedVersion: CURRENT_VERSION,
 		SetupParameters: map[uint64]parameter{
 			roleParameterKey: varintParameter{
-				k: roleParameterKey,
-				v: uint64(IngestionDeliveryRole),
+				K: roleParameterKey,
+				V: uint64(IngestionDeliveryRole),
 			},
 		},
 	}
 	s.controlStream.enqueue(ssm)
-	s.HandshakeDone = true
+	s.handshakeDone = true
 	close(s.si.serverHandshakeDoneCh)
 	return nil
 }
@@ -248,9 +249,13 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 			s.si.logger.Warn("got object for unknown subscribe ID")
 			return
 		}
-		if _, err := sub.push(h); err != nil {
-			panic(err)
-		}
+		sub.push(Object{
+			GroupID:              h.GroupID,
+			ObjectID:             h.ObjectID,
+			ObjectSendOrder:      0,
+			ForwardingPreference: ObjectForwardingPreferenceStream,
+			Payload:              h.ObjectPayload,
+		})
 	case *streamHeaderTrackMessage:
 		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
 		if !ok {
@@ -264,7 +269,7 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 			s.si.logger.Warn("got stream header track message for unknown subscription")
 			return
 		}
-		sub.readGroupHeaderStream(stream)
+		sub.readGroupHeaderStream(stream, h.GroupID)
 	}
 }
 
@@ -319,16 +324,23 @@ func (s *Session) readObjectMessages(r messageReader) {
 			_ = s.Conn.CloseWithError(pe.code, pe.message)
 			return
 		}
-		if err = s.handleObjectMessage(o); err != nil {
-			s.si.logger.Info("failed to handle message", "error", err)
-			return
+		sub, ok := s.si.receiveSubscriptions.get(o.SubscribeID)
+		if ok {
+			sub.push(Object{
+				GroupID:              o.GroupID,
+				ObjectID:             o.ObjectID,
+				ObjectSendOrder:      0,
+				ForwardingPreference: ObjectForwardingPreferenceDatagram,
+				Payload:              o.ObjectPayload,
+			})
 		}
+		s.si.logger.Warn("dropping object message for unknown track")
 	}
 }
 
 func (s *Session) handleControlMessage(msg message) error {
-	s.si.logger.Info("received message", "message", msg)
-	if s.HandshakeDone {
+	s.si.logger.Info("received control message", "type", fmt.Sprintf("%T", msg), "message", msg)
+	if s.handshakeDone {
 		if err := s.handleNonSetupMessage(msg); err != nil {
 			return err
 		}
@@ -413,50 +425,76 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	return nil
 }
 
-func (s *Session) handleSubscribe(msg *subscribeMessage) {
-	t, ok := s.si.localTracks.get(trackKey{
-		namespace: msg.TrackNamespace,
-		trackname: msg.TrackName,
-	})
-	if !ok {
+func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
+	sendSub := newSendSubscription(s.Conn, sub.ID, sub.TrackAlias, sub.Namespace, sub.TrackName)
+	if err := s.si.sendSubscriptions.add(sub.ID, sendSub); err != nil {
 		s.controlStream.enqueue(&subscribeErrorMessage{
-			SubscribeID:  msg.SubscribeID,
-			ErrorCode:    ErrorCodeTrackNotFound,
-			ReasonPhrase: "track not found",
-			TrackAlias:   msg.TrackAlias,
-		})
-		return
-	}
-	sub := newSendSubscription(s.Conn, msg.SubscribeID, msg.TrackAlias, msg.TrackNamespace, msg.TrackName)
-	if err := s.si.sendSubscriptions.add(sub.subscribeID, sub); err != nil {
-		s.controlStream.enqueue(&subscribeErrorMessage{
-			SubscribeID:  msg.SubscribeID,
+			SubscribeID:  sub.ID,
 			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
-			ReasonPhrase: "internal error",
-			TrackAlias:   msg.TrackAlias,
+			ReasonPhrase: err.Error(),
+			TrackAlias:   sub.TrackAlias,
 		})
 		return
 	}
-	if err := t.subscribe(
-		msg.SubscribeID,
-		msg.SubscribeID,
-		sub,
-	); err != nil {
+	id, err := t.subscribe(sendSub)
+	if err != nil {
 		s.controlStream.enqueue(&subscribeErrorMessage{
-			SubscribeID:  msg.SubscribeID,
+			SubscribeID:  sub.ID,
 			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
-			ReasonPhrase: "internal error",
-			TrackAlias:   msg.TrackAlias,
+			ReasonPhrase: err.Error(),
+			TrackAlias:   sub.TrackAlias,
 		})
 		return
 	}
+	sendSub.subscriptionIDinTrack = id
 	s.controlStream.enqueue(&subscribeOkMessage{
-		SubscribeID:   msg.SubscribeID,
+		SubscribeID:   sub.ID,
 		Expires:       0,     // TODO
 		ContentExists: false, // TODO
 		FinalGroup:    0,     // TODO
 		FinalObject:   0,     // TODO
 	})
+}
+
+func (s *Session) rejectSubscription(sub *Subscription, code uint64, reason string) {
+	s.controlStream.enqueue(&subscribeErrorMessage{
+		SubscribeID:  sub.ID,
+		ErrorCode:    code,
+		ReasonPhrase: reason,
+		TrackAlias:   sub.TrackAlias,
+	})
+}
+
+func (s *Session) handleSubscribe(msg *subscribeMessage) {
+	var authValue string
+	auth, ok := msg.Parameters[authorizationParameterKey]
+	authString, isStringParam := auth.(stringParameter)
+	if ok && isStringParam {
+		authValue = authString.V
+	}
+	sub := &Subscription{
+		ID:            msg.SubscribeID,
+		TrackAlias:    msg.TrackAlias,
+		Namespace:     msg.TrackNamespace,
+		TrackName:     msg.TrackName,
+		Authorization: authValue,
+	}
+	t, ok := s.si.localTracks.get(trackKey{
+		namespace: msg.TrackNamespace,
+		trackname: msg.TrackName,
+	})
+	if ok {
+		s.subscribeToLocalTrack(sub, t)
+		return
+	}
+	if s.SubscriptionHandler != nil {
+		s.SubscriptionHandler.HandleSubscription(s, sub, &defaultSubscriptionResponseWriter{
+			subscription: sub,
+			session:      s,
+		})
+		return
+	}
+	s.rejectSubscription(sub, ErrorCodeTrackNotFound, "track not found")
 }
 
 func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
@@ -471,7 +509,7 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 	if !ok {
 		return errors.New("no track related to subscription found")
 	}
-	err := track.unsubscribe(sub.trackAlias, sub.subscribeID)
+	err := track.unsubscribe(sub.subscriptionIDinTrack)
 	if err != nil {
 		panic(err)
 	}
@@ -509,9 +547,9 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) {
 		return
 	}
 	if s.AnnouncementHandler != nil {
-		go s.AnnouncementHandler.Handle(a, &defaultAnnouncementResponseWriter{
-			a: a,
-			s: s,
+		go s.AnnouncementHandler.HandleAnnouncement(s, a, &defaultAnnouncementResponseWriter{
+			announcement: a,
+			session:      s,
 		})
 	}
 }
@@ -529,16 +567,6 @@ func (s *Session) acceptAnnouncement(a *Announcement) {
 	s.controlStream.enqueue(&announceOkMessage{
 		TrackNamespace: a.namespace,
 	})
-}
-
-func (s *Session) handleObjectMessage(o *objectMessage) error {
-	sub, ok := s.si.receiveSubscriptions.get(o.SubscribeID)
-	if ok {
-		_, err := sub.push(o)
-		return err
-	}
-	s.si.logger.Warn("dropping object message for unknown track")
-	return nil
 }
 
 func (s *Session) unsubscribe(id uint64) {
@@ -571,7 +599,7 @@ func (s *Session) AddLocalTrack(t *LocalTrack) error {
 	}, t)
 }
 
-func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*ReceiveSubscription, error) {
+func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*RemoteTrack, error) {
 	sm := &subscribeMessage{
 		SubscribeID:    subscribeID,
 		TrackAlias:     trackAlias,
@@ -585,11 +613,11 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	}
 	if len(auth) > 0 {
 		sm.Parameters[authorizationParameterKey] = stringParameter{
-			k: authorizationParameterKey,
-			v: auth,
+			K: authorizationParameterKey,
+			V: auth,
 		}
 	}
-	sub := newReceiveSubscription(sm.SubscribeID, s)
+	sub := newRemoteTrack(sm.SubscribeID, s)
 	if err := s.si.receiveSubscriptions.add(sm.SubscribeID, sub); err != nil {
 		return nil, err
 	}

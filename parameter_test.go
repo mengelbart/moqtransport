@@ -18,64 +18,64 @@ func TestParameterAppend(t *testing.T) {
 	}{
 		{
 			p: stringParameter{
-				k: 1,
-				v: "",
+				K: 1,
+				V: "",
 			},
 			buf:    nil,
 			expect: []byte{0x01, 0x00},
 		},
 		{
 			p: stringParameter{
-				k: 1,
-				v: "A",
+				K: 1,
+				V: "A",
 			},
 			buf:    nil,
 			expect: []byte{0x01, 0x01, 'A'},
 		},
 		{
 			p: stringParameter{
-				k: 1,
-				v: "A",
+				K: 1,
+				V: "A",
 			},
 			buf:    []byte{},
 			expect: []byte{0x01, 0x01, 'A'},
 		},
 		{
 			p: stringParameter{
-				k: 1,
-				v: "A",
+				K: 1,
+				V: "A",
 			},
 			buf:    []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02, 0x01, 0x01, 'A'},
 		},
 		{
 			p: varintParameter{
-				k: 0,
-				v: uint64(IngestionRole),
+				K: 0,
+				V: uint64(IngestionRole),
 			},
 			buf:    nil,
 			expect: []byte{0x00, 0x01, 0x01},
 		},
 		{
 			p: varintParameter{
-				k: 0,
-				v: uint64(DeliveryRole),
+				K: 0,
+				V: uint64(DeliveryRole),
 			},
 			buf:    nil,
 			expect: []byte{0x00, 0x01, 0x02},
 		},
 		{
 			p: varintParameter{
-				k: 0,
-				v: uint64(IngestionDeliveryRole),
+				K: 0,
+				V: uint64(IngestionDeliveryRole),
 			},
 			buf:    []byte{},
 			expect: []byte{0x00, 0x01, 0x03},
 		},
 		{
 			p: varintParameter{
-				k: 0,
-				v: uint64(IngestionDeliveryRole),
+				K: 0,
+				V: uint64(IngestionDeliveryRole),
 			},
 			buf:    []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02, 0x00, 0x01, 0x03},
@@ -98,16 +98,16 @@ func TestParseParameter(t *testing.T) {
 		{
 			buf: []byte{byte(roleParameterKey), 0x01, byte(IngestionRole)},
 			expect: varintParameter{
-				k: 0,
-				v: uint64(IngestionRole),
+				K: 0,
+				V: uint64(IngestionRole),
 			},
 			err: nil,
 		},
 		{
 			buf: append(append([]byte{byte(pathParameterKey)}, quicvarint.Append([]byte{}, uint64(len("/path/param")))...), "/path/param"...),
 			expect: stringParameter{
-				k: 1,
-				v: "/path/param",
+				K: 1,
+				V: "/path/param",
 			},
 			err: nil,
 		},
@@ -163,8 +163,8 @@ func TestParseParameters(t *testing.T) {
 			r: bytes.NewReader([]byte{0x01, 0x01, 0x01, 'A'}),
 			expect: parameters{
 				pathParameterKey: stringParameter{
-					k: 1,
-					v: "A",
+					K: 1,
+					V: "A",
 				},
 			},
 			err: nil,
@@ -173,12 +173,12 @@ func TestParseParameters(t *testing.T) {
 			r: bytes.NewReader([]byte{0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'}),
 			expect: parameters{
 				roleParameterKey: varintParameter{
-					k: 0,
-					v: uint64(IngestionRole),
+					K: 0,
+					V: uint64(IngestionRole),
 				},
 				pathParameterKey: stringParameter{
-					k: 1,
-					v: "A",
+					K: 1,
+					V: "A",
 				},
 			},
 			err: nil,
@@ -186,8 +186,8 @@ func TestParseParameters(t *testing.T) {
 		{
 			r: bytes.NewReader([]byte{0x01, 0x01, 0x01, 'A', 0x02, 0x02, 0x02, 0x02}),
 			expect: parameters{pathParameterKey: stringParameter{
-				k: 1,
-				v: "A",
+				K: 1,
+				V: "A",
 			}},
 			err: nil,
 		},
@@ -197,10 +197,10 @@ func TestParseParameters(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			r: bytes.NewReader([]byte{0x02, 0x02, 0x01, 0x00, 0x01, 0x01, 'A'}),
+			r: bytes.NewReader([]byte{0x02, 0x0f, 0x01, 0x00, 0x01, 0x01, 'A'}),
 			expect: parameters{pathParameterKey: stringParameter{
-				k: pathParameterKey,
-				v: "A",
+				K: pathParameterKey,
+				V: "A",
 			}},
 			err: nil,
 		},

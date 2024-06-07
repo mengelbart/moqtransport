@@ -1,4 +1,4 @@
-package chat
+package main
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 func TestParseChatalog(t *testing.T) {
 	cases := []struct {
 		in        string
-		expect    *chatalog
+		expect    *chatalog[struct{}]
 		expectErr error
 	}{
 		{
@@ -28,7 +28,7 @@ func TestParseChatalog(t *testing.T) {
 alice
 bob
 charlie`,
-			expect: &chatalog{
+			expect: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -41,7 +41,7 @@ charlie`,
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			c, err := parseChatalog(tc.in)
+			c, err := parseChatalog[struct{}](tc.in)
 			if tc.expectErr != nil {
 				assert.Error(t, err)
 				assert.ErrorIs(t, err, tc.expectErr)
@@ -55,15 +55,15 @@ charlie`,
 
 func TestSerializeChatalog(t *testing.T) {
 	cases := []struct {
-		in     *chatalog
+		in     *chatalog[struct{}]
 		expect string
 	}{
 		{
-			in:     &chatalog{version: 0, participants: nil},
+			in:     &chatalog[struct{}]{version: 0, participants: nil},
 			expect: "version=0",
 		},
 		{
-			in: &chatalog{
+			in: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -147,19 +147,19 @@ func TestSerializeDelta(t *testing.T) {
 
 func TestApplyDelta(t *testing.T) {
 	cases := []struct {
-		c         *chatalog
+		c         *chatalog[struct{}]
 		d         *delta
-		expect    *chatalog
+		expect    *chatalog[struct{}]
 		expectErr error
 	}{
 		{
-			c:         &chatalog{},
+			c:         &chatalog[struct{}]{},
 			d:         &delta{},
-			expect:    &chatalog{},
+			expect:    &chatalog[struct{}]{},
 			expectErr: nil,
 		},
 		{
-			c: &chatalog{
+			c: &chatalog[struct{}]{
 				version:      0,
 				participants: map[string]struct{}{},
 			},
@@ -167,14 +167,14 @@ func TestApplyDelta(t *testing.T) {
 				joined: []string{},
 				left:   []string{},
 			},
-			expect: &chatalog{
+			expect: &chatalog[struct{}]{
 				version:      0,
 				participants: map[string]struct{}{},
 			},
 			expectErr: nil,
 		},
 		{
-			c: &chatalog{
+			c: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -186,7 +186,7 @@ func TestApplyDelta(t *testing.T) {
 				joined: []string{"daphne"},
 				left:   []string{"bob"},
 			},
-			expect: &chatalog{
+			expect: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -197,7 +197,7 @@ func TestApplyDelta(t *testing.T) {
 			expectErr: nil,
 		},
 		{
-			c: &chatalog{
+			c: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -209,7 +209,7 @@ func TestApplyDelta(t *testing.T) {
 				joined: []string{"charlie"},
 				left:   []string{"bob"},
 			},
-			expect: &chatalog{
+			expect: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -220,7 +220,7 @@ func TestApplyDelta(t *testing.T) {
 			expectErr: errDuplicateParticipantJoined,
 		},
 		{
-			c: &chatalog{
+			c: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},
@@ -232,7 +232,7 @@ func TestApplyDelta(t *testing.T) {
 				joined: []string{},
 				left:   []string{"daphne"},
 			},
-			expect: &chatalog{
+			expect: &chatalog[struct{}]{
 				version: 1,
 				participants: map[string]struct{}{
 					"alice":   {},

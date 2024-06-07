@@ -8,42 +8,62 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"flag"
+	"fmt"
 	"log"
+	"log/slog"
 	"math/big"
+	"os"
 
-	"github.com/mengelbart/moqtransport/examples/chat"
+	"github.com/mengelbart/moqtransport"
 )
 
 func main() {
 	certFile := flag.String("cert", "localhost.pem", "TLS certificate file")
 	keyFile := flag.String("key", "localhost-key.pem", "TLS key file")
 	addr := flag.String("addr", "localhost:8080", "listen address")
-	wt := flag.Bool("webtransport", false, "Use webtransport instead of QUIC")
-	quic := flag.Bool("quic", false, "Serve QUIC only")
+	runAsServer := flag.Bool("server", false, "if set, run as server otherwise client")
+	quic := flag.Bool("quic", false, "run client in raw QUIC mode")
 	flag.Parse()
 
-	tlsConfig, err := generateTLSConfigWithCertAndKey(*certFile, *keyFile)
+	moqtransport.SetLogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+
+	if *runAsServer {
+		if err := runServer(*addr, *certFile, *keyFile); err != nil {
+			log.Fatalf("faild to run server: %v", err)
+		}
+		return
+	}
+	if err := runClient(*addr, *quic); err != nil {
+		log.Panicf("faild to run client: %v", err)
+	}
+	log.Println("bye")
+}
+
+func runClient(addr string, quic bool) error {
+	var client *Client
+	var err error
+	if quic {
+		client, err = NewQUICClient(context.Background(), addr)
+		if err != nil {
+			return err
+		}
+	} else {
+		client, err = NewWebTransportClient(context.Background(), fmt.Sprintf("https://%v/moq", addr))
+		if err != nil {
+			return err
+		}
+	}
+	return client.Run()
+}
+
+func runServer(addr, certFile, keyFile string) error {
+	tlsConfig, err := generateTLSConfigWithCertAndKey(certFile, keyFile)
 	if err != nil {
 		log.Printf("failed to generate TLS config from cert file and key, generating in memory certs: %v", err)
 		tlsConfig = generateTLSConfig()
 	}
-
-	s := chat.NewServer()
-	if *wt {
-		if err := s.ListenWebTransport(context.TODO(), *addr, tlsConfig); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-	if *quic {
-		if err := s.ListenQUIC(context.TODO(), *addr, tlsConfig); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-	if err := s.Listen(context.TODO(), *addr, tlsConfig); err != nil {
-		log.Fatal(err)
-	}
+	s := newServer(addr, tlsConfig)
+	return s.run()
 }
 
 func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, error) {

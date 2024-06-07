@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -24,6 +25,14 @@ type parameter interface {
 
 type parameters map[uint64]parameter
 
+func (p parameters) String() string {
+	res := ""
+	for k, v := range p {
+		res += fmt.Sprintf("%v - {%v}\n", k, v.String())
+	}
+	return res
+}
+
 func parseParameter(r messageReader) (parameter, error) {
 	key, err := quicvarint.Read(r)
 	if err != nil {
@@ -32,7 +41,7 @@ func parseParameter(r messageReader) (parameter, error) {
 	switch key {
 	case roleParameterKey:
 		return parseVarintParameter(r, key)
-	case pathParameterKey:
+	case pathParameterKey, authorizationParameterKey:
 		return parseStringParameter(r, key)
 	}
 	length, err := quicvarint.Read(r)

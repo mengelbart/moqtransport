@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -56,7 +57,7 @@ func (s *controlStream) writeMessages() {
 			s.logger.Info("close called, leaving control stream write loop")
 			return
 		case msg := <-s.sendQueue:
-			s.logger.Info("sending control message", "message", msg)
+			s.logger.Info("sending control message", "type", fmt.Sprintf("%T", msg), "message", msg)
 			buf := make([]byte, 0, 1500)
 			buf = msg.append(buf)
 			if _, err := s.stream.Write(buf); err != nil {

@@ -100,7 +100,7 @@ func TestIntegration(t *testing.T) {
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			assert.Equal(t, "/namespace", a.Namespace())
 			arw.Accept()
 		}))
@@ -129,7 +129,7 @@ func TestIntegration(t *testing.T) {
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, _ *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			arw.Reject(0, "TEST_ERR")
 		}))
 		<-receivedAnnounceError
@@ -161,7 +161,7 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		announcementCh := make(chan struct{})
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			assert.Equal(t, "namespace", a.Namespace())
 			arw.Accept()
 			close(announcementCh)
@@ -210,7 +210,7 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		announcementCh := make(chan struct{})
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			assert.Equal(t, "namespace", a.Namespace())
 			arw.Accept()
 			close(announcementCh)
@@ -219,10 +219,9 @@ func TestIntegration(t *testing.T) {
 		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
 		close(subscribedCh)
-		buf := make([]byte, 1500)
-		n, err := sub.Read(buf)
+		o, err := sub.ReadObject(ctx)
 		assert.NoError(t, err)
-		assert.Equal(t, "hello world", string(buf[:n]))
+		assert.Equal(t, "hello world", string(o.Payload))
 		close(receivedObject)
 		assert.NoError(t, client.Close())
 		wg.Wait()
@@ -290,7 +289,7 @@ func TestIntegration(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		announcementCh := make(chan struct{})
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 			assert.Equal(t, "namespace", a.Namespace())
 			arw.Accept()
 			close(announcementCh)
