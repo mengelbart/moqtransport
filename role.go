@@ -3,7 +3,7 @@ package moqtransport
 type Role uint64
 
 const (
-	IngestionRole Role = iota + 1
-	DeliveryRole
-	IngestionDeliveryRole
+	RolePublisher Role = iota + 1
+	RoleSubscriber
+	RolePubSub
 )
