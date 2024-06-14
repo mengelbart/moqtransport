@@ -26,6 +26,7 @@ type messageType uint64
 const (
 	objectStreamMessageType      messageType = 0x00
 	objectDatagramMessageType    messageType = 0x01
+	subscribeUpdateMessageType   messageType = 0x02
 	subscribeMessageType         messageType = 0x03
 	subscribeOkMessageType       messageType = 0x04
 	subscribeErrorMessageType    messageType = 0x05
@@ -51,6 +52,8 @@ func (mt messageType) String() string {
 		return "objectDatagram"
 	case subscribeMessageType:
 		return "SubscribeMessage"
+	case subscribeUpdateMessageType:
+		return "SubscribeUpdateMessage"
 	case subscribeOkMessageType:
 		return "SubscribeOkMessage"
 	case subscribeErrorMessageType:
@@ -127,6 +130,8 @@ func (p *loggingParser) parse() (msg message, err error) {
 		msg, err = p.parseObjectMessage(messageType(mt))
 	case subscribeMessageType:
 		msg, err = p.parseSubscribeMessage()
+	case subscribeUpdateMessageType:
+		msg, err = p.parseSubscribeUpdateMessage()
 	case subscribeOkMessageType:
 		msg, err = p.parseSubscribeOkMessage()
 	case subscribeErrorMessageType:
@@ -433,6 +438,71 @@ func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
 		EndGroup:       endGroup,
 		EndObject:      endObject,
 		Parameters:     ps,
+	}, nil
+}
+
+type subscribeUpdateMessage struct {
+	SubscribeID uint64
+	StartGroup  uint64
+	StartObject uint64
+	EndGroup    uint64
+	EndObject   uint64
+	Parameters  parameters
+}
+
+func (m subscribeUpdateMessage) String() string {
+	buf, err := json.Marshal(m)
+	if err != nil {
+		return "json.Marshal of subscribeUpdateMessage failed"
+	}
+	return fmt.Sprintf("%v:%v", subscribeUpdateMessageType.String(), string(buf))
+}
+
+func (m *subscribeUpdateMessage) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(subscribeUpdateMessageType))
+	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.StartGroup)
+	buf = quicvarint.Append(buf, m.StartObject)
+	buf = quicvarint.Append(buf, m.EndGroup)
+	buf = quicvarint.Append(buf, m.EndObject)
+	return m.Parameters.append(buf)
+}
+
+func (p *loggingParser) parseSubscribeUpdateMessage() (*subscribeUpdateMessage, error) {
+	if p.reader == nil {
+		return nil, errInvalidMessageReader
+	}
+	subscribeID, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	startGroup, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	startObject, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	endGroup, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	endObject, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	ps, err := parseParameters(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	return &subscribeUpdateMessage{
+		SubscribeID: subscribeID,
+		StartGroup:  startGroup,
+		StartObject: startObject,
+		EndGroup:    endGroup,
+		EndObject:   endObject,
+		Parameters:  ps,
 	}, nil
 }
 
