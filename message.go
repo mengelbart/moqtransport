@@ -14,6 +14,7 @@ import (
 var (
 	errInvalidMessageReader = errors.New("invalid message reader")
 	errUnknownMessage       = errors.New("unknown message type")
+	errInvalidFilterType    = errors.New("invalid filter type")
 )
 
 type message interface {
@@ -80,6 +81,23 @@ func (mt messageType) String() string {
 		return "announceCancelMessageType"
 	}
 	return "unknown message type"
+}
+
+type FilterType uint64
+
+const (
+	FilterTypeLatestGroup FilterType = iota + 1
+	FilterTypeLatestObject
+	FilterTypeAbsoluteStart
+	FilterTypeAbsoluteRange
+)
+
+func (f FilterType) append(buf []byte) []byte {
+	switch f {
+	case FilterTypeLatestGroup, FilterTypeLatestObject, FilterTypeAbsoluteStart, FilterTypeAbsoluteRange:
+		return quicvarint.Append(buf, uint64(f))
+	}
+	return quicvarint.Append(buf, uint64(FilterTypeLatestGroup))
 }
 
 type messageReader interface {
@@ -311,10 +329,11 @@ type subscribeMessage struct {
 	TrackAlias     uint64
 	TrackNamespace string
 	TrackName      string
-	StartGroup     Location
-	StartObject    Location
-	EndGroup       Location
-	EndObject      Location
+	FilterType     FilterType
+	StartGroup     uint64
+	StartObject    uint64
+	EndGroup       uint64
+	EndObject      uint64
 	Parameters     parameters
 }
 
@@ -336,15 +355,16 @@ func (m *subscribeMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = appendVarIntString(buf, m.TrackNamespace)
 	buf = appendVarIntString(buf, m.TrackName)
-	buf = m.StartGroup.append(buf)
-	buf = m.StartObject.append(buf)
-	buf = m.EndGroup.append(buf)
-	buf = m.EndObject.append(buf)
-	buf = quicvarint.Append(buf, uint64(len(m.Parameters)))
-	for _, p := range m.Parameters {
-		buf = p.append(buf)
+	buf = m.FilterType.append(buf)
+	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
+		buf = quicvarint.Append(buf, m.StartGroup)
+		buf = quicvarint.Append(buf, m.StartObject)
 	}
-	return buf
+	if m.FilterType == FilterTypeAbsoluteRange {
+		buf = quicvarint.Append(buf, m.EndGroup)
+		buf = quicvarint.Append(buf, m.EndObject)
+	}
+	return m.Parameters.append(buf)
 }
 
 func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
@@ -367,21 +387,36 @@ func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	startGroup, err := p.parseLocation()
+	ft, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
 	}
-	startObject, err := p.parseLocation()
-	if err != nil {
-		return nil, err
+	filterType := FilterType(ft)
+	switch filterType {
+	case FilterTypeLatestGroup, FilterTypeLatestObject, FilterTypeAbsoluteStart, FilterTypeAbsoluteRange:
+	default:
+		return nil, errInvalidFilterType
 	}
-	endGroup, err := p.parseLocation()
-	if err != nil {
-		return nil, err
+	var startGroup, startObject, endGroup, endObject uint64
+	if filterType == FilterTypeAbsoluteStart || filterType == FilterTypeAbsoluteRange {
+		startGroup, err = quicvarint.Read(p.reader)
+		if err != nil {
+			return nil, err
+		}
+		startObject, err = quicvarint.Read(p.reader)
+		if err != nil {
+			return nil, err
+		}
 	}
-	endObject, err := p.parseLocation()
-	if err != nil {
-		return nil, err
+	if filterType == FilterTypeAbsoluteRange {
+		endGroup, err = quicvarint.Read(p.reader)
+		if err != nil {
+			return nil, err
+		}
+		endObject, err = quicvarint.Read(p.reader)
+		if err != nil {
+			return nil, err
+		}
 	}
 	ps, err := parseParameters(p.reader)
 	if err != nil {
@@ -392,6 +427,7 @@ func (p *loggingParser) parseSubscribeMessage() (*subscribeMessage, error) {
 		TrackAlias:     trackAlias,
 		TrackNamespace: trackNamespace,
 		TrackName:      fullTrackName,
+		FilterType:     filterType,
 		StartGroup:     startGroup,
 		StartObject:    startObject,
 		EndGroup:       endGroup,
@@ -675,11 +711,7 @@ func (m announceMessage) trackNamespace() string {
 func (m *announceMessage) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(announceMessageType))
 	buf = appendVarIntString(buf, m.TrackNamespace)
-	buf = quicvarint.Append(buf, uint64(len(m.TrackRequestParameters)))
-	for _, p := range m.TrackRequestParameters {
-		buf = p.append(buf)
-	}
-	return buf
+	return m.TrackRequestParameters.append(buf)
 }
 
 func (p *loggingParser) parseAnnounceMessage() (*announceMessage, error) {
