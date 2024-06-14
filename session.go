@@ -366,6 +366,8 @@ func (s *Session) handleNonSetupMessage(msg message) error {
 	switch m := msg.(type) {
 	case *subscribeMessage:
 		s.handleSubscribe(m)
+	case *subscribeUpdateMessage:
+		panic("TODO")
 	case *subscribeOkMessage:
 		return s.handleSubscriptionResponse(m)
 	case *subscribeErrorMessage:
