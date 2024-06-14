@@ -57,7 +57,6 @@ func (s *RemoteTrack) push(o Object) {
 	case s.buffer <- o:
 	case <-s.closeCh:
 	}
-	s.logger.Info("push object done", "object", o)
 }
 
 func (s *RemoteTrack) readTrackHeaderStream(rs ReceiveStream) {
@@ -95,7 +94,7 @@ func (s *RemoteTrack) readGroupHeaderStream(rs ReceiveStream, groupID uint64) {
 			ObjectID:             msg.ObjectID,
 			ObjectSendOrder:      0,
 			ForwardingPreference: ObjectForwardingPreferenceStreamGroup,
-			Payload:              []byte{},
+			Payload:              msg.ObjectPayload,
 		})
 	}
 }
