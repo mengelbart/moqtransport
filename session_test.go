@@ -118,10 +118,11 @@ func TestSession(t *testing.T) {
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
 			TrackName:      "track",
-			StartGroup:     Location{},
-			StartObject:    Location{},
-			EndGroup:       Location{},
-			EndObject:      Location{},
+			FilterType:     0,
+			StartGroup:     0,
+			StartObject:    0,
+			EndGroup:       0,
+			EndObject:      0,
 			Parameters:     map[uint64]parameter{},
 		})
 		assert.NoError(t, err)
@@ -179,10 +180,11 @@ func TestSession(t *testing.T) {
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
 			TrackName:      "track",
-			StartGroup:     Location{LocationModeAbsolute, 0x00},
-			StartObject:    Location{LocationModeAbsolute, 0x00},
-			EndGroup:       Location{},
-			EndObject:      Location{},
+			FilterType:     0,
+			StartGroup:     0,
+			StartObject:    0,
+			EndGroup:       0,
+			EndObject:      0,
 			Parameters:     map[uint64]parameter{authorizationParameterKey: stringParameter{K: authorizationParameterKey, V: "auth"}},
 		}).Do(func(_ message) {
 			go func() {

@@ -25,35 +25,20 @@ type parameter interface {
 
 type parameters map[uint64]parameter
 
+func (p parameters) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(len(p)))
+	for _, p := range p {
+		buf = p.append(buf)
+	}
+	return buf
+}
+
 func (p parameters) String() string {
 	res := ""
 	for k, v := range p {
 		res += fmt.Sprintf("%v - {%v}\n", k, v.String())
 	}
 	return res
-}
-
-func parseParameter(r messageReader) (parameter, error) {
-	key, err := quicvarint.Read(r)
-	if err != nil {
-		return nil, err
-	}
-	switch key {
-	case roleParameterKey:
-		return parseVarintParameter(r, key)
-	case pathParameterKey, authorizationParameterKey:
-		return parseStringParameter(r, key)
-	}
-	length, err := quicvarint.Read(r)
-	if err != nil {
-		return nil, err
-	}
-	buf := make([]byte, length)
-	_, err = r.Read(buf)
-	if err != nil {
-		return nil, err
-	}
-	return nil, nil
 }
 
 func parseParameters(r messageReader) (parameters, error) {
@@ -79,4 +64,27 @@ func parseParameters(r messageReader) (parameters, error) {
 		ps[p.key()] = p
 	}
 	return ps, nil
+}
+
+func parseParameter(r messageReader) (parameter, error) {
+	key, err := quicvarint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	switch key {
+	case roleParameterKey:
+		return parseVarintParameter(r, key)
+	case pathParameterKey, authorizationParameterKey:
+		return parseStringParameter(r, key)
+	}
+	length, err := quicvarint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]byte, length)
+	_, err = r.Read(buf)
+	if err != nil {
+		return nil, err
+	}
+	return nil, nil
 }

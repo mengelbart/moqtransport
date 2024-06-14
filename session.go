@@ -598,16 +598,17 @@ func (s *Session) AddLocalTrack(t *LocalTrack) error {
 	}, t)
 }
 
-func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname, auth string) (*RemoteTrack, error) {
+func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname string, auth string) (*RemoteTrack, error) {
 	sm := &subscribeMessage{
 		SubscribeID:    subscribeID,
 		TrackAlias:     trackAlias,
 		TrackNamespace: namespace,
 		TrackName:      trackname,
-		StartGroup:     Location{LocationModeAbsolute, 0x00},
-		StartObject:    Location{LocationModeAbsolute, 0x00},
-		EndGroup:       Location{},
-		EndObject:      Location{},
+		FilterType:     0,
+		StartGroup:     0,
+		StartObject:    0,
+		EndGroup:       0,
+		EndObject:      0,
 		Parameters:     map[uint64]parameter{},
 	}
 	if len(auth) > 0 {
