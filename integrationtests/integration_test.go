@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport"
+	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
@@ -40,7 +41,7 @@ func quicClientSession(t *testing.T, ctx context.Context, addr string, handler m
 	session := &moqtransport.Session{
 		Conn:                quicmoq.New(conn),
 		EnableDatagrams:     true,
-		LocalRole:           moqtransport.RolePubSub,
+		LocalRole:           wire.RolePubSub,
 		AnnouncementHandler: handler,
 	}
 	err = session.RunClient()

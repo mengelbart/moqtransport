@@ -6,7 +6,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type RemoteTrack struct {
@@ -31,11 +31,11 @@ func newRemoteTrack(id uint64, s *Session) *RemoteTrack {
 	return t
 }
 
-func (s *RemoteTrack) ReadObject(ctx context.Context) (Object, error) {
+func (t *RemoteTrack) ReadObject(ctx context.Context) (Object, error) {
 	select {
 	case <-ctx.Done():
 		return Object{}, ctx.Err()
-	case obj, ok := <-s.buffer:
+	case obj, ok := <-t.buffer:
 		if !ok {
 			return Object{}, errors.New("track closed")
 		}
@@ -43,57 +43,39 @@ func (s *RemoteTrack) ReadObject(ctx context.Context) (Object, error) {
 	}
 }
 
-func (s *RemoteTrack) Unsubscribe() {
-	s.session.unsubscribe(s.subscribeID)
+func (t *RemoteTrack) Unsubscribe() {
+	t.session.unsubscribe(t.subscribeID)
 }
 
-func (s *RemoteTrack) close() {
-	close(s.closeCh)
+func (t *RemoteTrack) close() {
+	close(t.closeCh)
 }
 
-func (s *RemoteTrack) push(o Object) {
-	s.logger.Info("push object", "object", o)
+func (t *RemoteTrack) push(o Object) {
+	t.logger.Info("push object", "object", o)
 	select {
-	case s.buffer <- o:
-	case <-s.closeCh:
+	case t.buffer <- o:
+	case <-t.closeCh:
 	}
 }
 
-func (s *RemoteTrack) readTrackHeaderStream(rs ReceiveStream) {
-	parser := newParser(quicvarint.NewReader(rs))
+func (t *RemoteTrack) readObjectStream(p *wire.ObjectStreamParser) {
+	t.logger.Info("reading object stream")
+	defer t.logger.Info("finished reading object stream")
 	for {
-		msg, err := parser.parseStreamHeaderTrackObject()
+		msg, err := p.Parse()
 		if err != nil {
 			if err == io.EOF {
 				return
 			}
 			panic(err)
 		}
-		s.push(Object{
+		t.logger.Info("object stream got object", "msg", msg)
+		t.push(Object{
 			GroupID:              msg.GroupID,
 			ObjectID:             msg.ObjectID,
 			ObjectSendOrder:      0,
-			ForwardingPreference: ObjectForwardingPreferenceStreamTrack,
-			Payload:              msg.ObjectPayload,
-		})
-	}
-}
-
-func (s *RemoteTrack) readGroupHeaderStream(rs ReceiveStream, groupID uint64) {
-	parser := newParser(quicvarint.NewReader(rs))
-	for {
-		msg, err := parser.parseStreamHeaderGroupObject()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			panic(err)
-		}
-		s.push(Object{
-			GroupID:              groupID,
-			ObjectID:             msg.ObjectID,
-			ObjectSendOrder:      0,
-			ForwardingPreference: ObjectForwardingPreferenceStreamGroup,
+			ForwardingPreference: ObjectForwardingPreferenceFromMessageType(msg.Type),
 			Payload:              msg.ObjectPayload,
 		})
 	}

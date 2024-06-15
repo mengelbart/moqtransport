@@ -1,8 +1,8 @@
-package moqtransport
+package wire
 
 import (
+	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -74,46 +74,46 @@ func TestVarIntStringLen(t *testing.T) {
 
 func TestParseVarIntString(t *testing.T) {
 	cases := []struct {
-		r      messageReader
+		data   []byte
 		expect string
 		err    error
 	}{
 		{
-			r:      nil,
-			expect: "",
-			err:    errors.New("invalid message reader"),
-		},
-		{
-			r:      bytes.NewReader([]byte{}),
+			data:   nil,
 			expect: "",
 			err:    io.EOF,
 		},
 		{
-			r:      bytes.NewReader(append([]byte{0x01}, "A"...)),
+			data:   []byte{},
+			expect: "",
+			err:    io.EOF,
+		},
+		{
+			data:   append([]byte{0x01}, "A"...),
 			expect: "A",
 			err:    nil,
 		},
 		{
-			r:      bytes.NewReader(append([]byte{0x04}, "ABC"...)),
+			data:   append([]byte{0x04}, "ABC"...),
 			expect: "",
-			err:    io.EOF,
+			err:    io.ErrUnexpectedEOF,
 		},
 		{
-			r:      bytes.NewReader(append([]byte{0x02}, "ABC"...)),
+			data:   append([]byte{0x02}, "ABC"...),
 			expect: "AB",
 			err:    nil,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseVarIntString(tc.r)
+			reader := bufio.NewReader(bytes.NewReader(tc.data))
+			res, err := parseVarIntString(reader)
+			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
-				assert.Equal(t, tc.expect, res)
-				return
+			} else {
+				assert.NoError(t, err)
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expect, res)
 		})
 	}
 

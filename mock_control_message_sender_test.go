@@ -12,6 +12,7 @@ package moqtransport
 import (
 	reflect "reflect"
 
+	wire "github.com/mengelbart/moqtransport/internal/wire"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -51,7 +52,7 @@ func (mr *MockControlMessageSenderMockRecorder) close() *gomock.Call {
 }
 
 // enqueue mocks base method.
-func (m *MockControlMessageSender) enqueue(arg0 message) {
+func (m *MockControlMessageSender) enqueue(arg0 wire.Message) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "enqueue", arg0)
 }

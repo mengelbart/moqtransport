@@ -1,9 +1,11 @@
 package moqtransport
 
-type Role uint64
+import "github.com/mengelbart/moqtransport/internal/wire"
+
+type Role = wire.Role
 
 const (
-	RolePublisher Role = iota + 1
-	RoleSubscriber
-	RolePubSub
+	RolePublisher  Role = wire.RolePublisher
+	RoleSubscriber Role = wire.RoleSubscriber
+	RolePubSub     Role = wire.RolePubSub
 )

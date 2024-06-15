@@ -10,7 +10,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 const (
@@ -22,18 +22,14 @@ var (
 	errClosed = errors.New("session closed")
 )
 
-type parser interface {
-	parse() (message, error)
-}
-
 type subscribeIDer interface {
-	message
-	subscribeID() uint64
+	wire.Message
+	GetSubscribeID() uint64
 }
 
 type trackNamespacer interface {
-	message
-	trackNamespace() string
+	wire.Message
+	GetTrackNamespace() string
 }
 
 type trackKey struct {
@@ -70,15 +66,15 @@ func newSessionInternals(logSuffix string) *sessionInternals {
 }
 
 type controlMessageSender interface {
-	enqueue(message)
+	enqueue(wire.Message)
 	close()
 }
 
 type Session struct {
 	Conn                Connection
 	EnableDatagrams     bool
-	LocalRole           Role
-	RemoteRole          Role
+	LocalRole           wire.Role
+	RemoteRole          wire.Role
 	AnnouncementHandler AnnouncementHandler
 	SubscriptionHandler SubscriptionHandler
 
@@ -90,29 +86,29 @@ type Session struct {
 
 func (s *Session) initRole() {
 	switch s.LocalRole {
-	case RolePublisher, RoleSubscriber, RolePubSub:
+	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
 	default:
-		s.LocalRole = RolePubSub
+		s.LocalRole = wire.RolePubSub
 	}
 	switch s.RemoteRole {
-	case RolePublisher, RoleSubscriber, RolePubSub:
+	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
 	default:
-		s.RemoteRole = RolePubSub
+		s.RemoteRole = wire.RolePubSub
 	}
 }
 
-func (s *Session) validateRemoteRoleParameter(setupParameters parameters) error {
-	remoteRoleParam, ok := setupParameters[roleParameterKey]
+func (s *Session) validateRemoteRoleParameter(setupParameters wire.Parameters) error {
+	remoteRoleParam, ok := setupParameters[wire.RoleParameterKey]
 	if !ok {
 		return s.CloseWithError(ErrorCodeProtocolViolation, "missing role parameter")
 	}
-	remoteRoleParamValue, ok := remoteRoleParam.(varintParameter)
+	remoteRoleParamValue, ok := remoteRoleParam.(*wire.VarintParameter)
 	if !ok {
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter type")
 	}
-	switch Role(remoteRoleParamValue.V) {
-	case RolePublisher, RoleSubscriber, RolePubSub:
-		s.RemoteRole = Role(remoteRoleParamValue.V)
+	switch wire.Role(remoteRoleParamValue.Value) {
+	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
+		s.RemoteRole = wire.Role(remoteRoleParamValue.Value)
 	default:
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter value")
 	}
@@ -136,12 +132,12 @@ func (s *Session) RunClient() error {
 		return err
 	}
 	s.controlStream = newControlStream(controlStream, s.handleControlMessage)
-	s.controlStream.enqueue(&clientSetupMessage{
-		SupportedVersions: []version{CURRENT_VERSION},
-		SetupParameters: map[uint64]parameter{
-			roleParameterKey: varintParameter{
-				K: roleParameterKey,
-				V: uint64(s.LocalRole),
+	s.controlStream.enqueue(&wire.ClientSetupMessage{
+		SupportedVersions: []wire.Version{CURRENT_VERSION},
+		SetupParameters: wire.Parameters{
+			wire.RoleParameterKey: wire.VarintParameter{
+				Type:  wire.RoleParameterKey,
+				Value: uint64(s.LocalRole),
 			},
 		},
 	})
@@ -169,7 +165,7 @@ func (s *Session) RunServer(ctx context.Context) error {
 	return nil
 }
 
-func (s *Session) initClient(setup *serverSetupMessage) error {
+func (s *Session) initClient(setup *wire.ServerSetupMessage) error {
 	if setup.SelectedVersion != CURRENT_VERSION {
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
@@ -180,7 +176,7 @@ func (s *Session) initClient(setup *serverSetupMessage) error {
 	return nil
 }
 
-func (s *Session) initServer(setup *clientSetupMessage) error {
+func (s *Session) initServer(setup *wire.ClientSetupMessage) error {
 	s.controlStream = s.loadControlStream()
 	if !slices.Contains(setup.SupportedVersions, CURRENT_VERSION) {
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
@@ -188,12 +184,12 @@ func (s *Session) initServer(setup *clientSetupMessage) error {
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
 		return err
 	}
-	ssm := &serverSetupMessage{
+	ssm := &wire.ServerSetupMessage{
 		SelectedVersion: CURRENT_VERSION,
-		SetupParameters: map[uint64]parameter{
-			roleParameterKey: varintParameter{
-				K: roleParameterKey,
-				V: uint64(RolePubSub),
+		SetupParameters: wire.Parameters{
+			wire.RoleParameterKey: &wire.VarintParameter{
+				Type:  wire.RoleParameterKey,
+				Value: uint64(wire.RolePubSub),
 			},
 		},
 	}
@@ -236,41 +232,25 @@ func (s *Session) acceptUnidirectionalStreams() {
 }
 
 func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
-	p := newParser(quicvarint.NewReader(stream))
-	msg, err := p.parse()
+	p := wire.NewObjectStreamParser(stream)
+	msg, err := p.Parse()
 	if err != nil {
 		s.si.logger.Error("failed to parse message", "error", err)
 		return
 	}
-	switch h := msg.(type) {
-	case *objectMessage:
-		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
-		if !ok {
-			s.si.logger.Warn("got object for unknown subscribe ID")
-			return
-		}
-		sub.push(Object{
-			GroupID:              h.GroupID,
-			ObjectID:             h.ObjectID,
-			ObjectSendOrder:      0,
-			ForwardingPreference: ObjectForwardingPreferenceStream,
-			Payload:              h.ObjectPayload,
-		})
-	case *streamHeaderTrackMessage:
-		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
-		if !ok {
-			s.si.logger.Warn("got stream header track message for unknown subscription")
-			return
-		}
-		sub.readTrackHeaderStream(stream)
-	case *streamHeaderGroupMessage:
-		sub, ok := s.si.receiveSubscriptions.get(h.SubscribeID)
-		if !ok {
-			s.si.logger.Warn("got stream header track message for unknown subscription")
-			return
-		}
-		sub.readGroupHeaderStream(stream, h.GroupID)
+	sub, ok := s.si.receiveSubscriptions.get(msg.SubscribeID)
+	if !ok {
+		s.si.logger.Warn("got object for unknown subscribe ID")
+		return
 	}
+	sub.push(Object{
+		GroupID:              msg.GroupID,
+		ObjectID:             msg.ObjectID,
+		ObjectSendOrder:      msg.ObjectSendOrder,
+		ForwardingPreference: ObjectForwardingPreferenceFromMessageType(msg.Type),
+		Payload:              msg.ObjectPayload,
+	})
+	sub.readObjectStream(p)
 }
 
 func (s *Session) acceptDatagram() ([]byte, error) {
@@ -294,51 +274,40 @@ func (s *Session) acceptDatagrams() {
 			s.peerClosed()
 			return
 		}
-		go s.readObjectMessages(bytes.NewReader(dgram))
+		go s.readObjectMessage(bytes.NewReader(dgram))
 	}
 }
 
-func (s *Session) readObjectMessages(r messageReader) {
-	msgParser := newParser(r)
-	for {
-		msg, err := msgParser.parse()
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			s.si.logger.Error("failed to parse message", "error", err)
-			pe := &ProtocolError{
-				code:    ErrorCodeProtocolViolation,
-				message: "invalid message format",
-			}
-			_ = s.Conn.CloseWithError(pe.code, pe.message)
+func (s *Session) readObjectMessage(r io.Reader) {
+	msgParser := wire.NewObjectStreamParser(r)
+	o, err := msgParser.Parse()
+	if err != nil {
+		if err == io.EOF {
 			return
 		}
-		o, ok := msg.(*objectMessage)
-		if !ok {
-			pe := &ProtocolError{
-				code:    ErrorCodeProtocolViolation,
-				message: "received unexpected control message on object stream or datagram",
-			}
-			// TODO: Set error on session to surface to application?
-			_ = s.Conn.CloseWithError(pe.code, pe.message)
-			return
+		s.si.logger.Error("failed to parse message", "error", err)
+		pe := &ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "invalid message format",
 		}
-		sub, ok := s.si.receiveSubscriptions.get(o.SubscribeID)
-		if ok {
-			sub.push(Object{
-				GroupID:              o.GroupID,
-				ObjectID:             o.ObjectID,
-				ObjectSendOrder:      0,
-				ForwardingPreference: ObjectForwardingPreferenceDatagram,
-				Payload:              o.ObjectPayload,
-			})
-		}
+		_ = s.Conn.CloseWithError(pe.code, pe.message)
+		return
+	}
+	sub, ok := s.si.receiveSubscriptions.get(o.SubscribeID)
+	if !ok {
 		s.si.logger.Warn("dropping object message for unknown track")
+		return
 	}
+	sub.push(Object{
+		GroupID:              o.GroupID,
+		ObjectID:             o.ObjectID,
+		ObjectSendOrder:      0,
+		ForwardingPreference: ObjectForwardingPreferenceDatagram,
+		Payload:              o.ObjectPayload,
+	})
 }
 
-func (s *Session) handleControlMessage(msg message) error {
+func (s *Session) handleControlMessage(msg wire.Message) error {
 	s.si.logger.Info("received control message", "type", fmt.Sprintf("%T", msg), "message", msg)
 	if s.handshakeDone {
 		if err := s.handleNonSetupMessage(msg); err != nil {
@@ -347,9 +316,9 @@ func (s *Session) handleControlMessage(msg message) error {
 		return nil
 	}
 	switch mt := msg.(type) {
-	case *serverSetupMessage:
+	case *wire.ServerSetupMessage:
 		return s.initClient(mt)
-	case *clientSetupMessage:
+	case *wire.ClientSetupMessage:
 		return s.initServer(mt)
 	}
 	s.si.logger.Info("received message during handshake", "message", msg)
@@ -362,27 +331,27 @@ func (s *Session) handleControlMessage(msg message) error {
 	return pe
 }
 
-func (s *Session) handleNonSetupMessage(msg message) error {
+func (s *Session) handleNonSetupMessage(msg wire.Message) error {
 	switch m := msg.(type) {
-	case *subscribeMessage:
+	case *wire.SubscribeMessage:
 		s.handleSubscribe(m)
-	case *subscribeUpdateMessage:
+	case *wire.SubscribeUpdateMessage:
 		panic("TODO")
-	case *subscribeOkMessage:
+	case *wire.SubscribeOkMessage:
 		return s.handleSubscriptionResponse(m)
-	case *subscribeErrorMessage:
+	case *wire.SubscribeErrorMessage:
 		return s.handleSubscriptionResponse(m)
-	case *subscribeDoneMessage:
+	case *wire.SubscribeDoneMessage:
 		s.handleSubscribeDone(m)
-	case *unsubscribeMessage:
+	case *wire.UnsubscribeMessage:
 		return s.handleUnsubscribe(m)
-	case *announceMessage:
+	case *wire.AnnounceMessage:
 		s.handleAnnounceMessage(m)
-	case *announceOkMessage:
+	case *wire.AnnounceOkMessage:
 		return s.handleAnnouncementResponse(m)
-	case *announceErrorMessage:
+	case *wire.AnnounceErrorMessage:
 		return s.handleAnnouncementResponse(m)
-	case *goAwayMessage:
+	case *wire.GoAwayMessage:
 		panic("TODO")
 	default:
 		return &ProtocolError{
@@ -394,7 +363,7 @@ func (s *Session) handleNonSetupMessage(msg message) error {
 }
 
 func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
-	sub, ok := s.si.receiveSubscriptions.get(msg.subscribeID())
+	sub, ok := s.si.receiveSubscriptions.get(msg.GetSubscribeID())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -411,7 +380,7 @@ func (s *Session) handleSubscriptionResponse(msg subscribeIDer) error {
 }
 
 func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
-	a, ok := s.si.localAnnouncements.get(msg.trackNamespace())
+	a, ok := s.si.localAnnouncements.get(msg.GetTrackNamespace())
 	if !ok {
 		return &ProtocolError{
 			code:    ErrorCodeInternal,
@@ -430,7 +399,7 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 	sendSub := newSendSubscription(s.Conn, sub.ID, sub.TrackAlias, sub.Namespace, sub.TrackName)
 	if err := s.si.sendSubscriptions.add(sub.ID, sendSub); err != nil {
-		s.controlStream.enqueue(&subscribeErrorMessage{
+		s.controlStream.enqueue(&wire.SubscribeErrorMessage{
 			SubscribeID:  sub.ID,
 			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
 			ReasonPhrase: err.Error(),
@@ -440,7 +409,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 	}
 	id, err := t.subscribe(sendSub)
 	if err != nil {
-		s.controlStream.enqueue(&subscribeErrorMessage{
+		s.controlStream.enqueue(&wire.SubscribeErrorMessage{
 			SubscribeID:  sub.ID,
 			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
 			ReasonPhrase: err.Error(),
@@ -449,7 +418,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 		return
 	}
 	sendSub.subscriptionIDinTrack = id
-	s.controlStream.enqueue(&subscribeOkMessage{
+	s.controlStream.enqueue(&wire.SubscribeOkMessage{
 		SubscribeID:   sub.ID,
 		Expires:       0,     // TODO
 		ContentExists: false, // TODO
@@ -459,7 +428,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 }
 
 func (s *Session) rejectSubscription(sub *Subscription, code uint64, reason string) {
-	s.controlStream.enqueue(&subscribeErrorMessage{
+	s.controlStream.enqueue(&wire.SubscribeErrorMessage{
 		SubscribeID:  sub.ID,
 		ErrorCode:    code,
 		ReasonPhrase: reason,
@@ -467,12 +436,12 @@ func (s *Session) rejectSubscription(sub *Subscription, code uint64, reason stri
 	})
 }
 
-func (s *Session) handleSubscribe(msg *subscribeMessage) {
+func (s *Session) handleSubscribe(msg *wire.SubscribeMessage) {
 	var authValue string
-	auth, ok := msg.Parameters[authorizationParameterKey]
-	authString, isStringParam := auth.(stringParameter)
+	auth, ok := msg.Parameters[wire.AuthorizationParameterKey]
+	authString, isStringParam := auth.(*wire.StringParameter)
 	if ok && isStringParam {
-		authValue = authString.V
+		authValue = authString.Value
 	}
 	sub := &Subscription{
 		ID:            msg.SubscribeID,
@@ -499,7 +468,7 @@ func (s *Session) handleSubscribe(msg *subscribeMessage) {
 	s.rejectSubscription(sub, ErrorCodeTrackNotFound, "track not found")
 }
 
-func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
+func (s *Session) handleUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	sub, ok := s.si.sendSubscriptions.get(msg.SubscribeID)
 	if !ok {
 		return errors.New("subscription not found")
@@ -516,8 +485,8 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 		panic(err)
 	}
 	s.si.sendSubscriptions.delete(msg.SubscribeID)
-	s.controlStream.enqueue(&subscribeDoneMessage{
-		SusbcribeID:   msg.SubscribeID,
+	s.controlStream.enqueue(&wire.SubscribeDoneMessage{
+		SubscribeID:   msg.SubscribeID,
 		StatusCode:    0,
 		ReasonPhrase:  "unsubscribed",
 		ContentExists: false, // TODO
@@ -527,21 +496,21 @@ func (s *Session) handleUnsubscribe(msg *unsubscribeMessage) error {
 	return nil
 }
 
-func (s *Session) handleSubscribeDone(msg *subscribeDoneMessage) {
-	sub, ok := s.si.receiveSubscriptions.get(msg.SusbcribeID)
+func (s *Session) handleSubscribeDone(msg *wire.SubscribeDoneMessage) {
+	sub, ok := s.si.receiveSubscriptions.get(msg.SubscribeID)
 	if !ok {
 		s.si.logger.Info("got SubscribeDone for unknown subscription")
 		return
 	}
 	sub.close()
-	s.si.receiveSubscriptions.delete(msg.SusbcribeID)
+	s.si.receiveSubscriptions.delete(msg.SubscribeID)
 }
 
-func (s *Session) handleAnnounceMessage(msg *announceMessage) {
+func (s *Session) handleAnnounceMessage(msg *wire.AnnounceMessage) {
 	a := &Announcement{
 		responseCh: make(chan trackNamespacer),
 		namespace:  msg.TrackNamespace,
-		parameters: msg.TrackRequestParameters,
+		parameters: msg.Parameters,
 	}
 	if err := s.si.remoteAnnouncements.add(a.namespace, a); err != nil {
 		s.si.logger.Error("dropping announcement", "error", err)
@@ -557,7 +526,7 @@ func (s *Session) handleAnnounceMessage(msg *announceMessage) {
 
 func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string) {
 	s.si.remoteAnnouncements.delete(a.namespace)
-	s.controlStream.enqueue(&announceErrorMessage{
+	s.controlStream.enqueue(&wire.AnnounceErrorMessage{
 		TrackNamespace: a.namespace,
 		ErrorCode:      code,
 		ReasonPhrase:   reason,
@@ -565,13 +534,13 @@ func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string
 }
 
 func (s *Session) acceptAnnouncement(a *Announcement) {
-	s.controlStream.enqueue(&announceOkMessage{
+	s.controlStream.enqueue(&wire.AnnounceOkMessage{
 		TrackNamespace: a.namespace,
 	})
 }
 
 func (s *Session) unsubscribe(id uint64) {
-	s.controlStream.enqueue(&unsubscribeMessage{
+	s.controlStream.enqueue(&wire.UnsubscribeMessage{
 		SubscribeID: id,
 	})
 }
@@ -585,6 +554,7 @@ func (s *Session) peerClosed() {
 }
 
 func (s *Session) CloseWithError(code uint64, msg string) error {
+	s.si.logger.Info("CloseWithError called", "code", code, "msg", msg)
 	s.peerClosed()
 	return s.Conn.CloseWithError(code, msg)
 }
@@ -601,7 +571,7 @@ func (s *Session) AddLocalTrack(t *LocalTrack) error {
 }
 
 func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname string, auth string) (*RemoteTrack, error) {
-	sm := &subscribeMessage{
+	sm := &wire.SubscribeMessage{
 		SubscribeID:    subscribeID,
 		TrackAlias:     trackAlias,
 		TrackNamespace: namespace,
@@ -611,12 +581,12 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		StartObject:    0,
 		EndGroup:       0,
 		EndObject:      0,
-		Parameters:     map[uint64]parameter{},
+		Parameters:     wire.Parameters{},
 	}
 	if len(auth) > 0 {
-		sm.Parameters[authorizationParameterKey] = stringParameter{
-			K: authorizationParameterKey,
-			V: auth,
+		sm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
+			Type:  wire.AuthorizationParameterKey,
+			Value: auth,
 		}
 	}
 	sub := newRemoteTrack(sm.SubscribeID, s)
@@ -632,16 +602,16 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 		return nil, errClosed
 	case resp = <-sub.responseCh:
 	}
-	if resp.subscribeID() != sm.SubscribeID {
+	if resp.GetSubscribeID() != sm.SubscribeID {
 		// Should never happen, because messages are routed based on subscribe
 		// ID. Wrong IDs would thus never end up here.
-		s.si.logger.Error("internal error: received response message for wrong subscription ID", "expected_id", sm.SubscribeID, "repsonse_id", resp.subscribeID())
+		s.si.logger.Error("internal error: received response message for wrong subscription ID", "expected_id", sm.SubscribeID, "repsonse_id", resp.GetSubscribeID())
 		return nil, errors.New("internal error: received response message for wrong subscription ID")
 	}
 	switch v := resp.(type) {
-	case *subscribeOkMessage:
+	case *wire.SubscribeOkMessage:
 		return sub, nil
-	case *subscribeErrorMessage:
+	case *wire.SubscribeErrorMessage:
 		s.si.receiveSubscriptions.delete(sm.SubscribeID)
 		return nil, ApplicationError{
 			code:   v.ErrorCode,
@@ -658,9 +628,9 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	if len(namespace) == 0 {
 		return errors.New("invalid track namespace")
 	}
-	am := &announceMessage{
-		TrackNamespace:         namespace,
-		TrackRequestParameters: map[uint64]parameter{},
+	am := &wire.AnnounceMessage{
+		TrackNamespace: namespace,
+		Parameters:     wire.Parameters{},
 	}
 	responseCh := make(chan trackNamespacer)
 	a := &Announcement{
@@ -678,16 +648,16 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 		return errClosed
 	case resp = <-responseCh:
 	}
-	if resp.trackNamespace() != am.TrackNamespace {
+	if resp.GetTrackNamespace() != am.TrackNamespace {
 		// Should never happen, because messages are routed based on trackname.
 		// Wrong tracknames would thus never end up here.
-		s.si.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.trackNamespace())
+		s.si.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.GetTrackNamespace())
 		return errors.New("internal error: received response message for wrong announce track namespace")
 	}
 	switch v := resp.(type) {
-	case *announceOkMessage:
+	case *wire.AnnounceOkMessage:
 		return nil
-	case *announceErrorMessage:
+	case *wire.AnnounceErrorMessage:
 		return ApplicationError{
 			code:   v.ErrorCode,
 			mesage: v.ReasonPhrase,

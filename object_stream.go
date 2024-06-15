@@ -1,12 +1,13 @@
 package moqtransport
 
+import "github.com/mengelbart/moqtransport/internal/wire"
+
 type objectStream struct {
 	stream SendStream
 }
 
 func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
-	osm := &objectMessage{
-		datagram:        false,
+	osm := &wire.ObjectMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		GroupID:         groupID,
@@ -15,7 +16,7 @@ func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, object
 		ObjectPayload:   nil,
 	}
 	buf := make([]byte, 0, 48)
-	buf = osm.append(buf)
+	buf = osm.Append(buf)
 	_, err := stream.Write(buf)
 	if err != nil {
 		return nil, err

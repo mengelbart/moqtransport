@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type subscriberID int
@@ -32,6 +34,20 @@ const (
 	ObjectForwardingPreferenceStreamGroup
 	ObjectForwardingPreferenceStreamTrack
 )
+
+func ObjectForwardingPreferenceFromMessageType(t wire.ObjectMessageType) ObjectForwardingPreference {
+	switch t {
+	case wire.ObjectDatagramMessageType:
+		return ObjectForwardingPreferenceDatagram
+	case wire.ObjectStreamMessageType:
+		return ObjectForwardingPreferenceStream
+	case wire.StreamHeaderTrackMessageType:
+		return ObjectForwardingPreferenceStreamTrack
+	case wire.StreamHeaderGroupMessageType:
+		return ObjectForwardingPreferenceStreamGroup
+	}
+	panic("invalid object message type")
+}
 
 type Object struct {
 	GroupID              uint64

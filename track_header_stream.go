@@ -1,17 +1,19 @@
 package moqtransport
 
+import "github.com/mengelbart/moqtransport/internal/wire"
+
 type trackHeaderStream struct {
 	stream SendStream
 }
 
 func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSendOrder uint64) (*trackHeaderStream, error) {
-	shtm := &streamHeaderTrackMessage{
+	shtm := &wire.StreamHeaderTrackMessage{
 		SubscribeID:     subscribeID,
 		TrackAlias:      trackAlias,
 		ObjectSendOrder: objectSendOrder,
 	}
 	buf := make([]byte, 0, 32)
-	buf = shtm.append(buf)
+	buf = shtm.Append(buf)
 	_, err := stream.Write(buf)
 	if err != nil {
 		return nil, err
@@ -22,13 +24,13 @@ func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSend
 }
 
 func (s *trackHeaderStream) writeObject(groupID, objectID uint64, payload []byte) (int, error) {
-	shto := streamHeaderTrackObject{
+	shto := wire.StreamHeaderTrackObject{
 		GroupID:       groupID,
 		ObjectID:      objectID,
 		ObjectPayload: payload,
 	}
 	buf := make([]byte, 0, 32+len(payload))
-	buf = shto.append(buf)
+	buf = shto.Append(buf)
 	return s.stream.Write(buf)
 }
 

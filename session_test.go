@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 )
@@ -70,12 +71,12 @@ func TestSession(t *testing.T) {
 		csh.EXPECT().enqueue(gomock.Any()).AnyTimes()
 		done := make(chan struct{})
 		s := session(mc, csh, nil)
-		csm := &clientSetupMessage{
-			SupportedVersions: []version{CURRENT_VERSION},
-			SetupParameters: map[uint64]parameter{
-				roleParameterKey: varintParameter{
-					K: roleParameterKey,
-					V: uint64(RolePubSub),
+		csm := &wire.ClientSetupMessage{
+			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SetupParameters: wire.Parameters{
+				wire.RoleParameterKey: &wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
 				},
 			},
 		}
@@ -90,30 +91,30 @@ func TestSession(t *testing.T) {
 		s := session(mc, csh, nil)
 		done := make(chan struct{})
 		csh.EXPECT().enqueue(gomock.Any()).Times(1) // Setup message
-		csh.EXPECT().enqueue(&subscribeOkMessage{
+		csh.EXPECT().enqueue(&wire.SubscribeOkMessage{
 			SubscribeID:   17,
 			Expires:       0,
 			ContentExists: false,
 			FinalGroup:    0,
 			FinalObject:   0,
-		}).Do(func(_ message) {
+		}).Do(func(_ wire.Message) {
 			close(done)
 		})
 		track := NewLocalTrack(0, "namespace", "track")
 		defer track.Close()
 		err := s.AddLocalTrack(track)
 		assert.NoError(t, err)
-		err = s.handleControlMessage(&clientSetupMessage{
-			SupportedVersions: []version{CURRENT_VERSION},
-			SetupParameters: map[uint64]parameter{
-				roleParameterKey: varintParameter{
-					K: roleParameterKey,
-					V: uint64(RolePubSub),
+		err = s.handleControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SetupParameters: wire.Parameters{
+				wire.RoleParameterKey: &wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
 				},
 			},
 		})
 		assert.NoError(t, err)
-		err = s.handleControlMessage(&subscribeMessage{
+		err = s.handleControlMessage(&wire.SubscribeMessage{
 			SubscribeID:    17,
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
@@ -123,7 +124,7 @@ func TestSession(t *testing.T) {
 			StartObject:    0,
 			EndGroup:       0,
 			EndObject:      0,
-			Parameters:     map[uint64]parameter{},
+			Parameters:     wire.Parameters{},
 		})
 		assert.NoError(t, err)
 		select {
@@ -142,24 +143,24 @@ func TestSession(t *testing.T) {
 		}))
 		done := make(chan struct{})
 		csh.EXPECT().enqueue(gomock.Any()).Times(1) // setup message
-		csh.EXPECT().enqueue(&announceOkMessage{
+		csh.EXPECT().enqueue(&wire.AnnounceOkMessage{
 			TrackNamespace: "namespace",
-		}).Do(func(_ message) {
+		}).Do(func(_ wire.Message) {
 			close(done)
 		})
-		err := s.handleControlMessage(&clientSetupMessage{
-			SupportedVersions: []version{CURRENT_VERSION},
-			SetupParameters: map[uint64]parameter{
-				roleParameterKey: varintParameter{
-					K: roleParameterKey,
-					V: uint64(RolePubSub),
+		err := s.handleControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SetupParameters: wire.Parameters{
+				wire.RoleParameterKey: &wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
 				},
 			},
 		})
 		assert.NoError(t, err)
-		err = s.handleControlMessage(&announceMessage{
-			TrackNamespace:         "namespace",
-			TrackRequestParameters: map[uint64]parameter{},
+		err = s.handleControlMessage(&wire.AnnounceMessage{
+			TrackNamespace: "namespace",
+			Parameters:     wire.Parameters{},
 		})
 		assert.NoError(t, err)
 		select {
@@ -175,7 +176,7 @@ func TestSession(t *testing.T) {
 		s := session(mc, csh, nil)
 		done := make(chan struct{})
 		csh.EXPECT().enqueue(gomock.Any()).Times(1)
-		csh.EXPECT().enqueue(&subscribeMessage{
+		csh.EXPECT().enqueue(&wire.SubscribeMessage{
 			SubscribeID:    17,
 			TrackAlias:     0,
 			TrackNamespace: "namespace",
@@ -185,10 +186,10 @@ func TestSession(t *testing.T) {
 			StartObject:    0,
 			EndGroup:       0,
 			EndObject:      0,
-			Parameters:     map[uint64]parameter{authorizationParameterKey: stringParameter{K: authorizationParameterKey, V: "auth"}},
-		}).Do(func(_ message) {
+			Parameters:     wire.Parameters{wire.AuthorizationParameterKey: &wire.StringParameter{Type: wire.AuthorizationParameterKey, Value: "auth"}},
+		}).Do(func(_ wire.Message) {
 			go func() {
-				err := s.handleControlMessage(&subscribeOkMessage{
+				err := s.handleControlMessage(&wire.SubscribeOkMessage{
 					SubscribeID: 17,
 					Expires:     time.Second,
 				})
@@ -196,12 +197,12 @@ func TestSession(t *testing.T) {
 				close(done)
 			}()
 		})
-		err := s.handleControlMessage(&clientSetupMessage{
-			SupportedVersions: []version{CURRENT_VERSION},
-			SetupParameters: map[uint64]parameter{
-				roleParameterKey: varintParameter{
-					K: roleParameterKey,
-					V: uint64(RolePubSub),
+		err := s.handleControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SetupParameters: wire.Parameters{
+				wire.RoleParameterKey: &wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
 				},
 			},
 		})
@@ -223,23 +224,23 @@ func TestSession(t *testing.T) {
 		csh := NewMockControlMessageSender(ctrl)
 		s := session(mc, csh, nil)
 		csh.EXPECT().enqueue(gomock.Any()).Times(1)
-		csh.EXPECT().enqueue(&announceMessage{
-			TrackNamespace:         "namespace",
-			TrackRequestParameters: map[uint64]parameter{},
-		}).Do(func(_ message) {
+		csh.EXPECT().enqueue(&wire.AnnounceMessage{
+			TrackNamespace: "namespace",
+			Parameters:     wire.Parameters{},
+		}).Do(func(_ wire.Message) {
 			go func() {
-				err := s.handleControlMessage(&announceOkMessage{
+				err := s.handleControlMessage(&wire.AnnounceOkMessage{
 					TrackNamespace: "namespace",
 				})
 				assert.NoError(t, err)
 			}()
 		})
-		err := s.handleControlMessage(&clientSetupMessage{
-			SupportedVersions: []version{CURRENT_VERSION},
-			SetupParameters: map[uint64]parameter{
-				roleParameterKey: varintParameter{
-					K: roleParameterKey,
-					V: uint64(RolePubSub),
+		err := s.handleControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SetupParameters: wire.Parameters{
+				wire.RoleParameterKey: &wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
 				},
 			},
 		})
