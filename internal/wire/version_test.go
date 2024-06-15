@@ -1,8 +1,10 @@
-package moqtransport
+package wire
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,19 +16,19 @@ func TestVersionsLen(t *testing.T) {
 		expected uint64
 	}{
 		{
-			versions: []version{},
+			versions: []Version{},
 			expected: 0,
 		},
 		{
-			versions: []version{version(0)},
+			versions: []Version{Version(0)},
 			expected: 1,
 		},
 		{
-			versions: []version{version(CURRENT_VERSION)},
+			versions: []Version{Version(currentVersion)},
 			expected: 8,
 		},
 		{
-			versions: []version{version(1024)},
+			versions: []Version{Version(1024)},
 			expected: 2,
 		},
 	}
@@ -45,12 +47,12 @@ func TestVersionsAppend(t *testing.T) {
 		expected []byte
 	}{
 		{
-			versions: []version{},
+			versions: []Version{},
 			buf:      []byte{},
 			expected: []byte{0x00},
 		},
 		{
-			versions: []version{0},
+			versions: []Version{0},
 			buf:      []byte{},
 			expected: []byte{0x01, 0x00},
 		},
@@ -65,31 +67,32 @@ func TestVersionsAppend(t *testing.T) {
 
 func TestParseVersions(t *testing.T) {
 	cases := []struct {
-		r      messageReader
+		data   []byte
 		expect versions
 		err    error
 	}{
 		{
-			r:      nil,
-			expect: nil,
-			err:    errInvalidMessageReader,
+			data:   nil,
+			expect: versions{},
+			err:    io.EOF,
 		},
 		{
-			r:      bytes.NewReader([]byte{0x01, 0x00}),
-			expect: []version{0},
+			data:   []byte{0x01, 0x00},
+			expect: versions{0},
 			err:    nil,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, err := parseVersions(tc.r)
+			reader := bufio.NewReader(bytes.NewReader(tc.data))
+			res := versions{}
+			err := res.parse(reader)
+			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
-				assert.Equal(t, tc.expect, res)
-				return
+			} else {
+				assert.NoError(t, err)
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expect, res)
 		})
 	}
 }

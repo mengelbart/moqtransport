@@ -70,7 +70,7 @@ func (r *room) findParticipant(username string) (*user, bool) {
 func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtransport.AnnouncementResponseWriter) {
 	u, ok := r.findParticipant(username)
 	if !ok {
-		arw.Reject(uint64(errorCodeUnknownParticipant), "username not found, participant must join before announcing")
+		arw.Reject(uint64(errorCodeUnknownParticipant), fmt.Sprintf("username '%v' not found, participant must join before announcing", username))
 	}
 	arw.Accept()
 	sub, err := s.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username), "", "")

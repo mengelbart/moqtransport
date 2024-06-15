@@ -12,6 +12,7 @@ package moqtransport
 import (
 	reflect "reflect"
 
+	wire "github.com/mengelbart/moqtransport/internal/wire"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -38,17 +39,17 @@ func (m *MockParser) EXPECT() *MockParserMockRecorder {
 	return m.recorder
 }
 
-// parse mocks base method.
-func (m *MockParser) parse() (message, error) {
+// Parse mocks base method.
+func (m *MockParser) Parse() (wire.Message, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "parse")
-	ret0, _ := ret[0].(message)
+	ret := m.ctrl.Call(m, "Parse")
+	ret0, _ := ret[0].(wire.Message)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// parse indicates an expected call of parse.
-func (mr *MockParserMockRecorder) parse() *gomock.Call {
+// Parse indicates an expected call of Parse.
+func (mr *MockParserMockRecorder) Parse() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "parse", reflect.TypeOf((*MockParser)(nil).parse))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parse", reflect.TypeOf((*MockParser)(nil).Parse))
 }

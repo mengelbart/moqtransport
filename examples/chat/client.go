@@ -105,7 +105,8 @@ func (c *Client) handleCatalogDeltas(roomID, username string, previous *chatalog
 		var update *delta
 		switch o.ObjectID {
 		case 0:
-			next, err := parseChatalog[struct{}](string(o.Payload))
+			var next *chatalog[struct{}]
+			next, err = parseChatalog[struct{}](string(o.Payload))
 			if err != nil {
 				return err
 			}

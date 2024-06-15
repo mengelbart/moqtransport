@@ -1,9 +1,11 @@
 package moqtransport
 
+import "github.com/mengelbart/moqtransport/internal/wire"
+
 type Announcement struct {
 	responseCh chan trackNamespacer
 	namespace  string
-	parameters parameters
+	parameters wire.Parameters // TODO: This is unexported, need better API?
 }
 
 func (a *Announcement) Namespace() string {

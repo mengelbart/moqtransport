@@ -1,4 +1,4 @@
-package moqtransport
+package wire
 
 import (
 	"io"
@@ -16,25 +16,21 @@ func varIntStringLen(s string) uint64 {
 	return uint64(quicvarint.Len(uint64(len(s)))) + uint64(len(s))
 }
 
-func parseVarIntString(r messageReader) (string, error) {
-	if r == nil {
-		return "", errInvalidMessageReader
-	}
-	l, err := quicvarint.Read(r)
+func parseVarIntString(reader messageReader) (string, error) {
+	l, err := quicvarint.Read(reader)
 	if err != nil {
 		return "", err
 	}
 	if l == 0 {
 		return "", nil
 	}
-	val := make([]byte, l)
-	var m int
-	m, err = r.Read(val)
+	buf := make([]byte, l)
+	n, err := reader.Read(buf)
 	if err != nil {
 		return "", err
 	}
-	if uint64(m) != l {
-		return "", io.EOF
+	if n < int(l) {
+		return "", io.ErrUnexpectedEOF
 	}
-	return string(val), nil
+	return string(buf[:n]), nil
 }

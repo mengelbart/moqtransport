@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/quic-go/quic-go"
 )
 
@@ -94,8 +95,8 @@ func (s *sendSubscription) WriteObject(o Object) error {
 }
 
 func (s *sendSubscription) sendDatagram(o Object) error {
-	om := objectMessage{
-		datagram:        true,
+	om := &wire.ObjectMessage{
+		Type:            wire.ObjectDatagramMessageType,
 		SubscribeID:     s.subscribeID,
 		TrackAlias:      s.trackAlias,
 		GroupID:         o.GroupID,
@@ -104,7 +105,7 @@ func (s *sendSubscription) sendDatagram(o Object) error {
 		ObjectPayload:   o.Payload,
 	}
 	buf := make([]byte, 0, 48+len(o.Payload))
-	buf = om.append(buf)
+	buf = om.Append(buf)
 	err := s.conn.SendDatagram(buf)
 	if !errors.Is(err, &quic.DatagramTooLargeError{}) {
 		return err
