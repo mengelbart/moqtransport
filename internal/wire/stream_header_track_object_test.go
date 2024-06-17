@@ -12,30 +12,32 @@ import (
 
 func TestStreamHeaderTrackObjectAppend(t *testing.T) {
 	cases := []struct {
-		shgo   StreamHeaderTrackObject
+		shto   StreamHeaderTrackObject
 		buf    []byte
 		expect []byte
 	}{
 		{
-			shgo: StreamHeaderTrackObject{
+			shto: StreamHeaderTrackObject{
 				GroupID:       0,
 				ObjectID:      0,
+				ObjectStatus:  0,
 				ObjectPayload: []byte{},
 			},
 			buf:    []byte{},
-			expect: []byte{0x00, 0x00, 0x00},
+			expect: []byte{0x00, 0x00, 0x00, 0x00},
 		},
 		{
-			shgo: StreamHeaderTrackObject{
+			shto: StreamHeaderTrackObject{
 				GroupID:       0,
 				ObjectID:      1,
+				ObjectStatus:  0,
 				ObjectPayload: []byte{0x00, 0x01, 0x02},
 			},
 			buf:    []byte{},
 			expect: []byte{0x00, 0x01, 0x03, 0x00, 0x01, 0x02},
 		},
 		{
-			shgo: StreamHeaderTrackObject{
+			shto: StreamHeaderTrackObject{
 				GroupID:       1,
 				ObjectID:      2,
 				ObjectPayload: []byte{0x01, 0x02},
@@ -43,10 +45,20 @@ func TestStreamHeaderTrackObjectAppend(t *testing.T) {
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x02, 0x01, 0x02},
 		},
+		{
+			shto: StreamHeaderTrackObject{
+				GroupID:       1,
+				ObjectID:      2,
+				ObjectStatus:  ObjectStatusEndOfGroup,
+				ObjectPayload: []byte{},
+			},
+			buf:    []byte{},
+			expect: []byte{0x01, 0x02, 0x00, 0x03},
+		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := tc.shgo.Append(tc.buf)
+			res := tc.shto.Append(tc.buf)
 			assert.Equal(t, tc.expect, res)
 		})
 	}
@@ -74,6 +86,16 @@ func TestParseStreamHeaderTrackObjectAppend(t *testing.T) {
 				GroupID:       0,
 				ObjectID:      1,
 				ObjectPayload: []byte{0x03, 0x04},
+			},
+			err: nil,
+		},
+		{
+			data: []byte{0x00, 0x01, 0x00, 0x03},
+			expect: &StreamHeaderTrackObject{
+				GroupID:       0,
+				ObjectID:      1,
+				ObjectStatus:  ObjectStatusEndOfGroup,
+				ObjectPayload: nil,
 			},
 			err: nil,
 		},
