@@ -20,14 +20,25 @@ func TestStreamHeaderGroupObjectAppend(t *testing.T) {
 			shgo: StreamHeaderGroupObject{
 				ObjectID:      0,
 				ObjectPayload: []byte{},
+				ObjectStatus:  0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x00, 0x00},
+			expect: []byte{0x00, 0x00, 0x00},
+		},
+		{
+			shgo: StreamHeaderGroupObject{
+				ObjectID:      0,
+				ObjectPayload: []byte{},
+				ObjectStatus:  ObjectStatusEndOfGroup,
+			},
+			buf:    []byte{},
+			expect: []byte{0x00, 0x00, 0x03},
 		},
 		{
 			shgo: StreamHeaderGroupObject{
 				ObjectID:      1,
 				ObjectPayload: []byte{0x01, 0x02},
+				ObjectStatus:  0,
 			},
 			buf:    []byte{},
 			expect: []byte{0x01, 0x02, 0x01, 0x02},
@@ -36,6 +47,7 @@ func TestStreamHeaderGroupObjectAppend(t *testing.T) {
 			shgo: StreamHeaderGroupObject{
 				ObjectID:      2,
 				ObjectPayload: []byte{0x01, 0x02},
+				ObjectStatus:  0,
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x02, 0x02, 0x01, 0x02},
@@ -70,6 +82,16 @@ func TestParseStreamHeaderGroupObject(t *testing.T) {
 			expect: &StreamHeaderGroupObject{
 				ObjectID:      1,
 				ObjectPayload: []byte{0x03, 0x04},
+				ObjectStatus:  0,
+			},
+			err: nil,
+		},
+		{
+			data: []byte{0x01, 0x00, 0x03},
+			expect: &StreamHeaderGroupObject{
+				ObjectID:      1,
+				ObjectPayload: nil,
+				ObjectStatus:  ObjectStatusEndOfGroup,
 			},
 			err: nil,
 		},

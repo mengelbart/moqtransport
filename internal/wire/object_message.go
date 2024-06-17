@@ -4,6 +4,16 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type ObjectStatus uint64
+
+const (
+	ObjectStatusNormal ObjectStatus = iota
+	ObjectStatusObjectDoesNotExist
+	ObjectStatusGroupDoesNotExist
+	ObjectStatusEndOfGroup
+	ObjectStatusEndOfTrack
+)
+
 type ObjectMessage struct {
 	Type            ObjectMessageType
 	SubscribeID     uint64
@@ -11,6 +21,7 @@ type ObjectMessage struct {
 	GroupID         uint64
 	ObjectID        uint64
 	ObjectSendOrder uint64
+	ObjectStatus    ObjectStatus
 	ObjectPayload   []byte
 }
 
@@ -25,6 +36,7 @@ func (m *ObjectMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = quicvarint.Append(buf, m.ObjectSendOrder)
+	buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
@@ -60,6 +72,14 @@ func (m *ObjectMessage) parse(data []byte) (parsed int, err error) {
 	if err != nil {
 		return
 	}
+	data = data[n:]
+	var status uint64
+	status, n, err = quicvarint.Parse(data)
+	parsed += n
+	if err != nil {
+		return
+	}
+	m.ObjectStatus = ObjectStatus(status)
 	data = data[n:]
 	// TODO: make the message type an io.Reader and let the user read?
 	m.ObjectPayload = make([]byte, len(data))
