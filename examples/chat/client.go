@@ -20,15 +20,13 @@ import (
 )
 
 type clientRoom struct {
-	trackID uint64
-	lt      *moqtransport.LocalTrack
-	rts     []*moqtransport.RemoteTrack
+	lt  *moqtransport.LocalTrack
+	rts []*moqtransport.RemoteTrack
 }
 
 type roomManager struct {
-	rooms       map[string]*clientRoom
-	lock        sync.Mutex
-	nextTrackID uint64
+	rooms map[string]*clientRoom
+	lock  sync.Mutex
 }
 
 type Client struct {
@@ -75,9 +73,8 @@ func (r *roomManager) HandleAnnouncement(s *moqtransport.Session, a *moqtranspor
 func NewClient(conn moqtransport.Connection) (*Client, error) {
 	log.SetOutput(io.Discard)
 	rm := &roomManager{
-		rooms:       map[string]*clientRoom{},
-		lock:        sync.Mutex{},
-		nextTrackID: 0,
+		rooms: map[string]*clientRoom{},
+		lock:  sync.Mutex{},
 	}
 	moqSession := &moqtransport.Session{
 		Conn:                conn,
@@ -145,15 +142,13 @@ func (c *Client) handleCatalogDeltas(roomID, username string, previous *chatalog
 func (c *Client) joinRoom(roomID, username string) error {
 	c.rm.lock.Lock()
 	defer c.rm.lock.Unlock()
-	c.rm.nextTrackID += 1
-	lt := moqtransport.NewLocalTrack(c.rm.nextTrackID, fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username), "")
+	lt := moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username), "")
 	if err := c.session.AddLocalTrack(lt); err != nil {
 		return err
 	}
 	c.rm.rooms[roomID] = &clientRoom{
-		trackID: c.rm.nextTrackID,
-		lt:      lt,
-		rts:     []*moqtransport.RemoteTrack{},
+		lt:  lt,
+		rts: []*moqtransport.RemoteTrack{},
 	}
 	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
 	if err != nil {
