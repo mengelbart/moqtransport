@@ -45,11 +45,11 @@ func (p *ControlMessageParser) Parse() (Message, error) {
 	case subscribeDoneMessageType:
 		m = &SubscribeDoneMessage{}
 	case announceCancelMessageType:
-
+		m = &AnnounceCancelMessage{}
 	case trackStatusRequestMessageType:
-
+		m = &TrackStatusRequestMessage{}
 	case trackStatusMessageType:
-
+		m = &TrackStatusMessage{}
 	case goAwayMessageType:
 		m = &GoAwayMessage{}
 	case clientSetupMessageType:

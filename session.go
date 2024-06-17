@@ -341,16 +341,24 @@ func (s *Session) handleNonSetupMessage(msg wire.Message) error {
 		return s.handleSubscriptionResponse(m)
 	case *wire.SubscribeErrorMessage:
 		return s.handleSubscriptionResponse(m)
-	case *wire.SubscribeDoneMessage:
-		s.handleSubscribeDone(m)
-	case *wire.UnsubscribeMessage:
-		return s.handleUnsubscribe(m)
 	case *wire.AnnounceMessage:
 		s.handleAnnounceMessage(m)
 	case *wire.AnnounceOkMessage:
 		return s.handleAnnouncementResponse(m)
 	case *wire.AnnounceErrorMessage:
 		return s.handleAnnouncementResponse(m)
+	case *wire.UnannounceMessage:
+		panic("TODO")
+	case *wire.UnsubscribeMessage:
+		return s.handleUnsubscribe(m)
+	case *wire.SubscribeDoneMessage:
+		s.handleSubscribeDone(m)
+	case *wire.AnnounceCancelMessage:
+		panic("TODO")
+	case *wire.TrackStatusRequestMessage:
+		panic("TODO")
+	case *wire.TrackStatusMessage:
+		panic("TODO")
 	case *wire.GoAwayMessage:
 		panic("TODO")
 	default:
