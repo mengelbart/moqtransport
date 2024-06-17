@@ -77,6 +77,7 @@ type Session struct {
 	RemoteRole          Role
 	AnnouncementHandler AnnouncementHandler
 	SubscriptionHandler SubscriptionHandler
+	Path                string
 
 	handshakeDone bool
 	controlStream controlMessageSender
@@ -153,7 +154,7 @@ func (s *Session) RunServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	s.si.controlStreamStoreCh <- newControlStream(controlStream, s.handleControlMessage)
+	s.storeControlStream(newControlStream(controlStream, s.handleControlMessage))
 	select {
 	case <-ctx.Done():
 		s.Close()
@@ -183,6 +184,14 @@ func (s *Session) initServer(setup *wire.ClientSetupMessage) error {
 	}
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
 		return err
+	}
+	pathParam, ok := setup.SetupParameters[wire.PathParameterKey]
+	if ok {
+		pathParamValue, ok := pathParam.(*wire.StringParameter)
+		if !ok {
+			return s.CloseWithError(ErrorCodeProtocolViolation, "invalid path parameter type")
+		}
+		s.Path = pathParamValue.Value
 	}
 	ssm := &wire.ServerSetupMessage{
 		SelectedVersion: CURRENT_VERSION,
