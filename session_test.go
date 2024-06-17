@@ -72,7 +72,7 @@ func TestSession(t *testing.T) {
 		done := make(chan struct{})
 		s := session(mc, csh, nil)
 		csm := &wire.ClientSetupMessage{
-			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
 				wire.RoleParameterKey: &wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
@@ -105,7 +105,7 @@ func TestSession(t *testing.T) {
 		err := s.AddLocalTrack(track)
 		assert.NoError(t, err)
 		err = s.handleControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
 				wire.RoleParameterKey: &wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
@@ -149,7 +149,7 @@ func TestSession(t *testing.T) {
 			close(done)
 		})
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
 				wire.RoleParameterKey: &wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
@@ -198,7 +198,7 @@ func TestSession(t *testing.T) {
 			}()
 		})
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
 				wire.RoleParameterKey: &wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
@@ -236,7 +236,7 @@ func TestSession(t *testing.T) {
 			}()
 		})
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: []wire.Version{CURRENT_VERSION},
+			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
 				wire.RoleParameterKey: &wire.VarintParameter{
 					Type:  wire.RoleParameterKey,

@@ -134,7 +134,7 @@ func (s *Session) RunClient() error {
 	}
 	s.controlStream = newControlStream(controlStream, s.handleControlMessage)
 	s.controlStream.enqueue(&wire.ClientSetupMessage{
-		SupportedVersions: []wire.Version{CURRENT_VERSION},
+		SupportedVersions: []wire.Version{wire.CurrentVersion},
 		SetupParameters: wire.Parameters{
 			wire.RoleParameterKey: wire.VarintParameter{
 				Type:  wire.RoleParameterKey,
@@ -167,7 +167,7 @@ func (s *Session) RunServer(ctx context.Context) error {
 }
 
 func (s *Session) initClient(setup *wire.ServerSetupMessage) error {
-	if setup.SelectedVersion != CURRENT_VERSION {
+	if setup.SelectedVersion != wire.CurrentVersion {
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
@@ -179,7 +179,7 @@ func (s *Session) initClient(setup *wire.ServerSetupMessage) error {
 
 func (s *Session) initServer(setup *wire.ClientSetupMessage) error {
 	s.controlStream = s.loadControlStream()
-	if !slices.Contains(setup.SupportedVersions, CURRENT_VERSION) {
+	if !slices.Contains(setup.SupportedVersions, wire.CurrentVersion) {
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
@@ -194,7 +194,7 @@ func (s *Session) initServer(setup *wire.ClientSetupMessage) error {
 		s.Path = pathParamValue.Value
 	}
 	ssm := &wire.ServerSetupMessage{
-		SelectedVersion: CURRENT_VERSION,
+		SelectedVersion: wire.CurrentVersion,
 		SetupParameters: wire.Parameters{
 			wire.RoleParameterKey: &wire.VarintParameter{
 				Type:  wire.RoleParameterKey,

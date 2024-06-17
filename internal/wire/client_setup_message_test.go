@@ -28,7 +28,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		},
 		{
 			csm: ClientSetupMessage{
-				SupportedVersions: []Version{draft_ietf_moq_transport_00},
+				SupportedVersions: []Version{Draft_ietf_moq_transport_00},
 				SetupParameters:   Parameters{},
 			},
 			buf: []byte{},
@@ -38,7 +38,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		},
 		{
 			csm: ClientSetupMessage{
-				SupportedVersions: []Version{draft_ietf_moq_transport_00},
+				SupportedVersions: []Version{Draft_ietf_moq_transport_00},
 				SetupParameters: Parameters{PathParameterKey: StringParameter{
 					Type:  PathParameterKey,
 					Value: "A",
