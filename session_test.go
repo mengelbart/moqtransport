@@ -100,7 +100,7 @@ func TestSession(t *testing.T) {
 		}).Do(func(_ wire.Message) {
 			close(done)
 		})
-		track := NewLocalTrack(0, "namespace", "track")
+		track := NewLocalTrack("namespace", "track")
 		defer track.Close()
 		err := s.AddLocalTrack(track)
 		assert.NoError(t, err)

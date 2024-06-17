@@ -55,7 +55,7 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			TLSConfig: tlsConfig,
 		},
 	}
-	track := moqtransport.NewLocalTrack(0, "clock", "second")
+	track := moqtransport.NewLocalTrack("clock", "second")
 	defer track.Close()
 	go func() {
 		ticker := time.NewTicker(time.Second)

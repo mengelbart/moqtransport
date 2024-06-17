@@ -29,7 +29,7 @@ type room struct {
 func newRoom(id roomID) *room {
 	return &room{
 		ID:           id,
-		catalogTrack: moqtransport.NewLocalTrack(0, fmt.Sprintf("moq-chat/%v", id), ""),
+		catalogTrack: moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v", id), ""),
 		catalogGroup: 0,
 		users:        &chatalog[*user]{version: 1, participants: map[string]*user{}},
 		usersLock:    sync.Mutex{},
@@ -107,7 +107,7 @@ func (r *room) subscribeCatalog(s *moqtransport.Session, sub *moqtransport.Subsc
 		srw.Reject(uint64(errorCodeInternal), "failed to setup room catalog track")
 		return
 	}
-	track := moqtransport.NewLocalTrack(0, fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, sub.Authorization), "") // TODO: Track ID?
+	track := moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, sub.Authorization), "") // TODO: Track ID?
 	err := r.addParticipant(sub.Authorization, s, track)
 	if err != nil {
 		srw.Reject(uint64(errorCodeDuplicateUsername), "username already in use")

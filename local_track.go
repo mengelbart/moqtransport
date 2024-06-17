@@ -71,7 +71,6 @@ type ObjectWriter interface {
 // NewLocalTrack to ensure proper initialization.
 type LocalTrack struct {
 	logger    *slog.Logger
-	ID        uint64
 	Namespace string
 	Name      string
 
@@ -89,11 +88,10 @@ type LocalTrack struct {
 }
 
 // NewLocalTrack creates a new LocalTrack
-func NewLocalTrack(id uint64, namespace, trackname string) *LocalTrack {
+func NewLocalTrack(namespace, trackname string) *LocalTrack {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	lt := &LocalTrack{
-		logger:             defaultLogger.WithGroup("MOQ_LOCAL_TRACK").With("id", id, "namespace", namespace, "trackname", trackname),
-		ID:                 id,
+		logger:             defaultLogger.WithGroup("MOQ_LOCAL_TRACK").With("namespace", namespace, "trackname", trackname),
 		Namespace:          namespace,
 		Name:               trackname,
 		cancelCtx:          cancelCtx,
