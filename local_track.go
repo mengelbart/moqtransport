@@ -161,7 +161,6 @@ func (t *LocalTrack) unsubscribe(id subscriberID) {
 
 // WriteObject adds an object to the track
 func (t *LocalTrack) WriteObject(ctx context.Context, o Object) error {
-	t.logger.Info("write object", "object", o)
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
