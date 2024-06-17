@@ -10,13 +10,13 @@ import (
 type Version uint64
 
 const (
-	draft_ietf_moq_transport_00 Version = 0xff000000
-	draft_ietf_moq_transport_01 Version = 0xff000001
-	draft_ietf_moq_transport_02 Version = 0xff000002
-	draft_ietf_moq_transport_03 Version = 0xff000003
-	draft_ietf_moq_transport_04 Version = 0xff000004
+	Draft_ietf_moq_transport_00 Version = 0xff000000
+	Draft_ietf_moq_transport_01 Version = 0xff000001
+	Draft_ietf_moq_transport_02 Version = 0xff000002
+	Draft_ietf_moq_transport_03 Version = 0xff000003
+	Draft_ietf_moq_transport_04 Version = 0xff000004
 
-	currentVersion = draft_ietf_moq_transport_04
+	CurrentVersion = Draft_ietf_moq_transport_04
 )
 
 func (v Version) String() string {

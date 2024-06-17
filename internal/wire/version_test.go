@@ -24,7 +24,7 @@ func TestVersionsLen(t *testing.T) {
 			expected: 1,
 		},
 		{
-			versions: []Version{Version(currentVersion)},
+			versions: []Version{Version(CurrentVersion)},
 			expected: 8,
 		},
 		{
