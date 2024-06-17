@@ -247,7 +247,7 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 		GroupID:              msg.GroupID,
 		ObjectID:             msg.ObjectID,
 		ObjectSendOrder:      msg.ObjectSendOrder,
-		ForwardingPreference: ObjectForwardingPreferenceFromMessageType(msg.Type),
+		ForwardingPreference: objectForwardingPreferenceFromMessageType(msg.Type),
 		Payload:              msg.ObjectPayload,
 	})
 	sub.readObjectStream(p)

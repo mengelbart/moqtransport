@@ -35,7 +35,7 @@ const (
 	ObjectForwardingPreferenceStreamTrack
 )
 
-func ObjectForwardingPreferenceFromMessageType(t wire.ObjectMessageType) ObjectForwardingPreference {
+func objectForwardingPreferenceFromMessageType(t wire.ObjectMessageType) ObjectForwardingPreference {
 	switch t {
 	case wire.ObjectDatagramMessageType:
 		return ObjectForwardingPreferenceDatagram
