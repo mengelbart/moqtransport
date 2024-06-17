@@ -61,7 +61,6 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 		ticker := time.NewTicker(time.Second)
 		id := uint64(0)
 		for ts := range ticker.C {
-			log.Printf("tick: %v, subscribers: %v\n", ts, track.SubscriberCount())
 			track.WriteObject(ctx, moqtransport.Object{
 				GroupID:         id,
 				ObjectID:        0,
@@ -87,6 +86,7 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		log.Printf("got new session")
 		go handle(moqSession, track)
 	})
 	for {
