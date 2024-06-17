@@ -73,8 +73,8 @@ type controlMessageSender interface {
 type Session struct {
 	Conn                Connection
 	EnableDatagrams     bool
-	LocalRole           wire.Role
-	RemoteRole          wire.Role
+	LocalRole           Role
+	RemoteRole          Role
 	AnnouncementHandler AnnouncementHandler
 	SubscriptionHandler SubscriptionHandler
 
@@ -86,14 +86,14 @@ type Session struct {
 
 func (s *Session) initRole() {
 	switch s.LocalRole {
-	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
+	case RolePublisher, RoleSubscriber, RolePubSub:
 	default:
-		s.LocalRole = wire.RolePubSub
+		s.LocalRole = RolePubSub
 	}
 	switch s.RemoteRole {
-	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
+	case RolePublisher, RoleSubscriber, RolePubSub:
 	default:
-		s.RemoteRole = wire.RolePubSub
+		s.RemoteRole = RolePubSub
 	}
 }
 
