@@ -75,7 +75,7 @@ func (t *RemoteTrack) readObjectStream(p *wire.ObjectStreamParser) {
 			GroupID:              msg.GroupID,
 			ObjectID:             msg.ObjectID,
 			ObjectSendOrder:      0,
-			ForwardingPreference: ObjectForwardingPreferenceFromMessageType(msg.Type),
+			ForwardingPreference: objectForwardingPreferenceFromMessageType(msg.Type),
 			Payload:              msg.ObjectPayload,
 		})
 	}
