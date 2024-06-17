@@ -62,10 +62,11 @@ func listen(ctx context.Context, addr string, tlsConfig *tls.Config) error {
 		id := uint64(0)
 		for ts := range ticker.C {
 			track.WriteObject(ctx, moqtransport.Object{
-				GroupID:         id,
-				ObjectID:        0,
-				ObjectSendOrder: 0,
-				Payload:         []byte(fmt.Sprintf("%v", ts)),
+				GroupID:              id,
+				ObjectID:             0,
+				ObjectSendOrder:      0,
+				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
+				Payload:              []byte(fmt.Sprintf("%v", ts)),
 			})
 			id++
 		}
