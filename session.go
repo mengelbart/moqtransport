@@ -422,6 +422,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 			ReasonPhrase: err.Error(),
 			TrackAlias:   sub.TrackAlias,
 		})
+		s.si.logger.Error("failed to save subscription", "error", err)
 		return
 	}
 	id, err := t.subscribe(sendSub)
@@ -432,6 +433,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 			ReasonPhrase: err.Error(),
 			TrackAlias:   sub.TrackAlias,
 		})
+		s.si.logger.Error("failed to subscribe to track", "error", err)
 		return
 	}
 	sendSub.subscriptionIDinTrack = id
