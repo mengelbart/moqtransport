@@ -306,6 +306,35 @@ func TestIntegration(t *testing.T) {
 		assert.NoError(t, client.Close())
 		wg.Wait()
 	})
+
+	//	t.Run("reset_object_stream", func(t *testing.T) {
+	//		defer goleak.VerifyNone(t)
+	//		listener, addr, teardown := setup()
+	//		defer teardown()
+	//		var wg sync.WaitGroup
+	//		wg.Add(1)
+	//		subscribedCh := make(chan struct{})
+	//		receivedObject := make(chan struct{})
+	//		go func() {
+	//			defer wg.Done()
+	//			ctx, cancel := context.WithCancel(context.Background())
+	//			defer cancel()
+	//			server := quicServerSession(t, ctx, listener, nil)
+	//			track := moqtransport.NewLocalTrack("namespace", "track")
+	//			defer track.Close()
+	//			err := server.AddLocalTrack(track)
+	//			assert.NoError(t, err)
+	//			<-subscribedCh
+	//			err = track.WriteObject(ctx, moqtransport.Object{
+	//				GroupID:              0,
+	//				ObjectID:             0,
+	//				ObjectSendOrder:      0,
+	//				ForwardingPreference: 0,
+	//				Payload:              []byte("hello world"),
+	//			})
+	//			assert.NoError(t, err)
+	//		}()
+	//	})
 }
 
 // Setup a bare-bones TLS config for the server

@@ -16,27 +16,55 @@ func New(conn quic.Connection) moqtransport.Connection {
 }
 
 func (c *connection) OpenStream() (moqtransport.Stream, error) {
-	return c.connection.OpenStream()
+	s, err := c.connection.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	return &stream{
+		qs: s,
+	}, nil
 }
 
 func (c *connection) OpenStreamSync(ctx context.Context) (moqtransport.Stream, error) {
-	return c.connection.OpenStreamSync(ctx)
+	s, err := c.connection.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stream{qs: s}, nil
 }
 
 func (c *connection) OpenUniStream() (moqtransport.SendStream, error) {
-	return c.connection.OpenUniStream()
+	s, err := c.connection.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
+	return &sendStream{
+		stream: s,
+	}, nil
 }
 
 func (c *connection) OpenUniStreamSync(ctx context.Context) (moqtransport.SendStream, error) {
-	return c.connection.OpenUniStreamSync(ctx)
+	s, err := c.connection.OpenUniStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &sendStream{stream: s}, nil
 }
 
 func (c *connection) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
-	return c.connection.AcceptStream(ctx)
+	s, err := c.connection.AcceptStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stream{qs: s}, nil
 }
 
 func (c *connection) AcceptUniStream(ctx context.Context) (moqtransport.ReceiveStream, error) {
-	return c.connection.AcceptUniStream(ctx)
+	s, err := c.connection.AcceptUniStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &receiveStream{stream: s}, nil
 }
 
 func (c *connection) SendDatagram(b []byte) error {

@@ -37,3 +37,7 @@ func (s *groupHeaderStream) writeObject(objectID uint64, payload []byte) (int, e
 func (s *groupHeaderStream) Close() error {
 	return s.stream.Close()
 }
+
+func (s *groupHeaderStream) Cancel() {
+	s.stream.CancelWrite(0)
+}
