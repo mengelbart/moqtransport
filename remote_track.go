@@ -68,7 +68,8 @@ func (t *RemoteTrack) readObjectStream(p *wire.ObjectStreamParser) {
 			if err == io.EOF {
 				return
 			}
-			panic(err)
+			t.logger.Info("stream canceled by peer", "error", err)
+			return
 		}
 		t.logger.Info("object stream got object", "msg", msg)
 		t.push(Object{
