@@ -40,7 +40,7 @@ func newSendSubscription(conn Connection, subscribeID, trackAlias uint64, namesp
 		namespace:             namespace,
 		trackname:             trackname,
 		conn:                  conn,
-		objectCh:              make(chan Object, 64),
+		objectCh:              make(chan Object, 1024),
 		trackHeaderStream:     nil,
 		groupHeaderStreams:    map[uint64]*groupHeaderStream{},
 	}
