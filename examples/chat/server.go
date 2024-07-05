@@ -82,6 +82,7 @@ func (s *server) run() error {
 				EnableDatagrams:     true,
 				LocalRole:           moqtransport.RolePubSub,
 				AnnouncementHandler: s.sessions,
+				SubscriptionHandler: s.sessions,
 			}
 			if err := p.RunServer(ctx); err != nil {
 				p.Close()
