@@ -30,7 +30,10 @@ type sendSubscription struct {
 func newSendSubscription(conn Connection, subscribeID, trackAlias uint64, namespace, trackname string) *sendSubscription {
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	sub := &sendSubscription{
-		logger:                defaultLogger.WithGroup("MOQ_SEND_SUBSCRIPTION"),
+		logger: defaultLogger.WithGroup("MOQ_SEND_SUBSCRIPTION").With(
+			"namespace", namespace,
+			"trackname", trackname,
+		),
 		cancelCtx:             cancelCtx,
 		cancelWG:              sync.WaitGroup{},
 		ctx:                   ctx,
@@ -62,7 +65,7 @@ func (s *sendSubscription) loop() {
 }
 
 func (s *sendSubscription) sendObject(o Object) {
-	s.logger.Info("sending object", "object", o)
+	s.logger.Info("sending object", "group-id", o.GroupID, "object-id", o.ObjectID)
 	switch o.ForwardingPreference {
 	case ObjectForwardingPreferenceDatagram:
 		if err := s.sendDatagram(o); err != nil {
@@ -89,7 +92,7 @@ func (s *sendSubscription) WriteObject(o Object) error {
 	case <-s.ctx.Done():
 		return errUnsubscribed
 	default:
-		panic("TODO: improve queuing/caching for slow subscribers?")
+		s.logger.Warn("send subscription dropped object", "group-id", o.GroupID, "object-id", o.ObjectID)
 	}
 	return nil
 }
