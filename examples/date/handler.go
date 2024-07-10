@@ -164,7 +164,7 @@ func (h *moqHandler) setupDateTrack(ctx context.Context) {
 				GroupID:              id,
 				ObjectID:             0,
 				ObjectSendOrder:      0,
-				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
+				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStreamGroup,
 				Payload:              []byte(fmt.Sprintf("%v", ts)),
 			})
 			id++

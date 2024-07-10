@@ -12,10 +12,12 @@ type Stream interface {
 
 type ReceiveStream interface {
 	io.Reader
+	CancelRead(code uint64)
 }
 
 type SendStream interface {
 	io.WriteCloser
+	CancelWrite(code uint64)
 }
 
 type Connection interface {

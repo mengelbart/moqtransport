@@ -39,10 +39,10 @@ func (e ProtocolError) Code() uint64 {
 }
 
 type ApplicationError struct {
-	code   uint64
-	mesage string
+	Code   uint64
+	Mesage string
 }
 
 func (e ApplicationError) Error() string {
-	return fmt.Sprintf("MoQ Application Error %v: %v", e.code, e.mesage)
+	return fmt.Sprintf("MoQ Application Error %v: %v", e.Code, e.Mesage)
 }

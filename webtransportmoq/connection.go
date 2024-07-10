@@ -16,27 +16,53 @@ func New(session *webtransport.Session) moqtransport.Connection {
 }
 
 func (c *webTransportConn) OpenStream() (moqtransport.Stream, error) {
-	return c.session.OpenStream()
+	s, err := c.session.OpenStream()
+	if err != nil {
+		return nil, err
+	}
+	return &stream{
+		qs: s,
+	}, nil
 }
 
 func (c *webTransportConn) OpenStreamSync(ctx context.Context) (moqtransport.Stream, error) {
-	return c.session.OpenStreamSync(ctx)
+	s, err := c.session.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stream{qs: s}, nil
 }
 
 func (c *webTransportConn) OpenUniStream() (moqtransport.SendStream, error) {
-	return c.session.OpenUniStream()
+	s, err := c.session.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
+	return &sendStream{stream: s}, nil
 }
 
 func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (moqtransport.SendStream, error) {
-	return c.session.OpenUniStreamSync(ctx)
+	s, err := c.session.OpenUniStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &sendStream{stream: s}, nil
 }
 
 func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
-	return c.session.AcceptStream(ctx)
+	s, err := c.session.AcceptStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stream{qs: s}, nil
 }
 
 func (c *webTransportConn) AcceptUniStream(ctx context.Context) (moqtransport.ReceiveStream, error) {
-	return c.session.AcceptUniStream(ctx)
+	s, err := c.session.AcceptUniStream(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &receiveStream{stream: s}, nil
 }
 
 func (c *webTransportConn) SendDatagram(b []byte) error {

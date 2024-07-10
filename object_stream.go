@@ -1,6 +1,8 @@
 package moqtransport
 
-import "github.com/mengelbart/moqtransport/internal/wire"
+import (
+	"github.com/mengelbart/moqtransport/internal/wire"
+)
 
 type objectStream struct {
 	stream SendStream

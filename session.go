@@ -633,8 +633,8 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	case *wire.SubscribeErrorMessage:
 		s.si.receiveSubscriptions.delete(sm.SubscribeID)
 		return nil, ApplicationError{
-			code:   v.ErrorCode,
-			mesage: v.ReasonPhrase,
+			Code:   v.ErrorCode,
+			Mesage: v.ReasonPhrase,
 		}
 	}
 	// Should never happen, because only subscribeMessage, subscribeOkMessage
@@ -678,8 +678,8 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 		return nil
 	case *wire.AnnounceErrorMessage:
 		return ApplicationError{
-			code:   v.ErrorCode,
-			mesage: v.ReasonPhrase,
+			Code:   v.ErrorCode,
+			Mesage: v.ReasonPhrase,
 		}
 	}
 	// Should never happen, because only announceMessage, announceOkMessage
