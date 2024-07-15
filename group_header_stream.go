@@ -6,12 +6,12 @@ type groupHeaderStream struct {
 	stream SendStream
 }
 
-func newGroupHeaderStream(stream SendStream, subscribeID, trackAlias, groupID, objectSendOrder uint64) (*groupHeaderStream, error) {
+func newGroupHeaderStream(stream SendStream, subscribeID, trackAlias, groupID uint64, publisherPriority uint8) (*groupHeaderStream, error) {
 	shgm := &wire.StreamHeaderGroupMessage{
-		SubscribeID:     subscribeID,
-		TrackAlias:      trackAlias,
-		GroupID:         groupID,
-		ObjectSendOrder: objectSendOrder,
+		SubscribeID:       subscribeID,
+		TrackAlias:        trackAlias,
+		GroupID:           groupID,
+		PublisherPriority: publisherPriority,
 	}
 	buf := make([]byte, 0, 40)
 	buf = shgm.Append(buf)

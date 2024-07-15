@@ -38,7 +38,7 @@ func TestSession(t *testing.T) {
 		object := Object{
 			GroupID:              0,
 			ObjectID:             0,
-			ObjectSendOrder:      0,
+			PublisherPriority:    0,
 			ForwardingPreference: 0,
 			Payload:              []byte{0x0a, 0x0b},
 		}
@@ -55,7 +55,7 @@ func TestSession(t *testing.T) {
 		sub.push(Object{
 			GroupID:              object.GroupID,
 			ObjectID:             object.ObjectID,
-			ObjectSendOrder:      0,
+			PublisherPriority:    0,
 			ForwardingPreference: ObjectForwardingPreferenceDatagram,
 			Payload:              object.Payload,
 		})
@@ -94,6 +94,7 @@ func TestSession(t *testing.T) {
 		csh.EXPECT().enqueue(&wire.SubscribeOkMessage{
 			SubscribeID:   17,
 			Expires:       0,
+			GroupOrder:    1,
 			ContentExists: false,
 			FinalGroup:    0,
 			FinalObject:   0,
@@ -115,16 +116,18 @@ func TestSession(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		err = s.handleControlMessage(&wire.SubscribeMessage{
-			SubscribeID:    17,
-			TrackAlias:     0,
-			TrackNamespace: "namespace",
-			TrackName:      "track",
-			FilterType:     0,
-			StartGroup:     0,
-			StartObject:    0,
-			EndGroup:       0,
-			EndObject:      0,
-			Parameters:     wire.Parameters{},
+			SubscribeID:        17,
+			TrackAlias:         0,
+			TrackNamespace:     "namespace",
+			TrackName:          "track",
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			EndObject:          0,
+			Parameters:         wire.Parameters{},
 		})
 		assert.NoError(t, err)
 		select {

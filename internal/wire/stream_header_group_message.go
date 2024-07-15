@@ -3,10 +3,10 @@ package wire
 import "github.com/quic-go/quic-go/quicvarint"
 
 type StreamHeaderGroupMessage struct {
-	SubscribeID     uint64
-	TrackAlias      uint64
-	GroupID         uint64
-	ObjectSendOrder uint64
+	SubscribeID       uint64
+	TrackAlias        uint64
+	GroupID           uint64
+	PublisherPriority uint8
 }
 
 func (m *StreamHeaderGroupMessage) Append(buf []byte) []byte {
@@ -14,7 +14,7 @@ func (m *StreamHeaderGroupMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
-	buf = quicvarint.Append(buf, m.ObjectSendOrder)
+	buf = append(buf, m.PublisherPriority)
 	return buf
 }
 
@@ -31,6 +31,6 @@ func (m *StreamHeaderGroupMessage) parse(reader messageReader) (err error) {
 	if err != nil {
 		return
 	}
-	m.ObjectSendOrder, err = quicvarint.Read(reader)
+	m.PublisherPriority, err = reader.ReadByte()
 	return
 }

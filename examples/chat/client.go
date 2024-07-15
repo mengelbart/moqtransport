@@ -228,7 +228,7 @@ func (c *Client) Run() error {
 			err := c.rm.rooms[fields[1]].lt.WriteObject(context.Background(), moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
 				Payload:              []byte(strings.TrimSpace(msg)),
 			})

@@ -52,7 +52,7 @@ func objectForwardingPreferenceFromMessageType(t wire.ObjectMessageType) ObjectF
 type Object struct {
 	GroupID              uint64
 	ObjectID             uint64
-	ObjectSendOrder      uint64
+	PublisherPriority    uint8
 	ForwardingPreference ObjectForwardingPreference
 
 	Payload []byte

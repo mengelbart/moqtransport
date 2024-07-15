@@ -75,7 +75,7 @@ func (t *RemoteTrack) readObjectStream(p *wire.ObjectStreamParser) {
 		t.push(Object{
 			GroupID:              msg.GroupID,
 			ObjectID:             msg.ObjectID,
-			ObjectSendOrder:      0,
+			PublisherPriority:    msg.PublisherPriority,
 			ForwardingPreference: objectForwardingPreferenceFromMessageType(msg.Type),
 			Payload:              msg.ObjectPayload,
 		})

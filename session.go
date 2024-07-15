@@ -255,7 +255,7 @@ func (s *Session) handleIncomingUniStream(stream ReceiveStream) {
 	sub.push(Object{
 		GroupID:              msg.GroupID,
 		ObjectID:             msg.ObjectID,
-		ObjectSendOrder:      msg.ObjectSendOrder,
+		PublisherPriority:    msg.PublisherPriority,
 		ForwardingPreference: objectForwardingPreferenceFromMessageType(msg.Type),
 		Payload:              msg.ObjectPayload,
 	})
@@ -310,7 +310,7 @@ func (s *Session) readObjectMessage(r io.Reader) {
 	sub.push(Object{
 		GroupID:              o.GroupID,
 		ObjectID:             o.ObjectID,
-		ObjectSendOrder:      0,
+		PublisherPriority:    o.PublisherPriority,
 		ForwardingPreference: ObjectForwardingPreferenceDatagram,
 		Payload:              o.ObjectPayload,
 	})
@@ -440,6 +440,7 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
 	s.controlStream.enqueue(&wire.SubscribeOkMessage{
 		SubscribeID:   sub.ID,
 		Expires:       0,     // TODO
+		GroupOrder:    1,     // TODO
 		ContentExists: false, // TODO
 		FinalGroup:    0,     // TODO
 		FinalObject:   0,     // TODO

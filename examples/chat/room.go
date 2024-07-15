@@ -82,7 +82,7 @@ func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtra
 	r.catalogTrack.WriteObject(context.Background(), moqtransport.Object{
 		GroupID:              r.catalogGroup,
 		ObjectID:             0,
-		ObjectSendOrder:      0,
+		PublisherPriority:    0,
 		ForwardingPreference: moqtransport.ObjectForwardingPreferenceStreamTrack,
 		Payload:              []byte(catalog),
 	})

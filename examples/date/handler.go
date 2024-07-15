@@ -163,7 +163,7 @@ func (h *moqHandler) setupDateTrack(ctx context.Context) {
 			h.localTrack.WriteObject(ctx, moqtransport.Object{
 				GroupID:              id,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
 				Payload:              []byte(fmt.Sprintf("%v", ts)),
 			})

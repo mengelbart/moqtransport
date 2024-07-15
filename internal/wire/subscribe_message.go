@@ -22,16 +22,18 @@ func (f FilterType) append(buf []byte) []byte {
 }
 
 type SubscribeMessage struct {
-	SubscribeID    uint64
-	TrackAlias     uint64
-	TrackNamespace string
-	TrackName      string
-	FilterType     FilterType
-	StartGroup     uint64
-	StartObject    uint64
-	EndGroup       uint64
-	EndObject      uint64
-	Parameters     Parameters
+	SubscribeID        uint64
+	TrackAlias         uint64
+	TrackNamespace     string
+	TrackName          string
+	SubscriberPriority uint8
+	GroupOrder         uint8
+	FilterType         FilterType
+	StartGroup         uint64
+	StartObject        uint64
+	EndGroup           uint64
+	EndObject          uint64
+	Parameters         Parameters
 }
 
 func (m SubscribeMessage) GetSubscribeID() uint64 {
@@ -44,6 +46,8 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = appendVarIntString(buf, m.TrackNamespace)
 	buf = appendVarIntString(buf, m.TrackName)
+	buf = append(buf, m.SubscriberPriority)
+	buf = append(buf, m.GroupOrder)
 	buf = m.FilterType.append(buf)
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
 		buf = quicvarint.Append(buf, m.StartGroup)
@@ -72,6 +76,17 @@ func (m *SubscribeMessage) parse(reader messageReader) (err error) {
 	m.TrackName, err = parseVarIntString(reader)
 	if err != nil {
 		return err
+	}
+	m.SubscriberPriority, err = reader.ReadByte()
+	if err != nil {
+		return err
+	}
+	m.GroupOrder, err = reader.ReadByte()
+	if err != nil {
+		return err
+	}
+	if m.GroupOrder > 2 {
+		return errInvalidGroupOrder
 	}
 	ft, err := quicvarint.Read(reader)
 	if err != nil {

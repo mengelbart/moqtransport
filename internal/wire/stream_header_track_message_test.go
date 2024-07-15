@@ -18,27 +18,27 @@ func TestStreamHeaderTrackMessageAppend(t *testing.T) {
 	}{
 		{
 			shtm: StreamHeaderTrackMessage{
-				SubscribeID:     0,
-				TrackAlias:      0,
-				ObjectSendOrder: 0,
+				SubscribeID:       0,
+				TrackAlias:        0,
+				PublisherPriority: 0,
 			},
 			buf:    []byte{},
 			expect: []byte{0x40, 0x50, 0x00, 0x00, 0x00},
 		},
 		{
 			shtm: StreamHeaderTrackMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				ObjectSendOrder: 3,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				PublisherPriority: 3,
 			},
 			buf:    []byte{},
 			expect: []byte{0x40, 0x50, 0x01, 0x02, 0x03},
 		},
 		{
 			shtm: StreamHeaderTrackMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				ObjectSendOrder: 3,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				PublisherPriority: 3,
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x40, 0x50, 0x01, 0x02, 0x03},
@@ -71,9 +71,9 @@ func TestParseStreamHeaderTrackMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x02, 0x03},
 			expect: &StreamHeaderTrackMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				ObjectSendOrder: 3,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				PublisherPriority: 3,
 			},
 			err: nil,
 		},

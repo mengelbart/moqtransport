@@ -15,8 +15,9 @@ const (
 	Draft_ietf_moq_transport_02 Version = 0xff000002
 	Draft_ietf_moq_transport_03 Version = 0xff000003
 	Draft_ietf_moq_transport_04 Version = 0xff000004
+	Draft_ietf_moq_transport_05 Version = 0xff000005
 
-	CurrentVersion = Draft_ietf_moq_transport_04
+	CurrentVersion = Draft_ietf_moq_transport_05
 )
 
 func (v Version) String() string {

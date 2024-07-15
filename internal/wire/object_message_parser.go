@@ -12,21 +12,21 @@ type ObjectStreamParser struct {
 	gotHeader  bool
 	streamType ObjectMessageType
 
-	subscribeID     uint64
-	trackAlias      uint64
-	objectSendOrder uint64
-	groupID         uint64
+	subscribeID       uint64
+	trackAlias        uint64
+	publisherPriority uint8
+	groupID           uint64
 }
 
 func NewObjectStreamParser(r io.Reader) *ObjectStreamParser {
 	return &ObjectStreamParser{
-		reader:          bufio.NewReader(r),
-		gotHeader:       false,
-		streamType:      0,
-		subscribeID:     0,
-		trackAlias:      0,
-		objectSendOrder: 0,
-		groupID:         0,
+		reader:            bufio.NewReader(r),
+		gotHeader:         false,
+		streamType:        0,
+		subscribeID:       0,
+		trackAlias:        0,
+		publisherPriority: 0,
+		groupID:           0,
 	}
 }
 
@@ -46,7 +46,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 			}
 			p.subscribeID = shtm.SubscribeID
 			p.trackAlias = shtm.TrackAlias
-			p.objectSendOrder = shtm.ObjectSendOrder
+			p.publisherPriority = shtm.PublisherPriority
 		case StreamHeaderGroupMessageType:
 			shgm := &StreamHeaderGroupMessage{}
 			if err := shgm.parse(p.reader); err != nil {
@@ -54,7 +54,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 			}
 			p.subscribeID = shgm.SubscribeID
 			p.trackAlias = shgm.TrackAlias
-			p.objectSendOrder = shgm.ObjectSendOrder
+			p.publisherPriority = shgm.PublisherPriority
 			p.groupID = shgm.GroupID
 		}
 	}
@@ -92,13 +92,13 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 			return nil, err
 		}
 		return &ObjectMessage{
-			Type:            StreamHeaderTrackMessageType,
-			SubscribeID:     p.subscribeID,
-			TrackAlias:      p.trackAlias,
-			GroupID:         om.GroupID,
-			ObjectID:        om.ObjectID,
-			ObjectSendOrder: p.objectSendOrder,
-			ObjectPayload:   om.ObjectPayload,
+			Type:              StreamHeaderTrackMessageType,
+			SubscribeID:       p.subscribeID,
+			TrackAlias:        p.trackAlias,
+			GroupID:           om.GroupID,
+			ObjectID:          om.ObjectID,
+			PublisherPriority: p.publisherPriority,
+			ObjectPayload:     om.ObjectPayload,
 		}, nil
 
 	case StreamHeaderGroupMessageType:
@@ -107,13 +107,13 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 			return nil, err
 		}
 		return &ObjectMessage{
-			Type:            StreamHeaderGroupMessageType,
-			SubscribeID:     p.subscribeID,
-			TrackAlias:      p.trackAlias,
-			GroupID:         p.groupID,
-			ObjectID:        om.ObjectID,
-			ObjectSendOrder: p.objectSendOrder,
-			ObjectPayload:   om.ObjectPayload,
+			Type:              StreamHeaderGroupMessageType,
+			SubscribeID:       p.subscribeID,
+			TrackAlias:        p.trackAlias,
+			GroupID:           p.groupID,
+			ObjectID:          om.ObjectID,
+			PublisherPriority: p.publisherPriority,
+			ObjectPayload:     om.ObjectPayload,
 		}, nil
 	}
 	return nil, errInvalidMessageType

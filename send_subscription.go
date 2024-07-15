@@ -99,13 +99,14 @@ func (s *sendSubscription) WriteObject(o Object) error {
 
 func (s *sendSubscription) sendDatagram(o Object) error {
 	om := &wire.ObjectMessage{
-		Type:            wire.ObjectDatagramMessageType,
-		SubscribeID:     s.subscribeID,
-		TrackAlias:      s.trackAlias,
-		GroupID:         o.GroupID,
-		ObjectID:        o.ObjectID,
-		ObjectSendOrder: o.ObjectSendOrder,
-		ObjectPayload:   o.Payload,
+		Type:              wire.ObjectDatagramMessageType,
+		SubscribeID:       s.subscribeID,
+		TrackAlias:        s.trackAlias,
+		GroupID:           o.GroupID,
+		ObjectID:          o.ObjectID,
+		PublisherPriority: o.PublisherPriority,
+		ObjectStatus:      0,
+		ObjectPayload:     o.Payload,
 	}
 	buf := make([]byte, 0, 48+len(o.Payload))
 	buf = om.Append(buf)
@@ -121,7 +122,7 @@ func (s *sendSubscription) sendObjectStream(o Object) error {
 	if err != nil {
 		return err
 	}
-	os, err := newObjectStream(stream, s.subscribeID, s.trackAlias, o.GroupID, o.ObjectID, o.ObjectSendOrder)
+	os, err := newObjectStream(stream, s.subscribeID, s.trackAlias, o.GroupID, o.ObjectID, o.PublisherPriority)
 	if err != nil {
 		return err
 	}
@@ -137,7 +138,7 @@ func (s *sendSubscription) sendTrackHeaderStream(o Object) error {
 		if err != nil {
 			return err
 		}
-		ts, err := newTrackHeaderStream(stream, s.subscribeID, s.trackAlias, o.ObjectSendOrder)
+		ts, err := newTrackHeaderStream(stream, s.subscribeID, s.trackAlias, o.PublisherPriority)
 		if err != nil {
 			return err
 		}
@@ -156,7 +157,7 @@ func (s *sendSubscription) sendGroupHeaderStream(o Object) error {
 		if err != nil {
 			return err
 		}
-		gs, err = newGroupHeaderStream(stream, s.subscribeID, s.trackAlias, o.GroupID, o.ObjectSendOrder)
+		gs, err = newGroupHeaderStream(stream, s.subscribeID, s.trackAlias, o.GroupID, o.PublisherPriority)
 		if err != nil {
 			return err
 		}
