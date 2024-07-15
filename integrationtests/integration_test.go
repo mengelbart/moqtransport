@@ -199,7 +199,7 @@ func TestIntegration(t *testing.T) {
 			err = track.WriteObject(ctx, moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: 0,
 				Payload:              []byte("hello world"),
 			})
@@ -252,7 +252,7 @@ func TestIntegration(t *testing.T) {
 			err = track.WriteObject(ctx, moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: 0,
 				Payload:              []byte("hello world"),
 			})
@@ -262,7 +262,7 @@ func TestIntegration(t *testing.T) {
 			err = track.WriteObject(ctx, moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: 0,
 				Payload:              []byte("hello world"),
 			})
@@ -272,7 +272,7 @@ func TestIntegration(t *testing.T) {
 			err = track.WriteObject(ctx, moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
-				ObjectSendOrder:      0,
+				PublisherPriority:    0,
 				ForwardingPreference: 0,
 				Payload:              []byte("hello world"),
 			})

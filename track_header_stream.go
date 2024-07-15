@@ -6,11 +6,11 @@ type trackHeaderStream struct {
 	stream SendStream
 }
 
-func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias, objectSendOrder uint64) (*trackHeaderStream, error) {
+func newTrackHeaderStream(stream SendStream, subscribeID, trackAlias uint64, publisherPriority uint8) (*trackHeaderStream, error) {
 	shtm := &wire.StreamHeaderTrackMessage{
-		SubscribeID:     subscribeID,
-		TrackAlias:      trackAlias,
-		ObjectSendOrder: objectSendOrder,
+		SubscribeID:       subscribeID,
+		TrackAlias:        trackAlias,
+		PublisherPriority: publisherPriority,
 	}
 	buf := make([]byte, 0, 32)
 	buf = shtm.Append(buf)

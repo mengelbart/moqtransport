@@ -21,71 +21,77 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 			som: SubscribeOkMessage{
 				SubscribeID:   0,
 				Expires:       0,
+				GroupOrder:    1,
 				ContentExists: true,
 				FinalGroup:    1,
 				FinalObject:   2,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00, 0x01, 0x01, 0x02,
+				byte(subscribeOkMessageType), 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
 			},
 		},
 		{
 			som: SubscribeOkMessage{
 				SubscribeID:   17,
 				Expires:       1000,
+				GroupOrder:    1,
 				ContentExists: true,
 				FinalGroup:    1,
 				FinalObject:   2,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x02},
+			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x01, 0x02},
 		},
 		{
 			som: SubscribeOkMessage{
 				SubscribeID:   17,
 				Expires:       1000,
+				GroupOrder:    2,
 				ContentExists: true,
 				FinalGroup:    1,
 				FinalObject:   2,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x02},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x02, 0x01, 0x01, 0x02},
 		},
 		{
 			som: SubscribeOkMessage{
 				SubscribeID:   0,
 				Expires:       0,
+				GroupOrder:    2,
 				ContentExists: false,
 				FinalGroup:    0,
 				FinalObject:   0,
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00, 0x00,
+				byte(subscribeOkMessageType), 0x00, 0x00, 0x02, 0x00,
 			},
 		},
 		{
 			som: SubscribeOkMessage{
 				SubscribeID:   17,
 				Expires:       1000,
+				GroupOrder:    1,
 				ContentExists: false,
 				FinalGroup:    0,
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x00},
+			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x00},
 		},
 		{
 			som: SubscribeOkMessage{
 				SubscribeID:   17,
 				Expires:       1000,
+				GroupOrder:    2,
 				ContentExists: false,
 				FinalGroup:    0,
 				FinalObject:   0,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x00},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x02, 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -113,10 +119,11 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x10, 0x00},
+			data: []byte{0x01, 0x10, 0x01, 0x00},
 			expect: &SubscribeOkMessage{
 				SubscribeID:   1,
 				Expires:       0x10 * time.Millisecond,
+				GroupOrder:    1,
 				ContentExists: false,
 				FinalGroup:    0,
 				FinalObject:   0,
@@ -124,10 +131,11 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 			err: nil,
 		},
 		{
-			data: []byte{0x01, 0x10, 0x01, 0x01, 0x02},
+			data: []byte{0x01, 0x10, 0x02, 0x01, 0x01, 0x02},
 			expect: &SubscribeOkMessage{
 				SubscribeID:   1,
 				Expires:       0x10 * time.Millisecond,
+				GroupOrder:    2,
 				ContentExists: true,
 				FinalGroup:    1,
 				FinalObject:   2,
@@ -135,15 +143,34 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 			err: nil,
 		},
 		{
-			data: []byte{0x01, 0x10, 0x08, 0x01, 0x02},
+			data: []byte{0x01, 0x10, 0x02, 0x08, 0x01, 0x02},
 			expect: &SubscribeOkMessage{
 				SubscribeID:   1,
 				Expires:       0x10 * time.Millisecond,
+				GroupOrder:    2,
 				ContentExists: false,
 				FinalGroup:    0,
 				FinalObject:   0,
 			},
 			err: errInvalidContentExistsByte,
+		},
+		{
+			data: []byte{0x01, 0x10, 0x00, 0x08, 0x01, 0x02},
+			expect: &SubscribeOkMessage{
+				SubscribeID: 1,
+				Expires:     0x10 * time.Millisecond,
+				GroupOrder:  0,
+			},
+			err: errInvalidGroupOrder,
+		},
+		{
+			data: []byte{0x01, 0x10, 0x03, 0x08, 0x01, 0x02},
+			expect: &SubscribeOkMessage{
+				SubscribeID: 1,
+				Expires:     0x10 * time.Millisecond,
+				GroupOrder:  3,
+			},
+			err: errInvalidGroupOrder,
 		},
 	}
 	for i, tc := range cases {

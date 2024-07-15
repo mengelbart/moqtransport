@@ -1,6 +1,8 @@
 package wire
 
 import (
+	"io"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -15,14 +17,14 @@ const (
 )
 
 type ObjectMessage struct {
-	Type            ObjectMessageType
-	SubscribeID     uint64
-	TrackAlias      uint64
-	GroupID         uint64
-	ObjectID        uint64
-	ObjectSendOrder uint64
-	ObjectStatus    ObjectStatus
-	ObjectPayload   []byte
+	Type              ObjectMessageType
+	SubscribeID       uint64
+	TrackAlias        uint64
+	GroupID           uint64
+	ObjectID          uint64
+	PublisherPriority uint8
+	ObjectStatus      ObjectStatus
+	ObjectPayload     []byte
 }
 
 func (m *ObjectMessage) Append(buf []byte) []byte {
@@ -35,7 +37,7 @@ func (m *ObjectMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
-	buf = quicvarint.Append(buf, m.ObjectSendOrder)
+	buf = append(buf, m.PublisherPriority)
 	buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
 	buf = append(buf, m.ObjectPayload...)
 	return buf
@@ -67,12 +69,12 @@ func (m *ObjectMessage) parse(data []byte) (parsed int, err error) {
 		return
 	}
 	data = data[n:]
-	m.ObjectSendOrder, n, err = quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
+	if len(data) == 0 {
+		return parsed, io.EOF
 	}
-	data = data[n:]
+	m.PublisherPriority = data[0]
+	parsed += 1
+	data = data[1:]
 	var status uint64
 	status, n, err = quicvarint.Parse(data)
 	parsed += n

@@ -6,14 +6,16 @@ type objectStream struct {
 	stream SendStream
 }
 
-func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, objectID, objectSendOrder uint64) (*objectStream, error) {
+func newObjectStream(stream SendStream, subscribeID, trackAlias, groupID, objectID uint64, publisherPriority uint8) (*objectStream, error) {
 	osm := &wire.ObjectMessage{
-		SubscribeID:     subscribeID,
-		TrackAlias:      trackAlias,
-		GroupID:         groupID,
-		ObjectID:        objectID,
-		ObjectSendOrder: objectSendOrder,
-		ObjectPayload:   nil,
+		Type:              wire.ObjectStreamMessageType,
+		SubscribeID:       subscribeID,
+		TrackAlias:        trackAlias,
+		GroupID:           groupID,
+		ObjectID:          objectID,
+		PublisherPriority: publisherPriority,
+		ObjectStatus:      0,
+		ObjectPayload:     nil,
 	}
 	buf := make([]byte, 0, 48)
 	buf = osm.Append(buf)

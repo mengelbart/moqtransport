@@ -18,30 +18,30 @@ func TestStreamHeaderGroupMessageAppend(t *testing.T) {
 	}{
 		{
 			shgm: StreamHeaderGroupMessage{
-				SubscribeID:     0,
-				TrackAlias:      0,
-				GroupID:         0,
-				ObjectSendOrder: 0,
+				SubscribeID:       0,
+				TrackAlias:        0,
+				GroupID:           0,
+				PublisherPriority: 0,
 			},
 			buf:    []byte{},
 			expect: []byte{0x40, 0x51, 0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			shgm: StreamHeaderGroupMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				GroupID:         3,
-				ObjectSendOrder: 4,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				GroupID:           3,
+				PublisherPriority: 4,
 			},
 			buf:    []byte{},
 			expect: []byte{0x40, 0x51, 0x01, 0x02, 0x03, 0x04},
 		},
 		{
 			shgm: StreamHeaderGroupMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				GroupID:         3,
-				ObjectSendOrder: 4,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				GroupID:           3,
+				PublisherPriority: 4,
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x40, 0x51, 0x01, 0x02, 0x03, 0x04},
@@ -74,10 +74,10 @@ func TestParseStreamHeaderGroupMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x02, 0x03, 0x04},
 			expect: &StreamHeaderGroupMessage{
-				SubscribeID:     1,
-				TrackAlias:      2,
-				GroupID:         3,
-				ObjectSendOrder: 4,
+				SubscribeID:       1,
+				TrackAlias:        2,
+				GroupID:           3,
+				PublisherPriority: 4,
 			},
 			err: nil,
 		},
