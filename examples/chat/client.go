@@ -20,7 +20,7 @@ import (
 )
 
 type clientRoom struct {
-	lt  *moqtransport.LocalTrack
+	lt  *moqtransport.ListTrack
 	rts []*moqtransport.RemoteTrack
 }
 
@@ -142,8 +142,8 @@ func (c *Client) handleCatalogDeltas(roomID, username string, previous *chatalog
 func (c *Client) joinRoom(roomID, username string) error {
 	c.rm.lock.Lock()
 	defer c.rm.lock.Unlock()
-	lt := moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username), "")
-	if err := c.session.AddLocalTrack(lt); err != nil {
+	lt := moqtransport.NewListTrack()
+	if err := c.session.AddLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username), "", lt); err != nil {
 		return err
 	}
 	c.rm.rooms[roomID] = &clientRoom{
@@ -225,16 +225,14 @@ func (c *Client) Run() error {
 				fmt.Println("server not subscribed, dropping message")
 				break
 			}
-			err := c.rm.rooms[fields[1]].lt.WriteObject(context.Background(), moqtransport.Object{
+			// TODO: Set correct groupid and objectid
+			c.rm.rooms[fields[1]].lt.Append(moqtransport.Object{
 				GroupID:              0,
 				ObjectID:             0,
 				PublisherPriority:    0,
 				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
 				Payload:              []byte(strings.TrimSpace(msg)),
 			})
-			if err != nil {
-				return fmt.Errorf("failed to write to room: %v", err)
-			}
 		default:
 			fmt.Println("invalid command, try 'join' or 'msg'")
 		}

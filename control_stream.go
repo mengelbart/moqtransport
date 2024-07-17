@@ -48,7 +48,7 @@ func (s *controlStream) readMessages() {
 			return
 		}
 		if err = s.handle(msg); err != nil {
-			s.logger.Error("failed to handle control stream message", "error", err)
+			s.logger.Error("failed to handle control stream message", "error", err, "msg", msg)
 			panic("TODO: Close connection")
 		}
 	}

@@ -14,12 +14,12 @@ type Subscription struct {
 	ID            uint64
 	TrackAlias    uint64
 	Namespace     string
-	TrackName     string
+	Trackname     string
 	Authorization string
 }
 
 type SubscriptionResponseWriter interface {
-	Accept(*LocalTrack)
+	Accept(LocalTrack)
 	Reject(code uint64, reason string)
 }
 
@@ -38,7 +38,7 @@ type defaultSubscriptionResponseWriter struct {
 	session      *Session
 }
 
-func (w *defaultSubscriptionResponseWriter) Accept(t *LocalTrack) {
+func (w *defaultSubscriptionResponseWriter) Accept(t LocalTrack) {
 	w.session.subscribeToLocalTrack(w.subscription, t)
 }
 
