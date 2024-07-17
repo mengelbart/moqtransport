@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"log"
 	"math/big"
 	"net"
 	"sync"
@@ -150,9 +151,9 @@ func TestIntegration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			track := moqtransport.NewLocalTrack("namespace", "track")
+			track := moqtransport.NewListTrack()
 			defer track.Close()
-			err := server.AddLocalTrack(track)
+			err := server.AddLocalTrack("namespace", "track", track)
 			assert.NoError(t, err)
 			err = server.Announce(ctx, "namespace")
 			assert.NoError(t, err)
@@ -189,23 +190,20 @@ func TestIntegration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			track := moqtransport.NewLocalTrack("namespace", "track")
+			track := moqtransport.NewListTrack()
 			defer track.Close()
-			err := server.AddLocalTrack(track)
+			err := server.AddLocalTrack("namespace", "track", track)
 			assert.NoError(t, err)
 			err = server.Announce(ctx, "namespace")
 			assert.NoError(t, err)
 			<-subscribedCh
-			err = track.WriteObject(ctx, moqtransport.Object{
-				GroupID:              0,
-				ObjectID:             0,
+			track.Append(moqtransport.Object{
 				PublisherPriority:    0,
 				ForwardingPreference: 0,
 				Payload:              []byte("hello world"),
 			})
-			assert.NoError(t, err)
 			<-receivedObject
-			assert.NoError(t, track.Close())
+			track.Close()
 			assert.NoError(t, server.Close())
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
@@ -234,77 +232,91 @@ func TestIntegration(t *testing.T) {
 		listener, addr, teardown := setup()
 		defer teardown()
 		wg.Add(1)
-		receivedSubscribeCh := make(chan struct{})
-		receivedUnsubscribeCh := make(chan struct{})
-		subscribedCh := make(chan struct{})
-		unsubscribedCh := make(chan struct{})
-		go func() {
-			defer wg.Done()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			server := quicServerSession(t, ctx, listener, nil)
-			track := moqtransport.NewLocalTrack("namespace", "track")
-			defer track.Close()
-			err := server.AddLocalTrack(track)
-			assert.NoError(t, err)
-			err = server.Announce(ctx, "namespace")
-			assert.NoError(t, err)
-			err = track.WriteObject(ctx, moqtransport.Object{
-				GroupID:              0,
-				ObjectID:             0,
-				PublisherPriority:    0,
-				ForwardingPreference: 0,
-				Payload:              []byte("hello world"),
-			})
-			assert.NoError(t, err)
-			<-subscribedCh
-			assert.Equal(t, 1, track.SubscriberCount())
-			err = track.WriteObject(ctx, moqtransport.Object{
-				GroupID:              0,
-				ObjectID:             0,
-				PublisherPriority:    0,
-				ForwardingPreference: 0,
-				Payload:              []byte("hello world"),
-			})
-			assert.NoError(t, err)
-			close(receivedSubscribeCh)
-			<-unsubscribedCh
-			err = track.WriteObject(ctx, moqtransport.Object{
-				GroupID:              0,
-				ObjectID:             0,
-				PublisherPriority:    0,
-				ForwardingPreference: 0,
-				Payload:              []byte("hello world"),
-			})
-			for i := 0; i < 3; i++ {
-				if track.SubscriberCount() == 0 {
-					break
-				}
-				time.Sleep(10 * time.Millisecond)
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, 0, track.SubscriberCount())
-			close(receivedUnsubscribeCh)
-			assert.NoError(t, server.Close())
-		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		announcementCh := make(chan struct{})
-		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-			assert.Equal(t, "namespace", a.Namespace())
-			arw.Accept()
-			close(announcementCh)
-		}))
-		<-announcementCh
+
+		trackCreated := make(chan struct{})
+		unsubscribed := make(chan struct{})
+
+		go func() {
+			defer wg.Done()
+			server := quicServerSession(t, ctx, listener, nil)
+			track := moqtransport.NewListTrack()
+			err := server.AddLocalTrack("namespace", "track", track)
+			assert.NoError(t, err)
+			close(trackCreated)
+			track.Append(moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             0,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 0"),
+			})
+			track.Append(moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             1,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 1"),
+			})
+			track.Append(moqtransport.Object{
+				GroupID:              0,
+				ObjectID:             2,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 2"),
+			})
+			<-unsubscribed
+			time.Sleep(time.Second)
+			track.Close()
+			assert.NoError(t, server.Close())
+		}()
+
+		client := quicClientSession(t, ctx, addr, nil)
+
+		<-trackCreated
 		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
 		assert.NoError(t, err)
-		close(subscribedCh)
-		<-receivedSubscribeCh
+		res := []moqtransport.Object{}
+		for i := 0; i < 3; i++ {
+			o, err := sub.ReadObject(ctx)
+			log.Printf("read object %v", o)
+			assert.NoError(t, err)
+			res = append(res, o)
+		}
 		sub.Unsubscribe()
-		close(unsubscribedCh)
-		<-receivedUnsubscribeCh
+		close(unsubscribed)
+		time.Sleep(time.Second)
 		assert.NoError(t, client.Close())
 		wg.Wait()
+
+		expected := []moqtransport.Object{
+			{
+				GroupID:              0,
+				ObjectID:             0,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 0"),
+			},
+			{
+				GroupID:              0,
+				ObjectID:             1,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 1"),
+			},
+			{
+				GroupID:              0,
+				ObjectID:             2,
+				PublisherPriority:    0,
+				ForwardingPreference: 0,
+				Payload:              []byte("hello world: 2"),
+			},
+		}
+		assert.Len(t, res, 3)
+		for _, o := range expected {
+			assert.Contains(t, res, o)
+		}
 	})
 }
 

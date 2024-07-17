@@ -25,7 +25,7 @@ type moqHandler struct {
 	trackname  string
 	publish    bool
 	subscribe  bool
-	localTrack *moqtransport.LocalTrack
+	localTrack *moqtransport.ListTrack
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -40,7 +40,7 @@ func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
 		return err
 	}
 	if h.publish {
-		h.setupDateTrack(ctx)
+		h.setupDateTrack()
 	}
 	h.handle(ctx, conn)
 	select {}
@@ -60,7 +60,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 		},
 	}
 	if h.publish {
-		h.setupDateTrack(ctx)
+		h.setupDateTrack()
 	}
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 		session, err := wt.Upgrade(w, r)
@@ -100,7 +100,7 @@ func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
 				srw.Reject(0, "endpoint does not publish any tracks")
 				return
 			}
-			if sub.Namespace != h.namespace && sub.TrackName != h.trackname {
+			if sub.Namespace != h.namespace && sub.Trackname != h.trackname {
 				srw.Reject(0, "unknown track")
 				return
 			}
@@ -153,21 +153,21 @@ func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Sessi
 	return nil
 }
 
-func (h *moqHandler) setupDateTrack(ctx context.Context) {
-	h.localTrack = moqtransport.NewLocalTrack(h.namespace, h.trackname)
+func (h *moqHandler) setupDateTrack() {
+	h.localTrack = moqtransport.NewListTrack()
 	go func() {
 		defer h.localTrack.Close()
 		ticker := time.NewTicker(time.Second)
-		id := uint64(0)
+		i := 0
 		for ts := range ticker.C {
-			h.localTrack.WriteObject(ctx, moqtransport.Object{
-				GroupID:              id,
+			h.localTrack.Append(moqtransport.Object{
+				GroupID:              uint64(i),
 				ObjectID:             0,
 				PublisherPriority:    0,
 				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
 				Payload:              []byte(fmt.Sprintf("%v", ts)),
 			})
-			id++
+			i++
 		}
 	}()
 }
