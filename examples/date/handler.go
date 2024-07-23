@@ -191,7 +191,7 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 			InsecureSkipVerify: true,
 		},
 	}
-	_, session, err := dialer.Dial(ctx, fmt.Sprintf("https://%v/moq", addr), nil)
+	_, session, err := dialer.Dial(ctx, addr, nil)
 	if err != nil {
 		return nil, err
 	}
