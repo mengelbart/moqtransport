@@ -157,6 +157,7 @@ func (s *Session) RunServer(ctx context.Context) error {
 	s.storeControlStream(newControlStream(controlStream, s.handleControlMessage))
 	select {
 	case <-ctx.Done():
+		s.si.logger.Error("context done before control stream handshake done")
 		s.Close()
 		return ctx.Err()
 	case <-s.si.serverHandshakeDoneCh:
@@ -168,9 +169,11 @@ func (s *Session) RunServer(ctx context.Context) error {
 
 func (s *Session) initClient(setup *wire.ServerSetupMessage) error {
 	if setup.SelectedVersion != wire.CurrentVersion {
+		s.si.logger.Error("unsupported version", "remote_server_supported_version", setup.SelectedVersion, "client_supported_version", wire.CurrentVersion)
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
+		s.si.logger.Error("failed to validate remote role parameter", "error", err)
 		return err
 	}
 	s.handshakeDone = true
@@ -180,9 +183,11 @@ func (s *Session) initClient(setup *wire.ServerSetupMessage) error {
 func (s *Session) initServer(setup *wire.ClientSetupMessage) error {
 	s.controlStream = s.loadControlStream()
 	if !slices.Contains(setup.SupportedVersions, wire.CurrentVersion) {
+		s.si.logger.Error("unsupported version", "remote_client_supported_versions", setup.SupportedVersions, "server_supported_version", wire.CurrentVersion)
 		return s.CloseWithError(ErrorCodeUnsupportedVersion, "unsupported version")
 	}
 	if err := s.validateRemoteRoleParameter(setup.SetupParameters); err != nil {
+		s.si.logger.Error("failed to validate remote role parameter", "error", err)
 		return err
 	}
 	pathParam, ok := setup.SetupParameters[wire.PathParameterKey]
