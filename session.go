@@ -43,11 +43,11 @@ type sessionInternals struct {
 	controlStreamStoreCh  chan controlMessageSender // Needs to be buffered
 	closeOnce             sync.Once
 	closed                chan struct{}
-	sendSubscriptions     *syncMap[uint64, *sendSubscription]
+	sendSubscriptions     *syncMap[uint64, *localTrackSender]
 	receiveSubscriptions  *syncMap[uint64, *RemoteTrack]
 	localAnnouncements    *syncMap[string, *Announcement]
 	remoteAnnouncements   *syncMap[string, *Announcement]
-	localTracks           *syncMap[trackKey, *LocalTrack]
+	localTracks           *syncMap[trackKey, LocalTrack]
 }
 
 func newSessionInternals(logSuffix string) *sessionInternals {
@@ -57,11 +57,11 @@ func newSessionInternals(logSuffix string) *sessionInternals {
 		controlStreamStoreCh:  make(chan controlMessageSender, 1),
 		closeOnce:             sync.Once{},
 		closed:                make(chan struct{}),
-		sendSubscriptions:     newSyncMap[uint64, *sendSubscription](),
+		sendSubscriptions:     newSyncMap[uint64, *localTrackSender](),
 		receiveSubscriptions:  newSyncMap[uint64, *RemoteTrack](),
 		localAnnouncements:    newSyncMap[string, *Announcement](),
 		remoteAnnouncements:   newSyncMap[string, *Announcement](),
-		localTracks:           newSyncMap[trackKey, *LocalTrack](),
+		localTracks:           newSyncMap[trackKey, LocalTrack](),
 	}
 }
 
@@ -418,30 +418,18 @@ func (s *Session) handleAnnouncementResponse(msg trackNamespacer) error {
 	return nil
 }
 
-func (s *Session) subscribeToLocalTrack(sub *Subscription, t *LocalTrack) {
-	sendSub := newSendSubscription(s.Conn, sub.ID, sub.TrackAlias, sub.Namespace, sub.TrackName)
+func (s *Session) subscribeToLocalTrack(sub *Subscription, t LocalTrack) {
+	sendSub := newLocalTrackSender(s.Conn, sub, t)
 	if err := s.si.sendSubscriptions.add(sub.ID, sendSub); err != nil {
 		s.controlStream.enqueue(&wire.SubscribeErrorMessage{
 			SubscribeID:  sub.ID,
-			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
+			ErrorCode:    ErrorCodeInternal,
 			ReasonPhrase: err.Error(),
 			TrackAlias:   sub.TrackAlias,
 		})
 		s.si.logger.Error("failed to save subscription", "error", err)
 		return
 	}
-	id, err := t.subscribe(sendSub)
-	if err != nil {
-		s.controlStream.enqueue(&wire.SubscribeErrorMessage{
-			SubscribeID:  sub.ID,
-			ErrorCode:    ErrorCodeInternal, // TODO: Set better error code?
-			ReasonPhrase: err.Error(),
-			TrackAlias:   sub.TrackAlias,
-		})
-		s.si.logger.Error("failed to subscribe to track", "error", err)
-		return
-	}
-	sendSub.subscriptionIDinTrack = id
 	s.controlStream.enqueue(&wire.SubscribeOkMessage{
 		SubscribeID:   sub.ID,
 		Expires:       0,     // TODO
@@ -472,7 +460,7 @@ func (s *Session) handleSubscribe(msg *wire.SubscribeMessage) {
 		ID:            msg.SubscribeID,
 		TrackAlias:    msg.TrackAlias,
 		Namespace:     msg.TrackNamespace,
-		TrackName:     msg.TrackName,
+		Trackname:     msg.TrackName,
 		Authorization: authValue,
 	}
 	t, ok := s.si.localTracks.get(trackKey{
@@ -498,14 +486,6 @@ func (s *Session) handleUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	if !ok {
 		return errors.New("subscription not found")
 	}
-	track, ok := s.si.localTracks.get(trackKey{
-		namespace: sub.namespace,
-		trackname: sub.trackname,
-	})
-	if !ok {
-		return errors.New("no track related to subscription found")
-	}
-	track.unsubscribe(sub.subscriptionIDinTrack)
 	if err := sub.Close(); err != nil {
 		panic(err)
 	}
@@ -588,10 +568,10 @@ func (s *Session) Close() error {
 	return s.CloseWithError(0, "")
 }
 
-func (s *Session) AddLocalTrack(t *LocalTrack) error {
+func (s *Session) AddLocalTrack(namespace, trackname string, t LocalTrack) error {
 	return s.si.localTracks.add(trackKey{
-		namespace: t.Namespace,
-		trackname: t.Name,
+		namespace: namespace,
+		trackname: trackname,
 	}, t)
 }
 

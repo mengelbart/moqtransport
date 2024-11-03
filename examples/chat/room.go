@@ -14,13 +14,13 @@ type roomID string
 
 type user struct {
 	name    string
-	track   *moqtransport.LocalTrack
+	track   *moqtransport.ListTrack
 	session *moqtransport.Session
 }
 
 type room struct {
 	ID           roomID
-	catalogTrack *moqtransport.LocalTrack
+	catalogTrack *moqtransport.ListTrack
 	catalogGroup uint64
 	users        *chatalog[*user]
 	usersLock    sync.Mutex
@@ -29,14 +29,14 @@ type room struct {
 func newRoom(id roomID) *room {
 	return &room{
 		ID:           id,
-		catalogTrack: moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v", id), ""),
+		catalogTrack: moqtransport.NewListTrack(),
 		catalogGroup: 0,
 		users:        &chatalog[*user]{version: 1, participants: map[string]*user{}},
 		usersLock:    sync.Mutex{},
 	}
 }
 
-func (r *room) addParticipant(username string, session *moqtransport.Session, track *moqtransport.LocalTrack) error {
+func (r *room) addParticipant(username string, session *moqtransport.Session, track *moqtransport.ListTrack) error {
 	r.usersLock.Lock()
 	defer r.usersLock.Unlock()
 	log.Printf("saving user: %v", username)
@@ -44,10 +44,10 @@ func (r *room) addParticipant(username string, session *moqtransport.Session, tr
 		return errors.New("duplicate participant")
 	}
 	for _, u := range r.users.participants {
-		if err := session.AddLocalTrack(u.track); err != nil {
+		if err := session.AddLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, u.name), "", u.track); err != nil {
 			panic(err)
 		}
-		if err := u.session.AddLocalTrack(track); err != nil {
+		if err := u.session.AddLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username), "", track); err != nil {
 			panic(err)
 		}
 	}
@@ -79,7 +79,7 @@ func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtra
 	}
 	catalog := r.users.serialize()
 	fmt.Printf("sending catalog: %v\n", catalog)
-	r.catalogTrack.WriteObject(context.Background(), moqtransport.Object{
+	r.catalogTrack.Append(moqtransport.Object{
 		GroupID:              r.catalogGroup,
 		ObjectID:             0,
 		PublisherPriority:    0,
@@ -87,27 +87,24 @@ func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtra
 		Payload:              []byte(catalog),
 	})
 	r.catalogGroup += 1
-	go func(remote *moqtransport.RemoteTrack, local *moqtransport.LocalTrack) {
+	go func(remote *moqtransport.RemoteTrack, local *moqtransport.ListTrack) {
 		for {
 			obj, err := remote.ReadObject(context.Background())
 			if err != nil {
 				panic(err)
 			}
 			fmt.Printf("relay read object: %v\n", obj)
-			err = local.WriteObject(context.Background(), obj)
-			if err != nil {
-				panic(err)
-			}
+			local.Append(obj)
 		}
 	}(sub, u.track)
 }
 
 func (r *room) subscribeCatalog(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-	if err := s.AddLocalTrack(r.catalogTrack); err != nil {
+	if err := s.AddLocalTrack(fmt.Sprintf("moq-chat/%v", r.ID), "", r.catalogTrack); err != nil {
 		srw.Reject(uint64(errorCodeInternal), "failed to setup room catalog track")
 		return
 	}
-	track := moqtransport.NewLocalTrack(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, sub.Authorization), "") // TODO: Track ID?
+	track := moqtransport.NewListTrack()
 	err := r.addParticipant(sub.Authorization, s, track)
 	if err != nil {
 		srw.Reject(uint64(errorCodeDuplicateUsername), "username already in use")

@@ -101,9 +101,9 @@ func TestSession(t *testing.T) {
 		}).Do(func(_ wire.Message) {
 			close(done)
 		})
-		track := NewLocalTrack("namespace", "track")
+		track := NewListTrack()
 		defer track.Close()
-		err := s.AddLocalTrack(track)
+		err := s.AddLocalTrack("namespace", "track", track)
 		assert.NoError(t, err)
 		err = s.handleControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
