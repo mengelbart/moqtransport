@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -22,7 +20,7 @@ func TestUnsubscribeMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(unsubscribeMessageType), 0x11,
+				0x11,
 			},
 		},
 		{
@@ -30,7 +28,7 @@ func TestUnsubscribeMessageAppend(t *testing.T) {
 				SubscribeID: 17,
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(unsubscribeMessageType), 0x11},
+			expect: []byte{0x0a, 0x0b, 0x11},
 		},
 	}
 	for i, tc := range cases {
@@ -62,9 +60,8 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &UnsubscribeMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

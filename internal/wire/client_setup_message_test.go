@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -23,7 +21,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(clientSetupMessageType), 0x00, 0x00,
+				0x00, 0x00,
 			},
 		},
 		{
@@ -33,7 +31,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(clientSetupMessageType), 0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00,
+				0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -46,7 +44,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(clientSetupMessageType), 0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A',
+				0x01, 0xc0, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 'A',
 			},
 		},
 	}
@@ -139,11 +137,11 @@ func TestParseClientSetupMessage(t *testing.T) {
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
 				SetupParameters: Parameters{
-					0x00: &VarintParameter{
+					0x00: VarintParameter{
 						Type:  0,
 						Value: 2,
 					},
-					0x02: &StringParameter{
+					0x02: StringParameter{
 						Type:  2,
 						Value: "a",
 					},
@@ -154,9 +152,8 @@ func TestParseClientSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &ClientSetupMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

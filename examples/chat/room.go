@@ -73,7 +73,7 @@ func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtra
 		arw.Reject(uint64(errorCodeUnknownParticipant), fmt.Sprintf("username '%v' not found, participant must join before announcing", username))
 	}
 	arw.Accept()
-	sub, err := s.Subscribe(context.Background(), 0, 0, fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username), "", "")
+	sub, err := s.Subscribe(context.Background(), 0, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username))}, []byte(""), "")
 	if err != nil {
 		panic(err)
 	}

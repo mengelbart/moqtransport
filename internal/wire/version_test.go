@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -70,24 +68,27 @@ func TestParseVersions(t *testing.T) {
 		data   []byte
 		expect versions
 		err    error
+		n      int
 	}{
 		{
 			data:   nil,
 			expect: versions{},
 			err:    io.EOF,
+			n:      0,
 		},
 		{
 			data:   []byte{0x01, 0x00},
 			expect: versions{0},
 			err:    nil,
+			n:      2,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := versions{}
-			err := res.parse(reader)
+			n, err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
+			assert.Equal(t, tc.n, n)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 			} else {

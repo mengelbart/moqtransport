@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -23,7 +21,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(serverSetupMessageType), 0x00, 0x00,
+				0x00, 0x00,
 			},
 		},
 		{
@@ -33,7 +31,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(serverSetupMessageType), 0x00, 0x00,
+				0x00, 0x00,
 			},
 		},
 		{
@@ -46,7 +44,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x40, byte(serverSetupMessageType), 0x00, 0x01, 0x00, 0x01, 0x01,
+				0x00, 0x01, 0x00, 0x01, 0x01,
 			},
 		},
 		{
@@ -59,7 +57,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			},
 			buf: []byte{0x01, 0x02},
 			expect: []byte{0x01, 0x02,
-				0x40, byte(serverSetupMessageType), 0x00, 0x01, 0x01, 0x01, 'A',
+				0x00, 0x01, 0x01, 0x01, 'A',
 			},
 		},
 	}
@@ -113,7 +111,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{PathParameterKey: &StringParameter{
+				SetupParameters: Parameters{PathParameterKey: StringParameter{
 					Type:  PathParameterKey,
 					Value: "A",
 				}},
@@ -126,7 +124,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{PathParameterKey: &StringParameter{
+				SetupParameters: Parameters{PathParameterKey: StringParameter{
 					Type:  PathParameterKey,
 					Value: "A",
 				}},
@@ -136,9 +134,8 @@ func TestParseServerSetupMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &ServerSetupMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)

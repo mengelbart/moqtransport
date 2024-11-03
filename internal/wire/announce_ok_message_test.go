@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -18,19 +16,19 @@ func TestAnnounceOkMessageAppend(t *testing.T) {
 	}{
 		{
 			aom: AnnounceOkMessage{
-				TrackNamespace: "",
+				TrackNamespace: [][]byte{[]byte("")},
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(announceOkMessageType), 0x00,
+				0x01, 0x00,
 			},
 		},
 		{
 			aom: AnnounceOkMessage{
-				TrackNamespace: "tracknamespace",
+				TrackNamespace: [][]byte{[]byte("tracknamespace")},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(announceOkMessageType), 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e'},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e'},
 		},
 	}
 	for i, tc := range cases {
@@ -53,30 +51,31 @@ func TestParseAnnounceOkMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: append([]byte{0x0E}, "tracknamespace"...),
+			data: append([]byte{0x01, 0x0E}, "tracknamespace"...),
 			expect: &AnnounceOkMessage{
-				TrackNamespace: "tracknamespace",
+				TrackNamespace: [][]byte{[]byte("tracknamespace")},
 			},
 			err: nil,
 		},
 		{
-			data: append([]byte{0x05}, "tracknamespace"...),
+			data: append([]byte{0x01, 0x05}, "tracknamespace"...),
 			expect: &AnnounceOkMessage{
-				TrackNamespace: "track",
+				TrackNamespace: [][]byte{[]byte("track")},
 			},
 			err: nil,
 		},
 		{
-			data:   append([]byte{0x0F}, "tracknamespace"...),
-			expect: &AnnounceOkMessage{},
-			err:    io.ErrUnexpectedEOF,
+			data: append([]byte{0x01, 0x0F}, "tracknamespace"...),
+			expect: &AnnounceOkMessage{
+				TrackNamespace: [][]byte{},
+			},
+			err: errLengthMismatch,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &AnnounceOkMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

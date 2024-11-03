@@ -1,23 +1,28 @@
 package wire
 
-import "github.com/quic-go/quic-go/quicvarint"
-
 type TrackStatusRequestMessage struct {
-	TrackNamespace string
+	TrackNamespace Tuple
 	TrackName      string
 }
 
-func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(trackStatusRequestMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
-	return appendVarIntString(buf, m.TrackName)
+func (m TrackStatusRequestMessage) Type() controlMessageType {
+	return messageTypeTrackStatusRequest
 }
 
-func (m *TrackStatusRequestMessage) parse(reader messageReader) (err error) {
-	m.TrackNamespace, err = parseVarIntString(reader)
+func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {
+	buf = m.TrackNamespace.append(buf)
+	return appendVarIntBytes(buf, []byte(m.TrackName))
+}
+
+func (m *TrackStatusRequestMessage) parse(data []byte) (err error) {
+	var n int
+	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {
 		return
 	}
-	m.TrackName, err = parseVarIntString(reader)
-	return
+	data = data[n:]
+
+	trackName, _, err := parseVarIntBytes(data)
+	m.TrackName = string(trackName)
+	return err
 }

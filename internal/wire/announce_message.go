@@ -1,29 +1,31 @@
 package wire
 
-import (
-	"github.com/quic-go/quic-go/quicvarint"
-)
-
 type AnnounceMessage struct {
-	TrackNamespace string
+	TrackNamespace Tuple
 	Parameters     Parameters
 }
 
 func (m AnnounceMessage) GetTrackNamespace() string {
-	return m.TrackNamespace
+	return m.TrackNamespace.String()
+}
+
+func (m AnnounceMessage) Type() controlMessageType {
+	return messageTypeAnnounce
 }
 
 func (m *AnnounceMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(announceMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
+	buf = m.TrackNamespace.append(buf)
 	return m.Parameters.append(buf)
 }
 
-func (m *AnnounceMessage) parse(reader messageReader) (err error) {
-	m.TrackNamespace, err = parseVarIntString(reader)
+func (m *AnnounceMessage) parse(data []byte) (err error) {
+	var n int
+	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {
 		return err
 	}
+	data = data[n:]
+
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(reader)
+	return m.Parameters.parse(data)
 }

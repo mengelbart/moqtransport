@@ -19,46 +19,59 @@ func NewControlMessageParser(r io.Reader) *ControlMessageParser {
 
 func (p *ControlMessageParser) Parse() (Message, error) {
 	mt, err := quicvarint.Read(p.reader)
-	var m Message
 	if err != nil {
 		return nil, err
 	}
+	length, err := quicvarint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	msg := make([]byte, length)
+	n, err := p.reader.Read(msg)
+	if err != nil {
+		return nil, err
+	}
+	if n != int(length) {
+		return nil, errLengthMismatch
+	}
+
+	var m Message
 	switch controlMessageType(mt) {
-	case subscribeMessageType:
-		m = &SubscribeMessage{}
-	case subscribeUpdateMessageType:
+	case messageTypeSubscribeUpdate:
 		m = &SubscribeUpdateMessage{}
-	case subscribeOkMessageType:
+	case messageTypeSubscribe:
+		m = &SubscribeMessage{}
+	case messageTypeSubscribeOk:
 		m = &SubscribeOkMessage{}
-	case subscribeErrorMessageType:
+	case messageTypeSubscribeError:
 		m = &SubscribeErrorMessage{}
-	case announceMessageType:
+	case messageTypeAnnounce:
 		m = &AnnounceMessage{}
-	case announceOkMessageType:
+	case messageTypeAnnounceOk:
 		m = &AnnounceOkMessage{}
-	case announceErrorMessageType:
+	case messageTypeAnnounceError:
 		m = &AnnounceErrorMessage{}
-	case unannounceMessageType:
+	case messageTypeUnannounce:
 		m = &UnannounceMessage{}
-	case unsubscribeMessageType:
+	case messageTypeUnsubscribe:
 		m = &UnsubscribeMessage{}
-	case subscribeDoneMessageType:
+	case messageTypeSubscribeDone:
 		m = &SubscribeDoneMessage{}
-	case announceCancelMessageType:
+	case messageTypeAnnounceCancel:
 		m = &AnnounceCancelMessage{}
-	case trackStatusRequestMessageType:
+	case messageTypeTrackStatusRequest:
 		m = &TrackStatusRequestMessage{}
-	case trackStatusMessageType:
+	case messageTypeTrackStatus:
 		m = &TrackStatusMessage{}
-	case goAwayMessageType:
+	case messageTypeGoAway:
 		m = &GoAwayMessage{}
-	case clientSetupMessageType:
+	case messageTypeClientSetup:
 		m = &ClientSetupMessage{}
-	case serverSetupMessageType:
+	case messageTypeServerSetup:
 		m = &ServerSetupMessage{}
 	default:
 		return nil, errInvalidMessageType
 	}
-	err = m.parse(p.reader)
+	err = m.parse(msg)
 	return m, err
 }

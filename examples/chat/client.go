@@ -121,7 +121,7 @@ func (c *Client) handleCatalogDeltas(roomID, username string, previous *chatalog
 			if p == username {
 				continue
 			}
-			t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p), "", username)
+			t, err := c.session.Subscribe(context.Background(), 2, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p))}, []byte(""), username)
 			if err != nil {
 				return err
 			}
@@ -150,11 +150,11 @@ func (c *Client) joinRoom(roomID, username string) error {
 		lt:  lt,
 		rts: []*moqtransport.RemoteTrack{},
 	}
-	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, fmt.Sprintf("moq-chat/%v", roomID), "/catalog", username)
+	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v", roomID))}, []byte("/catalog"), username)
 	if err != nil {
 		return err
 	}
-	if err = c.session.Announce(context.Background(), fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)); err != nil {
+	if err = c.session.Announce(context.Background(), [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username))}); err != nil {
 		return err
 	}
 	o, err := catalogTrack.ReadObject(context.Background())
@@ -175,7 +175,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 		if p == username {
 			continue
 		}
-		t, err := c.session.Subscribe(context.Background(), 2, 0, fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p), "", username)
+		t, err := c.session.Subscribe(context.Background(), 2, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p))}, []byte(""), username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}

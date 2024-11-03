@@ -19,11 +19,11 @@ func (m SubscribeOkMessage) GetSubscribeID() uint64 {
 	return m.SubscribeID
 }
 
+func (m SubscribeOkMessage) Type() controlMessageType {
+	return messageTypeSubscribeOk
+}
+
 func (m *SubscribeOkMessage) Append(buf []byte) []byte {
-	if m.GroupOrder == 0 {
-		panic(errInvalidGroupOrder)
-	}
-	buf = quicvarint.Append(buf, uint64(subscribeOkMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, uint64(m.Expires))
 	buf = append(buf, m.GroupOrder)
@@ -37,47 +37,43 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *SubscribeOkMessage) parse(reader messageReader) (err error) {
-	m.SubscribeID, err = quicvarint.Read(reader)
+func (m *SubscribeOkMessage) parse(data []byte) (err error) {
+	var n int
+	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	var expires uint64
-	expires, err = quicvarint.Read(reader)
+	data = data[n:]
+
+	expires, n, err := quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
 	m.Expires = time.Duration(expires) * time.Millisecond
-	m.GroupOrder, err = reader.ReadByte()
-	if err != nil {
-		return err
+	data = data[n:]
+
+	if len(data) < 2 {
+		return errLengthMismatch
 	}
-	if m.GroupOrder == 0 || m.GroupOrder > 2 {
+	m.GroupOrder = data[0]
+	if m.GroupOrder > 2 {
 		return errInvalidGroupOrder
 	}
-	var contentExistsByte byte
-	contentExistsByte, err = reader.ReadByte()
-	if err != nil {
-		return
-	}
-	switch contentExistsByte {
-	case byte(0):
-		m.ContentExists = false
-	case byte(1):
-		m.ContentExists = true
-	default:
+	if data[1] != 0 && data[1] != 1 {
 		return errInvalidContentExistsByte
 	}
+	m.ContentExists = data[1] == 1
 	if !m.ContentExists {
 		return
 	}
-	m.FinalGroup, err = quicvarint.Read(reader)
+	data = data[2:]
+
+	m.FinalGroup, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	m.FinalObject, err = quicvarint.Read(reader)
-	if err != nil {
-		return
-	}
-	return
+	data = data[n:]
+
+	m.FinalObject, _, err = quicvarint.Parse(data)
+	return err
 }

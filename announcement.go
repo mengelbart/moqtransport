@@ -4,11 +4,11 @@ import "github.com/mengelbart/moqtransport/internal/wire"
 
 type Announcement struct {
 	responseCh chan trackNamespacer
-	namespace  string
+	namespace  [][]byte
 	parameters wire.Parameters // TODO: This is unexported, need better API?
 }
 
-func (a *Announcement) Namespace() string {
+func (a *Announcement) Namespace() [][]byte {
 	return a.namespace
 }
 

@@ -74,7 +74,7 @@ func TestSession(t *testing.T) {
 		csm := &wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
-				wire.RoleParameterKey: &wire.VarintParameter{
+				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
 				},
@@ -108,7 +108,7 @@ func TestSession(t *testing.T) {
 		err = s.handleControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
-				wire.RoleParameterKey: &wire.VarintParameter{
+				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
 				},
@@ -118,8 +118,8 @@ func TestSession(t *testing.T) {
 		err = s.handleControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        17,
 			TrackAlias:         0,
-			TrackNamespace:     "namespace",
-			TrackName:          "track",
+			TrackNamespace:     [][]byte{[]byte("namespace")},
+			TrackName:          []byte("track"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
@@ -147,14 +147,14 @@ func TestSession(t *testing.T) {
 		done := make(chan struct{})
 		csh.EXPECT().enqueue(gomock.Any()).Times(1) // setup message
 		csh.EXPECT().enqueue(&wire.AnnounceOkMessage{
-			TrackNamespace: "namespace",
+			TrackNamespace: [][]byte{[]byte("namespace")},
 		}).Do(func(_ wire.Message) {
 			close(done)
 		})
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
-				wire.RoleParameterKey: &wire.VarintParameter{
+				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
 				},
@@ -162,7 +162,7 @@ func TestSession(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		err = s.handleControlMessage(&wire.AnnounceMessage{
-			TrackNamespace: "namespace",
+			TrackNamespace: [][]byte{[]byte("namespace")},
 			Parameters:     wire.Parameters{},
 		})
 		assert.NoError(t, err)
@@ -182,8 +182,8 @@ func TestSession(t *testing.T) {
 		csh.EXPECT().enqueue(&wire.SubscribeMessage{
 			SubscribeID:    17,
 			TrackAlias:     0,
-			TrackNamespace: "namespace",
-			TrackName:      "track",
+			TrackNamespace: [][]byte{[]byte("namespace")},
+			TrackName:      []byte("track"),
 			FilterType:     0,
 			StartGroup:     0,
 			StartObject:    0,
@@ -203,7 +203,7 @@ func TestSession(t *testing.T) {
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
-				wire.RoleParameterKey: &wire.VarintParameter{
+				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
 				},
@@ -212,7 +212,7 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		track, err := s.Subscribe(ctx, 17, 0, "namespace", "track", "auth")
+		track, err := s.Subscribe(ctx, 17, 0, [][]byte{[]byte("namespace")}, []byte("track"), "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, track)
 		select {
@@ -228,12 +228,12 @@ func TestSession(t *testing.T) {
 		s := session(mc, csh, nil)
 		csh.EXPECT().enqueue(gomock.Any()).Times(1)
 		csh.EXPECT().enqueue(&wire.AnnounceMessage{
-			TrackNamespace: "namespace",
+			TrackNamespace: [][]byte{[]byte("namespace")},
 			Parameters:     wire.Parameters{},
 		}).Do(func(_ wire.Message) {
 			go func() {
 				err := s.handleControlMessage(&wire.AnnounceOkMessage{
-					TrackNamespace: "namespace",
+					TrackNamespace: [][]byte{[]byte("namespace")},
 				})
 				assert.NoError(t, err)
 			}()
@@ -241,7 +241,7 @@ func TestSession(t *testing.T) {
 		err := s.handleControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: []wire.Version{wire.CurrentVersion},
 			SetupParameters: wire.Parameters{
-				wire.RoleParameterKey: &wire.VarintParameter{
+				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
 				},
@@ -250,7 +250,7 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		err = s.Announce(ctx, "namespace")
+		err = s.Announce(ctx, [][]byte{[]byte("namespace")})
 		assert.NoError(t, err)
 	})
 }

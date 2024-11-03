@@ -13,11 +13,14 @@ type SubscribeDoneMessage struct {
 	FinalObject   uint64
 }
 
+func (m SubscribeDoneMessage) Type() controlMessageType {
+	return messageTypeSubscribeDone
+}
+
 func (m *SubscribeDoneMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeDoneMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, m.StatusCode)
-	buf = appendVarIntString(buf, m.ReasonPhrase)
+	buf = appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 	if m.ContentExists {
 		buf = append(buf, 1)
 		buf = quicvarint.Append(buf, m.FinalGroup)
@@ -28,39 +31,45 @@ func (m *SubscribeDoneMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *SubscribeDoneMessage) parse(reader messageReader) (err error) {
-	m.SubscribeID, err = quicvarint.Read(reader)
+func (m *SubscribeDoneMessage) parse(data []byte) (err error) {
+	var n int
+	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	m.StatusCode, err = quicvarint.Read(reader)
+	data = data[n:]
+
+	m.StatusCode, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	m.ReasonPhrase, err = parseVarIntString(reader)
+	data = data[n:]
+
+	reasonPhrase, n, err := parseVarIntBytes(data)
 	if err != nil {
 		return
 	}
-	var contentExistsByte byte
-	contentExistsByte, err = reader.ReadByte()
-	if err != nil {
-		return
+	m.ReasonPhrase = string(reasonPhrase)
+	data = data[n:]
+
+	if len(data) == 0 {
+		return errLengthMismatch
 	}
-	switch contentExistsByte {
-	case 0:
-		m.ContentExists = false
-	case 1:
-		m.ContentExists = true
-	default:
+	if data[0] != 0 && data[0] != 1 {
 		return errInvalidContentExistsByte
 	}
+	m.ContentExists = data[0] == 1
 	if !m.ContentExists {
 		return
 	}
-	m.FinalGroup, err = quicvarint.Read(reader)
+	data = data[1:]
+
+	m.FinalGroup, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	m.FinalObject, err = quicvarint.Read(reader)
-	return
+	data = data[n:]
+
+	m.FinalObject, _, err = quicvarint.Parse(data)
+	return err
 }

@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -28,7 +26,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
+				0x00, 0x00, 0x01, 0x01, 0x01, 0x02,
 			},
 		},
 		{
@@ -41,7 +39,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 				FinalObject:   2,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x01, 0x01, 0x02},
+			expect: []byte{0x11, 0x43, 0xe8, 0x01, 0x01, 0x01, 0x02},
 		},
 		{
 			som: SubscribeOkMessage{
@@ -53,7 +51,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 				FinalObject:   2,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x02, 0x01, 0x01, 0x02},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x11, 0x43, 0xe8, 0x02, 0x01, 0x01, 0x02},
 		},
 		{
 			som: SubscribeOkMessage{
@@ -66,7 +64,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeOkMessageType), 0x00, 0x00, 0x02, 0x00,
+				0x00, 0x00, 0x02, 0x00,
 			},
 		},
 		{
@@ -79,7 +77,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x01, 0x00},
+			expect: []byte{0x11, 0x43, 0xe8, 0x01, 0x00},
 		},
 		{
 			som: SubscribeOkMessage{
@@ -91,7 +89,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, byte(subscribeOkMessageType), 0x11, 0x43, 0xe8, 0x02, 0x00},
+			expect: []byte{0x0a, 0x0b, 0x0c, 0x0d, 0x11, 0x43, 0xe8, 0x02, 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -155,11 +153,11 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 			err: errInvalidContentExistsByte,
 		},
 		{
-			data: []byte{0x01, 0x10, 0x00, 0x08, 0x01, 0x02},
+			data: []byte{0x01, 0x10, 0x09, 0x08, 0x01, 0x02},
 			expect: &SubscribeOkMessage{
 				SubscribeID: 1,
 				Expires:     0x10 * time.Millisecond,
-				GroupOrder:  0,
+				GroupOrder:  9,
 			},
 			err: errInvalidGroupOrder,
 		},
@@ -175,9 +173,8 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &SubscribeOkMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -22,7 +20,7 @@ func TestGoAwayMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(goAwayMessageType), 0x00,
+				0x00,
 			},
 		},
 		{
@@ -31,7 +29,7 @@ func TestGoAwayMessageAppend(t *testing.T) {
 			},
 			buf: []byte{0x0a, 0x0b},
 			expect: []byte{
-				0x0a, 0x0b, byte(goAwayMessageType), 0x03, 'u', 'r', 'i',
+				0x0a, 0x0b, 0x03, 'u', 'r', 'i',
 			},
 		},
 	}
@@ -64,9 +62,8 @@ func TestParseGoAwayMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &GoAwayMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

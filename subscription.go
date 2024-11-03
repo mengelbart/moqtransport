@@ -13,8 +13,8 @@ const (
 type Subscription struct {
 	ID            uint64
 	TrackAlias    uint64
-	Namespace     string
-	Trackname     string
+	Namespace     [][]byte
+	Trackname     []byte
 	Authorization string
 }
 

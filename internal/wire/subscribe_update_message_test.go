@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -28,7 +26,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(subscribeUpdateMessageType), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -42,7 +40,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeUpdateMessageType), 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
 		},
 		{
 			sum: SubscribeUpdateMessage{
@@ -55,7 +53,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(subscribeUpdateMessageType), 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
 		},
 	}
 	for i, tc := range cases {
@@ -105,7 +103,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 				EndObject:          5,
 				SubscriberPriority: 6,
 				Parameters: Parameters{
-					PathParameterKey: &StringParameter{
+					PathParameterKey: StringParameter{
 						Type:  PathParameterKey,
 						Value: "P",
 					},
@@ -116,9 +114,8 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &SubscribeUpdateMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
