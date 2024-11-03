@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +25,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			srm: SubscribeDoneMessage{
@@ -40,7 +38,6 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x0b,
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -57,7 +54,6 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
 				0x0a, 0x0b, 0x0c, 0x0d,
-				0x0b,
 				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -74,7 +70,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 				FinalObject:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x0b, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
+			expect: []byte{0x00, 0x00, 0x00, 0x01, 0x00, 0x00},
 		},
 		{
 			srm: SubscribeDoneMessage{
@@ -87,7 +83,6 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x0b,
 				0x00,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -108,7 +103,6 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 			buf: []byte{0x0a, 0x0b, 0x0c, 0x0d},
 			expect: []byte{
 				0x0a, 0x0b, 0x0c, 0x0d,
-				0x0b,
 				0x11,
 				0x01,
 				0x06, 'r', 'e', 'a', 's', 'o', 'n',
@@ -224,9 +218,8 @@ func TestParseSubscribeDoneMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &SubscribeDoneMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

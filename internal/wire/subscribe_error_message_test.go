@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -25,7 +23,7 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 			},
 			buf: []byte{0x0a, 0x0b},
 			expect: []byte{
-				0x0a, 0x0b, byte(subscribeErrorMessageType), 0x00, 0x00, 0x00, 0x00,
+				0x0a, 0x0b, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -36,7 +34,7 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 				TrackAlias:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(subscribeErrorMessageType), 0x11, 0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n', 0x00},
+			expect: []byte{0x11, 0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n', 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -81,9 +79,8 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &SubscribeErrorMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

@@ -2,7 +2,6 @@ package wire
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -46,17 +45,21 @@ func (v versions) append(buf []byte) []byte {
 	return buf
 }
 
-func (vs *versions) parse(reader io.ByteReader) error {
-	numVersions, err := quicvarint.Read(reader)
+func (vs *versions) parse(data []byte) (int, error) {
+	numVersions, parsed, err := quicvarint.Parse(data)
 	if err != nil {
-		return err
+		return parsed, err
 	}
+	data = data[parsed:]
+
 	for i := 0; i < int(numVersions); i++ {
-		v, err := quicvarint.Read(reader)
+		v, n, err := quicvarint.Parse(data)
+		parsed += n
 		if err != nil {
-			return err
+			return parsed, err
 		}
+		data = data[n:]
 		*vs = append(*vs, Version(v))
 	}
-	return nil
+	return parsed, nil
 }

@@ -9,8 +9,9 @@ type messageReader interface {
 }
 
 type Message interface {
+	Type() controlMessageType
 	Append([]byte) []byte
-	parse(messageReader) error
+	parse([]byte) error
 }
 
 type ObjectMessageType uint64
@@ -41,57 +42,68 @@ type controlMessageType uint64
 
 // Control message types
 const (
-	subscribeUpdateMessageType    controlMessageType = 0x02
-	subscribeMessageType          controlMessageType = 0x03
-	subscribeOkMessageType        controlMessageType = 0x04
-	subscribeErrorMessageType     controlMessageType = 0x05
-	announceMessageType           controlMessageType = 0x06
-	announceOkMessageType         controlMessageType = 0x07
-	announceErrorMessageType      controlMessageType = 0x08
-	unannounceMessageType         controlMessageType = 0x09
-	unsubscribeMessageType        controlMessageType = 0x0a
-	subscribeDoneMessageType      controlMessageType = 0x0b
-	announceCancelMessageType     controlMessageType = 0x0c
-	trackStatusRequestMessageType controlMessageType = 0x0d
-	trackStatusMessageType        controlMessageType = 0x0e
-	goAwayMessageType             controlMessageType = 0x10
-	clientSetupMessageType        controlMessageType = 0x40
-	serverSetupMessageType        controlMessageType = 0x41
+	messageTypeSubscribeUpdate    controlMessageType = 0x02
+	messageTypeSubscribe          controlMessageType = 0x03
+	messageTypeSubscribeOk        controlMessageType = 0x04
+	messageTypeSubscribeError     controlMessageType = 0x05
+	messageTypeAnnounce           controlMessageType = 0x06
+	messageTypeAnnounceOk         controlMessageType = 0x07
+	messageTypeAnnounceError      controlMessageType = 0x08
+	messageTypeUnannounce         controlMessageType = 0x09
+	messageTypeUnsubscribe        controlMessageType = 0x0a
+	messageTypeSubscribeDone      controlMessageType = 0x0b
+	messageTypeAnnounceCancel     controlMessageType = 0x0c
+	messageTypeTrackStatusRequest controlMessageType = 0x0d
+	messageTypeTrackStatus        controlMessageType = 0x0e
+	messageTypeGoAway             controlMessageType = 0x10
+
+	messageTypeSubscribeAnnounces      controlMessageType = 0x00
+	messageTypeSubscribeAnnouncesOk    controlMessageType = 0x00
+	messageTypeSubscribeAnnouncesError controlMessageType = 0x00
+	messageTypeUnsubscribeAnnounces    controlMessageType = 0x00
+	messageTypeMaxSubscribeID          controlMessageType = 0x00
+	messageTypeFetch                   controlMessageType = 0x00
+	messageTypeFetchCancel             controlMessageType = 0x00
+	messageTypeFetchOk                 controlMessageType = 0x00
+	messageTypeFetchError              controlMessageType = 0x00
+
+	messageTypeClientSetup controlMessageType = 0x40
+	messageTypeServerSetup controlMessageType = 0x41
 )
 
 func (mt controlMessageType) String() string {
 	switch mt {
-	case subscribeUpdateMessageType:
+	case messageTypeSubscribeUpdate:
 		return "SubscribeUpdateMessage"
-	case subscribeMessageType:
+	case messageTypeSubscribe:
 		return "SubscribeMessage"
-	case subscribeOkMessageType:
+	case messageTypeSubscribeOk:
 		return "SubscribeOkMessage"
-	case subscribeErrorMessageType:
+	case messageTypeSubscribeError:
 		return "SubscribeErrorMessage"
-	case announceMessageType:
+	case messageTypeAnnounce:
 		return "AnnounceMessage"
-	case announceOkMessageType:
+	case messageTypeAnnounceOk:
 		return "AnnounceOkMessage"
-	case announceErrorMessageType:
+	case messageTypeAnnounceError:
 		return "AnnounceErrorMessage"
-	case unannounceMessageType:
+	case messageTypeUnannounce:
 		return "AnannounceMessage"
-	case unsubscribeMessageType:
+	case messageTypeUnsubscribe:
 		return "UnsubscribeMessage"
-	case subscribeDoneMessageType:
+	case messageTypeSubscribeDone:
 		return "SubscribeDoneMessage"
-	case announceCancelMessageType:
+	case messageTypeAnnounceCancel:
 		return "AnnounceCancelMessage"
-	case trackStatusRequestMessageType:
+	case messageTypeTrackStatusRequest:
 		return "TrackStatusRequestMessage"
-	case trackStatusMessageType:
+	case messageTypeTrackStatus:
 		return "TrackStatusMessage"
-	case goAwayMessageType:
+	case messageTypeGoAway:
 		return "GoAwayMessage"
-	case clientSetupMessageType:
+	case messageTypeClientSetup:
 		return "ClientSetupMessage"
-	case serverSetupMessageType:
+	case messageTypeServerSetup:
 		return "ServerSetupMessage"
 	}
 	return "unknown message type"

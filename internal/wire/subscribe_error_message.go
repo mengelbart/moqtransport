@@ -15,28 +15,39 @@ func (m SubscribeErrorMessage) GetSubscribeID() uint64 {
 	return m.SubscribeID
 }
 
+func (m SubscribeErrorMessage) Type() controlMessageType {
+	return messageTypeSubscribeError
+}
+
 func (m *SubscribeErrorMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(subscribeErrorMessageType))
 	buf = quicvarint.Append(buf, m.SubscribeID)
 	buf = quicvarint.Append(buf, uint64(m.ErrorCode))
-	buf = appendVarIntString(buf, m.ReasonPhrase)
+	buf = appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	return buf
 }
 
-func (m *SubscribeErrorMessage) parse(reader messageReader) (err error) {
-	m.SubscribeID, err = quicvarint.Read(reader)
+func (m *SubscribeErrorMessage) parse(data []byte) (err error) {
+	var n int
+	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
-	m.ErrorCode, err = quicvarint.Read(reader)
+	data = data[n:]
+
+	m.ErrorCode, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
-	m.ReasonPhrase, err = parseVarIntString(reader)
+	data = data[n:]
+
+	reasonPhrase, n, err := parseVarIntBytes(data)
 	if err != nil {
 		return err
 	}
-	m.TrackAlias, err = quicvarint.Read(reader)
-	return
+	m.ReasonPhrase = string(reasonPhrase)
+	data = data[n:]
+
+	m.TrackAlias, _, err = quicvarint.Parse(data)
+	return err
 }

@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -18,32 +16,32 @@ func TestAnnounceErrorMessageAppend(t *testing.T) {
 	}{
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: "",
+				TrackNamespace: [][]byte{[]byte("")},
 				ErrorCode:      0,
 				ReasonPhrase:   "",
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(announceErrorMessageType), 0x00, 0x00, 0x00,
+				0x01, 0x00, 0x00, 0x00,
 			},
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: "trackname",
+				TrackNamespace: [][]byte{[]byte("trackname")},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{byte(announceErrorMessageType), 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
+			expect: append(append([]byte{0x01, 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: "trackname",
+				TrackNamespace: [][]byte{[]byte("trackname")},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: append(append([]byte{0x0a, 0x0b, 0x0c, 0x0d, byte(announceErrorMessageType), 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
+			expect: append(append([]byte{0x0a, 0x0b, 0x0c, 0x0d, 0x01, 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
 		},
 	}
 	for i, tc := range cases {
@@ -66,18 +64,18 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: []byte{0x02, 'n', 's', 0x03},
+			data: []byte{0x01, 0x02, 'n', 's', 0x03},
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: "ns",
+				TrackNamespace: [][]byte{[]byte("ns")},
 				ErrorCode:      3,
 				ReasonPhrase:   "",
 			},
 			err: io.EOF,
 		},
 		{
-			data: append(append(append([]byte{0x0e}, "tracknamespace"...), 0x01, 0x0d), "reason phrase"...),
+			data: append(append(append([]byte{0x01, 0x0e}, "tracknamespace"...), 0x01, 0x0d), "reason phrase"...),
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: "tracknamespace",
+				TrackNamespace: [][]byte{[]byte("tracknamespace")},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason phrase",
 			},
@@ -86,9 +84,8 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &AnnounceErrorMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -21,8 +22,8 @@ type moqHandler struct {
 	server     bool
 	addr       string
 	tlsConfig  *tls.Config
-	namespace  string
-	trackname  string
+	namespace  [][]byte
+	trackname  []byte
 	publish    bool
 	subscribe  bool
 	localTrack *moqtransport.ListTrack
@@ -100,7 +101,7 @@ func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
 				srw.Reject(0, "endpoint does not publish any tracks")
 				return
 			}
-			if sub.Namespace != h.namespace && sub.Trackname != h.trackname {
+			if !tupleEuqal(sub.Namespace, h.namespace) || !bytes.Equal(sub.Trackname, h.trackname) {
 				srw.Reject(0, "unknown track")
 				return
 			}
@@ -131,7 +132,7 @@ func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
 	}
 }
 
-func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Session, namespace, trackname string) error {
+func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Session, namespace [][]byte, trackname []byte) error {
 	rs, err := s.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
 		return err
@@ -196,4 +197,16 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 		return nil, err
 	}
 	return webtransportmoq.New(session), nil
+}
+
+func tupleEuqal(a, b [][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, t := range a {
+		if !bytes.Equal(t, b[i]) {
+			return false
+		}
+	}
+	return true
 }

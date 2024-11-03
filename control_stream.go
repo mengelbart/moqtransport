@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type parser interface {
@@ -54,6 +55,20 @@ func (s *controlStream) readMessages() {
 	}
 }
 
+func compileMessage(msg wire.Message) []byte {
+	buf := make([]byte, 16, 1500)
+	buf = append(buf, msg.Append(buf[16:])...)
+	length := len(buf[16:])
+
+	typeLenBuf := quicvarint.Append(buf[:0], uint64(msg.Type()))
+	typeLenBuf = quicvarint.Append(typeLenBuf, uint64(length))
+
+	n := copy(buf[0:16], typeLenBuf)
+	buf = append(buf[:n], buf[16:]...)
+
+	return buf
+}
+
 func (s *controlStream) writeMessages() {
 	for {
 		select {
@@ -62,8 +77,7 @@ func (s *controlStream) writeMessages() {
 			return
 		case msg := <-s.sendQueue:
 			s.logger.Info("sending control message", "type", fmt.Sprintf("%T", msg), "message", msg)
-			buf := make([]byte, 0, 1500)
-			buf = msg.Append(buf)
+			buf := compileMessage(msg)
 			if _, err := s.stream.Write(buf); err != nil {
 				if err == io.EOF {
 					s.logger.Info("write stream closed, leaving control stream write loop")

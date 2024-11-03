@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -95,39 +93,53 @@ func TestParseParameter(t *testing.T) {
 		data   []byte
 		expect Parameter
 		err    error
+		n      int
 	}{
 		{
 			data: []byte{byte(RoleParameterKey), 0x01, byte(RolePublisher)},
-			expect: &VarintParameter{
+			expect: VarintParameter{
 				Type:  0,
 				Value: uint64(RolePublisher),
 			},
 			err: nil,
+			n:   3,
 		},
 		{
 			data: append(append([]byte{byte(PathParameterKey)}, quicvarint.Append([]byte{}, uint64(len("/path/param")))...), "/path/param"...),
-			expect: &StringParameter{
+			expect: StringParameter{
 				Type:  1,
 				Value: "/path/param",
 			},
 			err: nil,
+			n:   13,
 		},
 		{
 			data:   []byte{},
 			expect: nil,
 			err:    io.EOF,
+			n:      0,
 		},
 		{
 			data:   []byte{0x05, 0x01, 0x00},
 			expect: nil,
 			err:    nil,
+			n:      3,
+		},
+		{
+			data: []byte{0x01, 0x01, 'A'},
+			expect: StringParameter{
+				Type:  PathParameterKey,
+				Value: "A",
+			},
+			err: nil,
+			n:   3,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
-			res, err := parseParameter(reader)
+			res, n, err := parseParameter(tc.data)
 			assert.Equal(t, tc.expect, res)
+			assert.Equal(t, tc.n, n)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 			} else {
@@ -160,17 +172,17 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data:   []byte{0x01, 0x01, 0x01, 'A'},
-			expect: Parameters{PathParameterKey: &StringParameter{Type: 1, Value: "A"}},
+			expect: Parameters{PathParameterKey: StringParameter{Type: 1, Value: "A"}},
 			err:    nil,
 		},
 		{
 			data: []byte{0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'},
 			expect: Parameters{
-				RoleParameterKey: &VarintParameter{
+				RoleParameterKey: VarintParameter{
 					Type:  0,
 					Value: uint64(RolePublisher),
 				},
-				PathParameterKey: &StringParameter{
+				PathParameterKey: StringParameter{
 					Type:  1,
 					Value: "A",
 				},
@@ -179,7 +191,7 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data: []byte{0x01, 0x01, 0x01, 'A', 0x02, 0x02, 0x02, 0x02},
-			expect: Parameters{PathParameterKey: &StringParameter{
+			expect: Parameters{PathParameterKey: StringParameter{
 				Type:  1,
 				Value: "A",
 			}},
@@ -192,7 +204,7 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data: []byte{0x02, 0x0f, 0x01, 0x00, 0x01, 0x01, 'A'},
-			expect: Parameters{PathParameterKey: &StringParameter{
+			expect: Parameters{PathParameterKey: StringParameter{
 				Type:  PathParameterKey,
 				Value: "A",
 			}},
@@ -200,15 +212,14 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data:   []byte{0x02, 0x00, 0x01, 0x01, 0x00, 0x01, 0x02},
-			expect: Parameters{0x00: &VarintParameter{0, 1}},
+			expect: Parameters{0x00: VarintParameter{0, 1}},
 			err:    errDuplicateParameter,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := Parameters{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

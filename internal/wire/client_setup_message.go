@@ -9,8 +9,11 @@ type ClientSetupMessage struct {
 	SetupParameters   Parameters
 }
 
+func (m ClientSetupMessage) Type() controlMessageType {
+	return messageTypeClientSetup
+}
+
 func (m *ClientSetupMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(clientSetupMessageType))
 	buf = quicvarint.Append(buf, uint64(len(m.SupportedVersions)))
 	for _, v := range m.SupportedVersions {
 		buf = quicvarint.Append(buf, uint64(v))
@@ -22,11 +25,12 @@ func (m *ClientSetupMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *ClientSetupMessage) parse(reader messageReader) error {
-	err := m.SupportedVersions.parse(reader)
+func (m *ClientSetupMessage) parse(data []byte) error {
+	n, err := m.SupportedVersions.parse(data)
 	if err != nil {
 		return err
 	}
+	data = data[n:]
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(reader)
+	return m.SetupParameters.parse(data)
 }

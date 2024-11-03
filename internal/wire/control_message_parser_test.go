@@ -34,7 +34,7 @@ func TestControlMessageParser(t *testing.T) {
 		{
 			mr: &mockReader{
 				reads: [][]byte{
-					{0x40, byte(clientSetupMessageType), 0x02, 0x00, 0x01, 0x00},
+					{0x40, byte(messageTypeClientSetup), 0x04, 0x02, 0x00, 0x01, 0x00},
 				},
 				index: 0,
 			},
@@ -47,7 +47,7 @@ func TestControlMessageParser(t *testing.T) {
 		{
 			mr: &mockReader{
 				reads: [][]byte{
-					{0x40, byte(clientSetupMessageType)},
+					{0x40, byte(messageTypeClientSetup), 0x04},
 					{0x02, 0x00, 0x01, 0x00},
 				},
 				index: 0,

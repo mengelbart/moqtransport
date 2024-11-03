@@ -96,14 +96,14 @@ func TestIntegration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			assert.NoError(t, server.Announce(ctx, "/namespace"))
+			assert.NoError(t, server.Announce(ctx, [][]byte{[]byte("/namespace")}))
 			close(receivedAnnounceOK)
 			assert.NoError(t, server.Close())
 		}()
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-			assert.Equal(t, "/namespace", a.Namespace())
+			assert.Equal(t, [][]byte{[]byte("/namespace")}, a.Namespace())
 			arw.Accept()
 		}))
 		<-receivedAnnounceOK
@@ -123,7 +123,7 @@ func TestIntegration(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			server := quicServerSession(t, ctx, listener, nil)
-			err := server.Announce(ctx, "/namespace")
+			err := server.Announce(ctx, [][]byte{[]byte("/namespace")})
 			assert.Error(t, err)
 			assert.ErrorContains(t, err, "TEST_ERR")
 			close(receivedAnnounceError)
@@ -155,7 +155,7 @@ func TestIntegration(t *testing.T) {
 			defer track.Close()
 			err := server.AddLocalTrack("namespace", "track", track)
 			assert.NoError(t, err)
-			err = server.Announce(ctx, "namespace")
+			err = server.Announce(ctx, [][]byte{[]byte("namespace")})
 			assert.NoError(t, err)
 			<-receivedSubscribeOK
 			assert.NoError(t, server.Close())
@@ -164,12 +164,12 @@ func TestIntegration(t *testing.T) {
 		defer cancel()
 		announcementCh := make(chan struct{})
 		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-			assert.Equal(t, "namespace", a.Namespace())
+			assert.Equal(t, [][]byte{[]byte("namespace")}, a.Namespace())
 			arw.Accept()
 			close(announcementCh)
 		}))
 		<-announcementCh
-		r, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
+		r, err := client.Subscribe(ctx, 0, 0, [][]byte{[]byte("namespace")}, []byte("track"), "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, r)
 		close(receivedSubscribeOK)
@@ -194,7 +194,7 @@ func TestIntegration(t *testing.T) {
 			defer track.Close()
 			err := server.AddLocalTrack("namespace", "track", track)
 			assert.NoError(t, err)
-			err = server.Announce(ctx, "namespace")
+			err = server.Announce(ctx, [][]byte{[]byte("namespace")})
 			assert.NoError(t, err)
 			<-subscribedCh
 			track.Append(moqtransport.Object{
@@ -210,12 +210,12 @@ func TestIntegration(t *testing.T) {
 		defer cancel()
 		announcementCh := make(chan struct{})
 		client := quicClientSession(t, ctx, addr, moqtransport.AnnouncementHandlerFunc(func(_ *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-			assert.Equal(t, "namespace", a.Namespace())
+			assert.Equal(t, [][]byte{[]byte("namespace")}, a.Namespace())
 			arw.Accept()
 			close(announcementCh)
 		}))
 		<-announcementCh
-		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
+		sub, err := client.Subscribe(ctx, 0, 0, [][]byte{[]byte("namespace")}, []byte("track"), "auth")
 		assert.NoError(t, err)
 		close(subscribedCh)
 		o, err := sub.ReadObject(ctx)
@@ -275,7 +275,7 @@ func TestIntegration(t *testing.T) {
 		client := quicClientSession(t, ctx, addr, nil)
 
 		<-trackCreated
-		sub, err := client.Subscribe(ctx, 0, 0, "namespace", "track", "auth")
+		sub, err := client.Subscribe(ctx, 0, 0, [][]byte{[]byte("namespace")}, []byte("track"), "auth")
 		assert.NoError(t, err)
 		res := []moqtransport.Object{}
 		for i := 0; i < 3; i++ {

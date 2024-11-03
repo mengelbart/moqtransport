@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -40,7 +38,7 @@ func TestAppendVarIntString(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := appendVarIntString(tc.buf, tc.in)
+			res := appendVarIntBytes(tc.buf, []byte(tc.in))
 			assert.Equal(t, tc.expect, res)
 		})
 	}
@@ -66,49 +64,55 @@ func TestVarIntStringLen(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := varIntStringLen(tc.in)
+			res := varIntBytesLen(tc.in)
 			assert.Equal(t, tc.expect, res)
 		})
 	}
 }
 
-func TestParseVarIntString(t *testing.T) {
+func TestParseVarIntBytes(t *testing.T) {
 	cases := []struct {
 		data   []byte
-		expect string
+		expect []byte
 		err    error
+		n      int
 	}{
 		{
 			data:   nil,
-			expect: "",
+			expect: []byte(""),
 			err:    io.EOF,
+			n:      0,
 		},
 		{
 			data:   []byte{},
-			expect: "",
+			expect: []byte(""),
 			err:    io.EOF,
+			n:      0,
 		},
 		{
 			data:   append([]byte{0x01}, "A"...),
-			expect: "A",
+			expect: []byte("A"),
 			err:    nil,
+			n:      2,
 		},
 		{
 			data:   append([]byte{0x04}, "ABC"...),
-			expect: "",
+			expect: []byte(""),
 			err:    io.ErrUnexpectedEOF,
+			n:      4,
 		},
 		{
 			data:   append([]byte{0x02}, "ABC"...),
-			expect: "AB",
+			expect: []byte("AB"),
 			err:    nil,
+			n:      3,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
-			res, err := parseVarIntString(reader)
+			res, n, err := parseVarIntBytes(tc.data)
 			assert.Equal(t, tc.expect, res)
+			assert.Equal(t, tc.n, n)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 			} else {

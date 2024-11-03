@@ -21,19 +21,18 @@ func (r StringParameter) key() uint64 {
 
 func (r StringParameter) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, r.Type)
-	buf = appendVarIntString(buf, r.Value)
+	buf = appendVarIntBytes(buf, []byte(r.Value))
 	return buf
 }
 
-func (p *StringParameter) parse(reader messageReader) (err error) {
-	p.Value, err = parseVarIntString(reader)
-	return
-}
-
-func parseStringParameter(reader messageReader, key uint64) (*StringParameter, error) {
-	p := &StringParameter{
-		Type: key,
+func parseStringParameter(data []byte, key uint64) (StringParameter, int, error) {
+	buf, n, err := parseVarIntBytes(data)
+	if err != nil {
+		return StringParameter{}, n, err
 	}
-	err := p.parse(reader)
-	return p, err
+	p := StringParameter{
+		Type:  key,
+		Value: string(buf),
+	}
+	return p, n, err
 }

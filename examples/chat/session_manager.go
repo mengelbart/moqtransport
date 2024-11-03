@@ -17,6 +17,14 @@ const (
 	errorCodeUnknownParticipant
 )
 
+func namespaceToString(t [][]byte) string {
+	res := ""
+	for _, t := range t {
+		res += string(t)
+	}
+	return res
+}
+
 type sessionManager struct {
 	rooms     map[roomID]*room
 	roomsLock sync.Mutex
@@ -40,7 +48,7 @@ func (m *sessionManager) handle(s *moqtransport.Session) {
 }
 
 func (m *sessionManager) HandleAnnouncement(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-	parts := strings.SplitN(a.Namespace(), "/", 4)
+	parts := strings.SplitN(namespaceToString(a.Namespace()), "/", 4)
 	if len(parts) != 4 {
 		arw.Reject(uint64(errorCodeInvalidNamespace), "namespace MUST be moq-chat/<room-id>/participant/<username>")
 		return
@@ -65,7 +73,7 @@ func (m *sessionManager) HandleAnnouncement(s *moqtransport.Session, a *moqtrans
 }
 
 func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-	parts := strings.SplitN(sub.Namespace, "/", 4)
+	parts := strings.SplitN(namespaceToString(sub.Namespace), "/", 4)
 	if len(parts) != 2 {
 		srw.Reject(uint64(errorCodeInvalidNamespace), "invalid namespace")
 		return

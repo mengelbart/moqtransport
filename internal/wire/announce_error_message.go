@@ -5,32 +5,41 @@ import (
 )
 
 type AnnounceErrorMessage struct {
-	TrackNamespace string
+	TrackNamespace Tuple
 	ErrorCode      uint64
 	ReasonPhrase   string
 }
 
 func (m AnnounceErrorMessage) GetTrackNamespace() string {
-	return m.TrackNamespace
+	return m.TrackNamespace.String()
+}
+
+func (m AnnounceErrorMessage) Type() controlMessageType {
+	return messageTypeAnnounceError
 }
 
 func (m *AnnounceErrorMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(announceErrorMessageType))
-	buf = appendVarIntString(buf, m.TrackNamespace)
+	buf = m.TrackNamespace.append(buf)
 	buf = quicvarint.Append(buf, m.ErrorCode)
-	buf = appendVarIntString(buf, m.ReasonPhrase)
+	buf = appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 	return buf
 }
 
-func (m *AnnounceErrorMessage) parse(reader messageReader) (err error) {
-	m.TrackNamespace, err = parseVarIntString(reader)
+func (m *AnnounceErrorMessage) parse(data []byte) (err error) {
+	var n int
+	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {
 		return err
 	}
-	m.ErrorCode, err = quicvarint.Read(reader)
+	data = data[n:]
+
+	m.ErrorCode, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
-	m.ReasonPhrase, err = parseVarIntString(reader)
-	return
+	data = data[n:]
+
+	reasonPhrase, _, err := parseVarIntBytes(data)
+	m.ReasonPhrase = string(reasonPhrase)
+	return err
 }

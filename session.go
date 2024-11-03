@@ -103,7 +103,7 @@ func (s *Session) validateRemoteRoleParameter(setupParameters wire.Parameters) e
 	if !ok {
 		return s.CloseWithError(ErrorCodeProtocolViolation, "missing role parameter")
 	}
-	remoteRoleParamValue, ok := remoteRoleParam.(*wire.VarintParameter)
+	remoteRoleParamValue, ok := remoteRoleParam.(wire.VarintParameter)
 	if !ok {
 		return s.CloseWithError(ErrorCodeProtocolViolation, "invalid role parameter type")
 	}
@@ -464,8 +464,8 @@ func (s *Session) handleSubscribe(msg *wire.SubscribeMessage) {
 		Authorization: authValue,
 	}
 	t, ok := s.si.localTracks.get(trackKey{
-		namespace: msg.TrackNamespace,
-		trackname: msg.TrackName,
+		namespace: msg.TrackNamespace.String(),
+		trackname: string(msg.TrackName),
 	})
 	if ok {
 		s.subscribeToLocalTrack(sub, t)
@@ -517,7 +517,7 @@ func (s *Session) handleAnnounceMessage(msg *wire.AnnounceMessage) {
 		namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
 	}
-	if err := s.si.remoteAnnouncements.add(a.namespace, a); err != nil {
+	if err := s.si.remoteAnnouncements.add(wire.Tuple(a.namespace).String(), a); err != nil {
 		s.si.logger.Error("dropping announcement", "error", err)
 		return
 	}
@@ -530,7 +530,7 @@ func (s *Session) handleAnnounceMessage(msg *wire.AnnounceMessage) {
 }
 
 func (s *Session) rejectAnnouncement(a *Announcement, code uint64, reason string) {
-	s.si.remoteAnnouncements.delete(a.namespace)
+	s.si.remoteAnnouncements.delete(wire.Tuple(a.namespace).String())
 	s.controlStream.enqueue(&wire.AnnounceErrorMessage{
 		TrackNamespace: a.namespace,
 		ErrorCode:      code,
@@ -575,7 +575,7 @@ func (s *Session) AddLocalTrack(namespace, trackname string, t LocalTrack) error
 	}, t)
 }
 
-func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace, trackname string, auth string) (*RemoteTrack, error) {
+func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64, namespace [][]byte, trackname []byte, auth string) (*RemoteTrack, error) {
 	sm := &wire.SubscribeMessage{
 		SubscribeID:    subscribeID,
 		TrackAlias:     trackAlias,
@@ -629,7 +629,7 @@ func (s *Session) Subscribe(ctx context.Context, subscribeID, trackAlias uint64,
 	return nil, errors.New("received unexpected response message type to subscribeRequestMessage")
 }
 
-func (s *Session) Announce(ctx context.Context, namespace string) error {
+func (s *Session) Announce(ctx context.Context, namespace [][]byte) error {
 	if len(namespace) == 0 {
 		return errors.New("invalid track namespace")
 	}
@@ -641,7 +641,7 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 	a := &Announcement{
 		responseCh: responseCh,
 	}
-	if err := s.si.localAnnouncements.add(am.TrackNamespace, a); err != nil {
+	if err := s.si.localAnnouncements.add(am.TrackNamespace.String(), a); err != nil {
 		return err
 	}
 	s.controlStream.enqueue(am)
@@ -653,7 +653,7 @@ func (s *Session) Announce(ctx context.Context, namespace string) error {
 		return errClosed
 	case resp = <-responseCh:
 	}
-	if resp.GetTrackNamespace() != am.TrackNamespace {
+	if resp.GetTrackNamespace() != am.TrackNamespace.String() {
 		// Should never happen, because messages are routed based on trackname.
 		// Wrong tracknames would thus never end up here.
 		s.si.logger.Error("internal error: received response message for wrong announce track namespace", "expected_track_namespace", am.TrackNamespace, "response_track_namespace", resp.GetTrackNamespace())

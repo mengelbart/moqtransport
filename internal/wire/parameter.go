@@ -36,16 +36,19 @@ func (p Parameters) String() string {
 	return res
 }
 
-func (pp Parameters) parse(reader messageReader) error {
-	numParameters, err := quicvarint.Read(reader)
+func (pp Parameters) parse(data []byte) error {
+	numParameters, n, err := quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
+	data = data[n:]
+
 	for i := uint64(0); i < numParameters; i++ {
-		p, err := parseParameter(reader)
+		p, n, err := parseParameter(data)
 		if err != nil {
 			return err
 		}
+		data = data[n:]
 		if p == nil {
 			continue
 		}
@@ -57,24 +60,26 @@ func (pp Parameters) parse(reader messageReader) error {
 	return nil
 }
 
-func parseParameter(reader messageReader) (p Parameter, err error) {
+func parseParameter(data []byte) (Parameter, int, error) {
+	var p Parameter
+	var n int
 	var key uint64
-	key, err = quicvarint.Read(reader)
+	parsed := 0
+	key, parsed, err := quicvarint.Parse(data)
 	if err != nil {
-		return nil, err
+		return nil, parsed, err
 	}
+	data = data[parsed:]
+
 	switch key {
 	case RoleParameterKey:
-		p, err = parseVarintParameter(reader, key)
-		return p, err
+		p, n, err = parseVarintParameter(data, key)
+		return p, parsed + n, err
 	case PathParameterKey, AuthorizationParameterKey:
-		p, err = parseStringParameter(reader, key)
-		return p, err
+		p, n, err = parseStringParameter(data, key)
+		return p, parsed + n, err
+	default:
+		l, n, err := quicvarint.Parse(data)
+		return nil, parsed + n + int(l), err
 	}
-	length, err := quicvarint.Read(reader)
-	if err != nil {
-		return nil, err
-	}
-	_, err = reader.Discard(int(length))
-	return nil, err
 }

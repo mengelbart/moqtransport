@@ -1,8 +1,6 @@
 package wire
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -18,21 +16,21 @@ func TestAnnounceMessageAppend(t *testing.T) {
 	}{
 		{
 			am: AnnounceMessage{
-				TrackNamespace: "",
+				TrackNamespace: [][]byte{[]byte("")},
 				Parameters:     Parameters{},
 			},
 			buf: []byte{},
 			expect: []byte{
-				byte(announceMessageType), 0x00, 0x00,
+				0x01, 0x00, 0x00,
 			},
 		},
 		{
 			am: AnnounceMessage{
-				TrackNamespace: "tracknamespace",
+				TrackNamespace: [][]byte{[]byte("tracknamespace")},
 				Parameters:     Parameters{},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(announceMessageType), 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -60,9 +58,9 @@ func TestParseAnnounceMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: append(append([]byte{0x09}, "trackname"...), 0x00),
+			data: append(append([]byte{0x01, 0x09}, "trackname"...), 0x00),
 			expect: &AnnounceMessage{
-				TrackNamespace: "trackname",
+				TrackNamespace: [][]byte{[]byte("trackname")},
 				Parameters:     Parameters{},
 			},
 			err: nil,
@@ -70,9 +68,8 @@ func TestParseAnnounceMessage(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			reader := bufio.NewReader(bytes.NewReader(tc.data))
 			res := &AnnounceMessage{}
-			err := res.parse(reader)
+			err := res.parse(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
