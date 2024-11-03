@@ -478,7 +478,7 @@ func (s *Session) handleSubscribe(msg *wire.SubscribeMessage) {
 		})
 		return
 	}
-	s.rejectSubscription(sub, ErrorCodeTrackNotFound, "track not found")
+	s.rejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found")
 }
 
 func (s *Session) handleUnsubscribe(msg *wire.UnsubscribeMessage) error {
