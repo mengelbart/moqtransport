@@ -9,20 +9,29 @@ const (
 	ErrorCodeProtocolViolation       = 0x03
 	ErrorCodeDuplicateTrackAlias     = 0x04
 	ErrorCodeParameterLengthMismatch = 0x05
+	ErrorTooManySubscribes           = 0x06
 	ErrorCodeGoAwayTimeout           = 0x10
 
 	// Errors not included in current draft
 	ErrorCodeUnsupportedVersion = 0xff01
-	ErrorCodeTrackNotFound      = 0xff02
 )
 
 const (
-	SubscribeErrorInternal        = 0x00
-	SubscribeErrorInvalidRange    = 0x01
-	SubscribeErrorRetryTrackAlias = 0x02
+	SubscribeErrorInternal          = 0x00
+	SubscribeErrorInvalidRange      = 0x01
+	SubscribeErrorRetryTrackAlias   = 0x02
+	SubscribeErrorTrackDoesNotExist = 0x03
+	SubscribeErrorUnauthorized      = 0x04
+	SubscribeErrorTimeout           = 0x05
+)
 
-	// TODO: These are not specified yet, but seem useful
-	SubscribeErrorUnknownTrack = 0x03
+const (
+	SubscribeDoneUnsubscribed  = 0x00
+	SubscribeDoneInternalError = 0x01
+	SubscribeDoneUnauthorized  = 0x02
+	SubscribeDoneTrackEnded    = 0x03
+	SubscribeDoneGoingAway     = 0x04
+	SubscribeDoneExpired       = 0x05
 )
 
 type ProtocolError struct {
