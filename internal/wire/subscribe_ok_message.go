@@ -7,12 +7,13 @@ import (
 )
 
 type SubscribeOkMessage struct {
-	SubscribeID   uint64
-	Expires       time.Duration
-	GroupOrder    uint8
-	ContentExists bool
-	FinalGroup    uint64
-	FinalObject   uint64
+	SubscribeID     uint64
+	Expires         time.Duration
+	GroupOrder      uint8
+	ContentExists   bool
+	LargestGroupID  uint64
+	LargestObjectID uint64
+	Parameters      Parameters
 }
 
 func (m SubscribeOkMessage) GetSubscribeID() uint64 {
@@ -29,12 +30,12 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	buf = append(buf, m.GroupOrder)
 	if m.ContentExists {
 		buf = append(buf, 1) // ContentExists=true
-		buf = quicvarint.Append(buf, m.FinalGroup)
-		buf = quicvarint.Append(buf, m.FinalObject)
-		return buf
+		buf = quicvarint.Append(buf, m.LargestGroupID)
+		buf = quicvarint.Append(buf, m.LargestObjectID)
+		return m.Parameters.append(buf)
 	}
 	buf = append(buf, 0) // ContentExists=false
-	return buf
+	return m.Parameters.append(buf)
 }
 
 func (m *SubscribeOkMessage) parse(data []byte) (err error) {
@@ -63,17 +64,25 @@ func (m *SubscribeOkMessage) parse(data []byte) (err error) {
 		return errInvalidContentExistsByte
 	}
 	m.ContentExists = data[1] == 1
-	if !m.ContentExists {
-		return
-	}
 	data = data[2:]
 
-	m.FinalGroup, n, err = quicvarint.Parse(data)
+	if !m.ContentExists {
+		m.Parameters = Parameters{}
+		return m.Parameters.parse(data)
+	}
+
+	m.LargestGroupID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
 	data = data[n:]
 
-	m.FinalObject, _, err = quicvarint.Parse(data)
-	return err
+	m.LargestObjectID, n, err = quicvarint.Parse(data)
+	if err != nil {
+		return
+	}
+	data = data[n:]
+
+	m.Parameters = Parameters{}
+	return m.Parameters.parse(data)
 }

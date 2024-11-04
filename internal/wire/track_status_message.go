@@ -6,8 +6,8 @@ type TrackStatusMessage struct {
 	TrackNamespace Tuple
 	TrackName      string
 	StatusCode     uint64
-	LatestGroupID  uint64
-	LatestObjectID uint64
+	LastGroupID    uint64
+	LastObjectID   uint64
 }
 
 func (m TrackStatusMessage) Type() controlMessageType {
@@ -18,8 +18,8 @@ func (m *TrackStatusMessage) Append(buf []byte) []byte {
 	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, []byte(m.TrackName))
 	buf = quicvarint.Append(buf, m.StatusCode)
-	buf = quicvarint.Append(buf, m.LatestGroupID)
-	return quicvarint.Append(buf, m.LatestObjectID)
+	buf = quicvarint.Append(buf, m.LastGroupID)
+	return quicvarint.Append(buf, m.LastObjectID)
 }
 
 func (m *TrackStatusMessage) parse(data []byte) (err error) {
@@ -43,12 +43,12 @@ func (m *TrackStatusMessage) parse(data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.LatestGroupID, n, err = quicvarint.Parse(data)
+	m.LastGroupID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
 	data = data[n:]
 
-	m.LatestObjectID, _, err = quicvarint.Parse(data)
+	m.LastObjectID, _, err = quicvarint.Parse(data)
 	return err
 }

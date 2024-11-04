@@ -92,12 +92,12 @@ func TestSession(t *testing.T) {
 		done := make(chan struct{})
 		csh.EXPECT().enqueue(gomock.Any()).Times(1) // Setup message
 		csh.EXPECT().enqueue(&wire.SubscribeOkMessage{
-			SubscribeID:   17,
-			Expires:       0,
-			GroupOrder:    1,
-			ContentExists: false,
-			FinalGroup:    0,
-			FinalObject:   0,
+			SubscribeID:     17,
+			Expires:         0,
+			GroupOrder:      1,
+			ContentExists:   false,
+			LargestGroupID:  0,
+			LargestObjectID: 0,
 		}).Do(func(_ wire.Message) {
 			close(done)
 		})
