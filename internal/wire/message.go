@@ -42,31 +42,31 @@ type controlMessageType uint64
 
 // Control message types
 const (
-	messageTypeSubscribeUpdate    controlMessageType = 0x02
-	messageTypeSubscribe          controlMessageType = 0x03
-	messageTypeSubscribeOk        controlMessageType = 0x04
-	messageTypeSubscribeError     controlMessageType = 0x05
-	messageTypeAnnounce           controlMessageType = 0x06
-	messageTypeAnnounceOk         controlMessageType = 0x07
-	messageTypeAnnounceError      controlMessageType = 0x08
-	messageTypeUnannounce         controlMessageType = 0x09
-	messageTypeUnsubscribe        controlMessageType = 0x0a
-	messageTypeSubscribeDone      controlMessageType = 0x0b
-	messageTypeAnnounceCancel     controlMessageType = 0x0c
-	messageTypeTrackStatusRequest controlMessageType = 0x0d
-	messageTypeTrackStatus        controlMessageType = 0x0e
-	messageTypeGoAway             controlMessageType = 0x10
-
+	messageTypeSubscribeUpdate         controlMessageType = 0x02
+	messageTypeSubscribe               controlMessageType = 0x03
+	messageTypeSubscribeOk             controlMessageType = 0x04
+	messageTypeSubscribeError          controlMessageType = 0x05
+	messageTypeAnnounce                controlMessageType = 0x06
+	messageTypeAnnounceOk              controlMessageType = 0x07
+	messageTypeAnnounceError           controlMessageType = 0x08
+	messageTypeUnannounce              controlMessageType = 0x09
+	messageTypeUnsubscribe             controlMessageType = 0x0a
+	messageTypeSubscribeDone           controlMessageType = 0x0b
+	messageTypeAnnounceCancel          controlMessageType = 0x0c
+	messageTypeTrackStatusRequest      controlMessageType = 0x0d
+	messageTypeTrackStatus             controlMessageType = 0x0e
+	messageTypeGoAway                  controlMessageType = 0x10
 	messageTypeSubscribeAnnounces      controlMessageType = 0x00
 	messageTypeSubscribeAnnouncesOk    controlMessageType = 0x00
 	messageTypeSubscribeAnnouncesError controlMessageType = 0x00
 	messageTypeUnsubscribeAnnounces    controlMessageType = 0x00
 	messageTypeMaxSubscribeID          controlMessageType = 0x00
-	messageTypeFetch                   controlMessageType = 0x00
-	messageTypeFetchCancel             controlMessageType = 0x00
-	messageTypeFetchOk                 controlMessageType = 0x00
-	messageTypeFetchError              controlMessageType = 0x00
 
+	messageTypeFetch       controlMessageType = 0x00
+	messageTypeFetchCancel controlMessageType = 0x00
+	messageTypeFetchOk     controlMessageType = 0x00
+
+	messageTypeFetchError  controlMessageType = 0x00
 	messageTypeClientSetup controlMessageType = 0x40
 	messageTypeServerSetup controlMessageType = 0x41
 )
