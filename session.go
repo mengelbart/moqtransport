@@ -431,12 +431,12 @@ func (s *Session) subscribeToLocalTrack(sub *Subscription, t LocalTrack) {
 		return
 	}
 	s.controlStream.enqueue(&wire.SubscribeOkMessage{
-		SubscribeID:   sub.ID,
-		Expires:       0,     // TODO
-		GroupOrder:    1,     // TODO
-		ContentExists: false, // TODO
-		FinalGroup:    0,     // TODO
-		FinalObject:   0,     // TODO
+		SubscribeID:     sub.ID,
+		Expires:         0,     // TODO
+		GroupOrder:      1,     // TODO
+		ContentExists:   false, // TODO
+		LargestGroupID:  0,     // TODO
+		LargestObjectID: 0,     // TODO
 	})
 }
 
