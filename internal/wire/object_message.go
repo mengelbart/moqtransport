@@ -1,12 +1,13 @@
 package wire
 
 import (
+	"bufio"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type ObjectStatus uint64
+type ObjectStatus int
 
 const (
 	ObjectStatusNormal ObjectStatus = iota
@@ -17,75 +18,167 @@ const (
 )
 
 type ObjectMessage struct {
-	Type              ObjectMessageType
-	SubscribeID       uint64
 	TrackAlias        uint64
 	GroupID           uint64
+	SubgroupID        uint64
 	ObjectID          uint64
 	PublisherPriority uint8
 	ObjectStatus      ObjectStatus
 	ObjectPayload     []byte
 }
 
-func (m *ObjectMessage) Append(buf []byte) []byte {
-	if m.Type == ObjectDatagramMessageType {
-		buf = quicvarint.Append(buf, uint64(ObjectDatagramMessageType))
-	} else {
-		buf = quicvarint.Append(buf, uint64(ObjectStreamMessageType))
-	}
-	buf = quicvarint.Append(buf, m.SubscribeID)
+func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
-	buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
-	buf = append(buf, m.ObjectPayload...)
+	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
+	if len(m.ObjectPayload) == 0 {
+		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
+	} else {
+		buf = append(buf, m.ObjectPayload...)
+	}
 	return buf
 }
 
-func (m *ObjectMessage) parse(data []byte) (parsed int, err error) {
-	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
+func (m *ObjectMessage) AppendSubgroup(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
+	if len(m.ObjectPayload) == 0 {
+		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
+	} else {
+		buf = append(buf, m.ObjectPayload...)
 	}
-	data = data[n:]
+	return buf
+}
+
+func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.GroupID)
+	buf = quicvarint.Append(buf, m.SubgroupID)
+	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = append(buf, m.PublisherPriority)
+	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
+	if len(m.ObjectPayload) == 0 {
+		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
+	} else {
+		buf = append(buf, m.ObjectPayload...)
+	}
+	return buf
+}
+
+func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
+	var n int
 	m.TrackAlias, n, err = quicvarint.Parse(data)
 	parsed += n
 	if err != nil {
 		return
 	}
 	data = data[n:]
+
 	m.GroupID, n, err = quicvarint.Parse(data)
 	parsed += n
 	if err != nil {
 		return
 	}
 	data = data[n:]
+
 	m.ObjectID, n, err = quicvarint.Parse(data)
 	parsed += n
 	if err != nil {
 		return
 	}
 	data = data[n:]
+
 	if len(data) == 0 {
-		return parsed, io.EOF
+		return parsed, io.ErrUnexpectedEOF
 	}
 	m.PublisherPriority = data[0]
 	parsed += 1
 	data = data[1:]
-	var status uint64
-	status, n, err = quicvarint.Parse(data)
+
+	length, n, err := quicvarint.Parse(data)
 	parsed += n
 	if err != nil {
 		return
 	}
-	m.ObjectStatus = ObjectStatus(status)
 	data = data[n:]
-	// TODO: make the message type an io.Reader and let the user read?
+
+	if length == 0 {
+		var status uint64
+		status, n, err = quicvarint.Parse(data)
+		parsed += n
+		if err != nil {
+			return
+		}
+		m.ObjectStatus = ObjectStatus(status)
+		return
+	}
+
 	m.ObjectPayload = make([]byte, len(data))
 	n = copy(m.ObjectPayload, data)
 	parsed += n
+	return
+}
+
+func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
+	br := bufio.NewReader(r)
+	m.ObjectID, err = quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+	length, err := quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+
+	if length == 0 {
+		var status uint64
+		status, err = quicvarint.Read(br)
+		if err != nil {
+			return
+		}
+		m.ObjectStatus = ObjectStatus(status)
+		return
+	}
+	m.ObjectPayload = make([]byte, length)
+	_, err = io.ReadFull(r, m.ObjectPayload)
+	return
+}
+
+func (m *ObjectMessage) readFetch(r io.Reader) (err error) {
+	br := bufio.NewReader(r)
+	m.GroupID, err = quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+	m.SubgroupID, err = quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+	m.ObjectID, err = quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+	m.PublisherPriority, err = br.ReadByte()
+	if err != nil {
+		return
+	}
+	length, err := quicvarint.Read(br)
+	if err != nil {
+		return
+	}
+
+	if length == 0 {
+		var status uint64
+		status, err = quicvarint.Read(br)
+		if err != nil {
+			return
+		}
+		m.ObjectStatus = ObjectStatus(status)
+		return
+	}
+
+	m.ObjectPayload = make([]byte, length)
+	_, err = io.ReadFull(r, m.ObjectPayload)
 	return
 }

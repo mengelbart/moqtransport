@@ -15,7 +15,7 @@ type roomID string
 type user struct {
 	name    string
 	track   *moqtransport.ListTrack
-	session *moqtransport.Session
+	session *moqtransport.Transport
 }
 
 type room struct {
@@ -36,7 +36,7 @@ func newRoom(id roomID) *room {
 	}
 }
 
-func (r *room) addParticipant(username string, session *moqtransport.Session, track *moqtransport.ListTrack) error {
+func (r *room) addParticipant(username string, session *moqtransport.Transport, track *moqtransport.ListTrack) error {
 	r.usersLock.Lock()
 	defer r.usersLock.Unlock()
 	log.Printf("saving user: %v", username)
@@ -67,13 +67,13 @@ func (r *room) findParticipant(username string) (*user, bool) {
 	return u, ok
 }
 
-func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtransport.AnnouncementResponseWriter) {
+func (r *room) announceUser(username string, s *moqtransport.Transport, arw moqtransport.AnnouncementResponseWriter) {
 	u, ok := r.findParticipant(username)
 	if !ok {
 		arw.Reject(uint64(errorCodeUnknownParticipant), fmt.Sprintf("username '%v' not found, participant must join before announcing", username))
 	}
 	arw.Accept()
-	sub, err := s.Subscribe(context.Background(), 0, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username))}, []byte(""), "")
+	sub, err := s.Subscribe(context.Background(), 0, 0, []string{fmt.Sprintf("moq-chat/%v/participant/%v", r.ID, username)}, "", "")
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +99,7 @@ func (r *room) announceUser(username string, s *moqtransport.Session, arw moqtra
 	}(sub, u.track)
 }
 
-func (r *room) subscribeCatalog(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
+func (r *room) subscribeCatalog(s *moqtransport.Transport, sub moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
 	if err := s.AddLocalTrack(fmt.Sprintf("moq-chat/%v", r.ID), "", r.catalogTrack); err != nil {
 		srw.Reject(uint64(errorCodeInternal), "failed to setup room catalog track")
 		return

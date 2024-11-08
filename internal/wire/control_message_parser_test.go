@@ -28,7 +28,7 @@ func (r *mockReader) Read(p []byte) (int, error) {
 func TestControlMessageParser(t *testing.T) {
 	cases := []struct {
 		mr     *mockReader
-		expect Message
+		expect ControlMessage
 		err    error
 	}{
 		{

@@ -17,7 +17,7 @@ func NewControlMessageParser(r io.Reader) *ControlMessageParser {
 	}
 }
 
-func (p *ControlMessageParser) Parse() (Message, error) {
+func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	mt, err := quicvarint.Read(p.reader)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func (p *ControlMessageParser) Parse() (Message, error) {
 		return nil, errLengthMismatch
 	}
 
-	var m Message
+	var m ControlMessage
 	switch controlMessageType(mt) {
 	case messageTypeSubscribeUpdate:
 		m = &SubscribeUpdateMessage{}
@@ -65,6 +65,24 @@ func (p *ControlMessageParser) Parse() (Message, error) {
 		m = &TrackStatusMessage{}
 	case messageTypeGoAway:
 		m = &GoAwayMessage{}
+	case messageTypeSubscribeAnnounces:
+		m = &SubscribeAnnouncesMessage{}
+	case messageTypeSubscribeAnnouncesOk:
+		m = &SubscribeAnnouncesOkMessage{}
+	case messageTypeSubscribeAnnouncesError:
+		m = &SubscribeAnnouncesErrorMessage{}
+	case messageTypeUnsubscribeAnnounces:
+		m = &UnsubscribeAnnouncesMessage{}
+	case messageTypeMaxSubscribeID:
+		m = &MaxSubscribeIDMessage{}
+	case messageTypeFetch:
+		m = &FetchMessage{}
+	case messageTypeFetchCancel:
+		m = &FetchCancelMessage{}
+	case messageTypeFetchOk:
+		m = &FetchOkMessage{}
+	case messageTypeFetchError:
+		m = &FetchErrorMessage{}
 	case messageTypeClientSetup:
 		m = &ClientSetupMessage{}
 	case messageTypeServerSetup:

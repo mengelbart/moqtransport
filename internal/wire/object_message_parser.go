@@ -2,119 +2,110 @@ package wire
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
+	"iter"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+var (
+	errInvalidStreamType = errors.New("invalid stream type")
+)
+
 type ObjectStreamParser struct {
-	reader     messageReader
-	gotHeader  bool
-	streamType ObjectMessageType
+	reader messageReader
+	Typ    StreamType
 
 	subscribeID       uint64
 	trackAlias        uint64
-	publisherPriority uint8
-	groupID           uint64
+	PublisherPriority uint8
+	GroupID           uint64
 }
 
-func NewObjectStreamParser(r io.Reader) *ObjectStreamParser {
-	return &ObjectStreamParser{
-		reader:            bufio.NewReader(r),
-		gotHeader:         false,
-		streamType:        0,
-		subscribeID:       0,
-		trackAlias:        0,
-		publisherPriority: 0,
-		groupID:           0,
+func (p *ObjectStreamParser) TrackAlias() (uint64, error) {
+	if p.Typ != StreamTypeSubgroup {
+		return 0, errors.New("only subgroup streams have a track alias")
+	}
+	return p.trackAlias, nil
+}
+
+func (p *ObjectStreamParser) SubscribeID() (uint64, error) {
+	if p.Typ != StreamTypeFetch {
+		return 0, errors.New("only fetch streams have a subscribe ID")
+	}
+	return p.subscribeID, nil
+}
+
+func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
+	br := bufio.NewReader(r)
+	st, err := quicvarint.Read(br)
+	if err != nil {
+		return nil, err
+	}
+	switch StreamType(st) {
+	case StreamTypeFetch:
+		var fhm FetchHeaderMessage
+		if err := fhm.parse(br); err != nil {
+			return nil, err
+		}
+		return &ObjectStreamParser{
+			reader:            br,
+			Typ:               StreamType(st),
+			subscribeID:       fhm.SubscribeID,
+			trackAlias:        0,
+			PublisherPriority: 0,
+			GroupID:           0,
+		}, nil
+
+	case StreamTypeSubgroup:
+		var shsm StreamHeaderSubgroupMessage
+		if err := shsm.parse(br); err != nil {
+			return nil, err
+		}
+		return &ObjectStreamParser{
+			reader:            br,
+			Typ:               StreamType(st),
+			subscribeID:       0,
+			trackAlias:        shsm.TrackAlias,
+			PublisherPriority: shsm.PublisherPriority,
+			GroupID:           shsm.GroupID,
+		}, nil
+
+	default:
+		return nil, errInvalidStreamType
+	}
+}
+
+func (p *ObjectStreamParser) Messages() iter.Seq2[*ObjectMessage, error] {
+	return func(yield func(*ObjectMessage, error) bool) {
+		for {
+			if !yield(p.Parse()) {
+				return
+			}
+		}
 	}
 }
 
 func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
-	if !p.gotHeader {
-		mt, err := quicvarint.Read(p.reader)
-		if err != nil {
-			return nil, err
-		}
-		p.streamType = ObjectMessageType(mt)
-		p.gotHeader = true
-		switch p.streamType {
-		case StreamHeaderTrackMessageType:
-			shtm := &StreamHeaderTrackMessage{}
-			if err := shtm.parse(p.reader); err != nil {
-				return nil, err
-			}
-			p.subscribeID = shtm.SubscribeID
-			p.trackAlias = shtm.TrackAlias
-			p.publisherPriority = shtm.PublisherPriority
-		case StreamHeaderGroupMessageType:
-			shgm := &StreamHeaderGroupMessage{}
-			if err := shgm.parse(p.reader); err != nil {
-				return nil, err
-			}
-			p.subscribeID = shgm.SubscribeID
-			p.trackAlias = shgm.TrackAlias
-			p.publisherPriority = shgm.PublisherPriority
-			p.groupID = shgm.GroupID
-		}
+	m := &ObjectMessage{
+		TrackAlias:        p.trackAlias,
+		GroupID:           p.GroupID,
+		SubgroupID:        0,
+		ObjectID:          0,
+		PublisherPriority: p.PublisherPriority,
+		ObjectStatus:      0,
+		ObjectPayload:     nil,
 	}
-
-	switch p.streamType {
-	case ObjectStreamMessageType:
-		om := &ObjectMessage{
-			Type: ObjectStreamMessageType,
-		}
-		var buf []byte
-		buf, err := io.ReadAll(p.reader)
-		if err != nil {
-			return nil, err
-		}
-		_, err = om.parse(buf)
-		return om, err
-
-	case ObjectDatagramMessageType:
-		om := &ObjectMessage{
-			Type: ObjectDatagramMessageType,
-		}
-		var buf []byte
-		buf, err := io.ReadAll(p.reader)
-		if err != nil {
-			return nil, err
-		}
-		if _, err = om.parse(buf); err != nil {
-			return nil, err
-		}
-		return om, nil
-
-	case StreamHeaderTrackMessageType:
-		om := &StreamHeaderTrackObject{}
-		if err := om.parse(p.reader); err != nil {
-			return nil, err
-		}
-		return &ObjectMessage{
-			Type:              StreamHeaderTrackMessageType,
-			SubscribeID:       p.subscribeID,
-			TrackAlias:        p.trackAlias,
-			GroupID:           om.GroupID,
-			ObjectID:          om.ObjectID,
-			PublisherPriority: p.publisherPriority,
-			ObjectPayload:     om.ObjectPayload,
-		}, nil
-
-	case StreamHeaderGroupMessageType:
-		om := &StreamHeaderGroupObject{}
-		if err := om.parse(p.reader); err != nil {
-			return nil, err
-		}
-		return &ObjectMessage{
-			Type:              StreamHeaderGroupMessageType,
-			SubscribeID:       p.subscribeID,
-			TrackAlias:        p.trackAlias,
-			GroupID:           p.groupID,
-			ObjectID:          om.ObjectID,
-			PublisherPriority: p.publisherPriority,
-			ObjectPayload:     om.ObjectPayload,
-		}, nil
+	var err error
+	switch p.Typ {
+	case StreamTypeFetch:
+		err = m.readFetch(p.reader)
+	case StreamTypeSubgroup:
+		err = m.readSubgroup(p.reader)
+	default:
+		panic(fmt.Sprintf("unexpected wire.streamType: %#v", p.Typ))
 	}
-	return nil, errInvalidMessageType
+	return m, err
 }

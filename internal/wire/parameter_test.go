@@ -92,6 +92,7 @@ func TestParseParameter(t *testing.T) {
 	cases := []struct {
 		data   []byte
 		expect Parameter
+		pm     map[uint64]parameterParserFunc
 		err    error
 		n      int
 	}{
@@ -101,6 +102,7 @@ func TestParseParameter(t *testing.T) {
 				Type:  0,
 				Value: uint64(RolePublisher),
 			},
+			pm:  setupParameterTypes,
 			err: nil,
 			n:   3,
 		},
@@ -110,18 +112,21 @@ func TestParseParameter(t *testing.T) {
 				Type:  1,
 				Value: "/path/param",
 			},
+			pm:  setupParameterTypes,
 			err: nil,
 			n:   13,
 		},
 		{
 			data:   []byte{},
 			expect: nil,
+			pm:     versionSpecificParameterTypes,
 			err:    io.EOF,
 			n:      0,
 		},
 		{
 			data:   []byte{0x05, 0x01, 0x00},
 			expect: nil,
+			pm:     versionSpecificParameterTypes,
 			err:    nil,
 			n:      3,
 		},
@@ -131,13 +136,14 @@ func TestParseParameter(t *testing.T) {
 				Type:  PathParameterKey,
 				Value: "A",
 			},
+			pm:  setupParameterTypes,
 			err: nil,
 			n:   3,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res, n, err := parseParameter(tc.data)
+			res, n, err := parseParameter(tc.data, tc.pm)
 			assert.Equal(t, tc.expect, res)
 			assert.Equal(t, tc.n, n)
 			if tc.err != nil {
@@ -219,7 +225,7 @@ func TestParseParameters(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
 			res := Parameters{}
-			err := res.parse(tc.data)
+			err := res.parse(tc.data, setupParameterTypes)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

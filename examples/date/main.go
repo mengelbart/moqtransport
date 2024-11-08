@@ -10,6 +10,8 @@ import (
 	"flag"
 	"log"
 	"math/big"
+
+	"github.com/mengelbart/moqtransport"
 )
 
 func main() {
@@ -31,13 +33,14 @@ func main() {
 	}
 	h := &moqHandler{
 		server:     *server,
+		quic:       !*wt,
 		addr:       *addr,
 		tlsConfig:  tlsConfig,
-		namespace:  [][]byte{[]byte(*namespace)},
-		trackname:  []byte(*trackname),
+		namespace:  []string{*namespace},
+		trackname:  *trackname,
 		publish:    *publish,
 		subscribe:  *subscribe,
-		localTrack: nil,
+		publishers: make(chan *moqtransport.Publisher),
 	}
 	if *server {
 		if err := h.runServer(context.TODO()); err != nil {

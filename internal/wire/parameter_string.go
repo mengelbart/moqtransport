@@ -12,7 +12,7 @@ type StringParameter struct {
 }
 
 func (r StringParameter) String() string {
-	return fmt.Sprintf("key: %v, value: %v", r.Type, r.Value)
+	return fmt.Sprintf("{key: %v, value: '%v'}", r.Type, r.Value)
 }
 
 func (r StringParameter) key() uint64 {
@@ -25,7 +25,7 @@ func (r StringParameter) append(buf []byte) []byte {
 	return buf
 }
 
-func parseStringParameter(data []byte, key uint64) (StringParameter, int, error) {
+func parseStringParameter(data []byte, key uint64) (Parameter, int, error) {
 	buf, n, err := parseVarIntBytes(data)
 	if err != nil {
 		return StringParameter{}, n, err

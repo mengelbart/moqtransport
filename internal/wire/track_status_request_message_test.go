@@ -16,7 +16,7 @@ func TestTrackStatusRequestMessageAppend(t *testing.T) {
 	}{
 		{
 			aom: TrackStatusRequestMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 				TrackName:      "",
 			},
 			buf: []byte{},
@@ -26,7 +26,7 @@ func TestTrackStatusRequestMessageAppend(t *testing.T) {
 		},
 		{
 			aom: TrackStatusRequestMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				TrackName:      "track",
 			},
 			buf:    []byte{0x0a, 0x0b},
@@ -55,7 +55,7 @@ func TestParseTrackStatusRequestMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x05, 't', 'r', 'a', 'c', 'k'},
 			expect: &TrackStatusRequestMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				TrackName:      "track",
 			},
 			err: nil,
@@ -63,7 +63,7 @@ func TestParseTrackStatusRequestMessage(t *testing.T) {
 		{
 			data: append([]byte{0x0f}, "tracknamespace"...),
 			expect: &TrackStatusRequestMessage{
-				TrackNamespace: [][]byte{},
+				TrackNamespace: []string{},
 				TrackName:      "",
 			},
 			err: errLengthMismatch,

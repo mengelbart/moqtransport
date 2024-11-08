@@ -9,8 +9,28 @@ import (
 const (
 	RoleParameterKey uint64 = iota
 	PathParameterKey
-	AuthorizationParameterKey
+	MaxSubscribeIDParameterKey
 )
+
+const (
+	AuthorizationParameterKey uint64 = iota + 2
+	DeliveryTimeoutParameterKey
+	MaxCacheDurationParameterKey
+)
+
+type parameterParserFunc func([]byte, uint64) (Parameter, int, error)
+
+var setupParameterTypes = map[uint64]parameterParserFunc{
+	RoleParameterKey:           parseVarintParameter,
+	PathParameterKey:           parseStringParameter,
+	MaxSubscribeIDParameterKey: parseVarintParameter,
+}
+
+var versionSpecificParameterTypes = map[uint64]parameterParserFunc{
+	AuthorizationParameterKey:    parseStringParameter,
+	DeliveryTimeoutParameterKey:  parseVarintParameter,
+	MaxCacheDurationParameterKey: parseVarintParameter,
+}
 
 type Parameter interface {
 	append([]byte) []byte
@@ -29,14 +49,28 @@ func (p Parameters) append(buf []byte) []byte {
 }
 
 func (p Parameters) String() string {
-	res := ""
-	for k, v := range p {
-		res += fmt.Sprintf("%v - {%v}\n", k, v.String())
+	res := "["
+	i := 0
+	for _, v := range p {
+		if i < len(p)-1 {
+			res += fmt.Sprintf("%v, ", v)
+		} else {
+			res += fmt.Sprintf("%v", v)
+		}
+		i++
 	}
-	return res
+	return res + "]"
 }
 
-func (pp Parameters) parse(data []byte) error {
+func (pp Parameters) parseVersionSpecificParameters(data []byte) error {
+	return pp.parse(data, versionSpecificParameterTypes)
+}
+
+func (pp Parameters) parseSetupParameters(data []byte) error {
+	return pp.parse(data, setupParameterTypes)
+}
+
+func (pp Parameters) parse(data []byte, pm map[uint64]parameterParserFunc) error {
 	numParameters, n, err := quicvarint.Parse(data)
 	if err != nil {
 		return err
@@ -44,7 +78,7 @@ func (pp Parameters) parse(data []byte) error {
 	data = data[n:]
 
 	for i := uint64(0); i < numParameters; i++ {
-		p, n, err := parseParameter(data)
+		p, n, err := parseParameter(data, pm)
 		if err != nil {
 			return err
 		}
@@ -60,10 +94,11 @@ func (pp Parameters) parse(data []byte) error {
 	return nil
 }
 
-func parseParameter(data []byte) (Parameter, int, error) {
+func parseParameter(data []byte, pm map[uint64]parameterParserFunc) (Parameter, int, error) {
 	var p Parameter
 	var n int
 	var key uint64
+	var l uint64
 	parsed := 0
 	key, parsed, err := quicvarint.Parse(data)
 	if err != nil {
@@ -71,15 +106,11 @@ func parseParameter(data []byte) (Parameter, int, error) {
 	}
 	data = data[parsed:]
 
-	switch key {
-	case RoleParameterKey:
-		p, n, err = parseVarintParameter(data, key)
-		return p, parsed + n, err
-	case PathParameterKey, AuthorizationParameterKey:
-		p, n, err = parseStringParameter(data, key)
-		return p, parsed + n, err
-	default:
-		l, n, err := quicvarint.Parse(data)
+	parser, ok := pm[key]
+	if !ok {
+		l, n, err = quicvarint.Parse(data)
 		return nil, parsed + n + int(l), err
 	}
+	p, n, err = parser(data, key)
+	return p, parsed + n, err
 }

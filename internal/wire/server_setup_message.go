@@ -1,6 +1,8 @@
 package wire
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 type ServerSetupMessage struct {
 	SelectedVersion Version
@@ -29,5 +31,5 @@ func (m *ServerSetupMessage) parse(data []byte) error {
 
 	m.SelectedVersion = Version(sv)
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data)
+	return m.SetupParameters.parse(data, setupParameterTypes)
 }

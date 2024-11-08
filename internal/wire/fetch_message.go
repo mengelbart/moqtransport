@@ -1,6 +1,8 @@
 package wire
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 // TODO: Add tests
 type FetchMessage struct {
@@ -88,5 +90,5 @@ func (m *FetchMessage) parse(data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	return m.Parameters.parse(data, versionSpecificParameterTypes)
 }

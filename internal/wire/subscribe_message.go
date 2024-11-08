@@ -137,5 +137,5 @@ func (m *SubscribeMessage) parse(data []byte) (err error) {
 		data = data[n:]
 	}
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	return m.Parameters.parse(data, versionSpecificParameterTypes)
 }

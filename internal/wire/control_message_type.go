@@ -1,42 +1,8 @@
 package wire
 
-import "io"
-
-type messageReader interface {
-	io.Reader
-	io.ByteReader
-	Discard(int) (int, error)
-}
-
-type Message interface {
-	Type() controlMessageType
-	Append([]byte) []byte
-	parse([]byte) error
-}
-
-type ObjectMessageType uint64
-
-// Object message types
-const (
-	ObjectStreamMessageType      ObjectMessageType = 0x00
-	ObjectDatagramMessageType    ObjectMessageType = 0x01
-	StreamHeaderTrackMessageType ObjectMessageType = 0x50
-	StreamHeaderGroupMessageType ObjectMessageType = 0x51
+import (
+	"io"
 )
-
-func (mt ObjectMessageType) String() string {
-	switch mt {
-	case ObjectStreamMessageType:
-		return "ObjectStreamMessage"
-	case ObjectDatagramMessageType:
-		return "objectDatagram"
-	case StreamHeaderTrackMessageType:
-		return "StreamHeaderTrackMessage"
-	case StreamHeaderGroupMessageType:
-		return "streamHeaderGroupMessage"
-	}
-	return "unknown message type"
-}
 
 type controlMessageType uint64
 
@@ -56,19 +22,17 @@ const (
 	messageTypeTrackStatusRequest      controlMessageType = 0x0d
 	messageTypeTrackStatus             controlMessageType = 0x0e
 	messageTypeGoAway                  controlMessageType = 0x10
-	messageTypeSubscribeAnnounces      controlMessageType = 0x00
-	messageTypeSubscribeAnnouncesOk    controlMessageType = 0x00
-	messageTypeSubscribeAnnouncesError controlMessageType = 0x00
-	messageTypeUnsubscribeAnnounces    controlMessageType = 0x00
-	messageTypeMaxSubscribeID          controlMessageType = 0x00
-
-	messageTypeFetch       controlMessageType = 0x00
-	messageTypeFetchCancel controlMessageType = 0x00
-	messageTypeFetchOk     controlMessageType = 0x00
-
-	messageTypeFetchError  controlMessageType = 0x00
-	messageTypeClientSetup controlMessageType = 0x40
-	messageTypeServerSetup controlMessageType = 0x41
+	messageTypeSubscribeAnnounces      controlMessageType = 0x11
+	messageTypeSubscribeAnnouncesOk    controlMessageType = 0x12
+	messageTypeSubscribeAnnouncesError controlMessageType = 0x13
+	messageTypeUnsubscribeAnnounces    controlMessageType = 0x14
+	messageTypeMaxSubscribeID          controlMessageType = 0x15
+	messageTypeFetch                   controlMessageType = 0x16
+	messageTypeFetchCancel             controlMessageType = 0x17
+	messageTypeFetchOk                 controlMessageType = 0x18
+	messageTypeFetchError              controlMessageType = 0x19
+	messageTypeClientSetup             controlMessageType = 0x40
+	messageTypeServerSetup             controlMessageType = 0x41
 )
 
 func (mt controlMessageType) String() string {
@@ -107,4 +71,20 @@ func (mt controlMessageType) String() string {
 		return "ServerSetupMessage"
 	}
 	return "unknown message type"
+}
+
+type messageReader interface {
+	io.Reader
+	io.ByteReader
+	Discard(int) (int, error)
+}
+
+type Message interface {
+	Append([]byte) []byte
+	parse([]byte) error
+}
+
+type ControlMessage interface {
+	Message
+	Type() controlMessageType
 }

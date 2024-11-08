@@ -16,7 +16,7 @@ func TestAnnounceOkMessageAppend(t *testing.T) {
 	}{
 		{
 			aom: AnnounceOkMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -25,7 +25,7 @@ func TestAnnounceOkMessageAppend(t *testing.T) {
 		},
 		{
 			aom: AnnounceOkMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e'},
@@ -53,21 +53,21 @@ func TestParseAnnounceOkMessage(t *testing.T) {
 		{
 			data: append([]byte{0x01, 0x0E}, "tracknamespace"...),
 			expect: &AnnounceOkMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 			},
 			err: nil,
 		},
 		{
 			data: append([]byte{0x01, 0x05}, "tracknamespace"...),
 			expect: &AnnounceOkMessage{
-				TrackNamespace: [][]byte{[]byte("track")},
+				TrackNamespace: []string{"track"},
 			},
 			err: nil,
 		},
 		{
 			data: append([]byte{0x01, 0x0F}, "tracknamespace"...),
 			expect: &AnnounceOkMessage{
-				TrackNamespace: [][]byte{},
+				TrackNamespace: []string{},
 			},
 			err: errLengthMismatch,
 		},

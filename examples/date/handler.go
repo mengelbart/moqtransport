@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -20,13 +19,14 @@ import (
 
 type moqHandler struct {
 	server     bool
+	quic       bool
 	addr       string
 	tlsConfig  *tls.Config
-	namespace  [][]byte
-	trackname  []byte
+	namespace  []string
+	trackname  string
 	publish    bool
 	subscribe  bool
-	localTrack *moqtransport.ListTrack
+	publishers chan *moqtransport.Publisher
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -86,53 +86,58 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 	}
 }
 
+func getAnnouncementHandler() moqtransport.AnnouncementHandler {
+	return moqtransport.AnnouncementHandlerFunc(func(t *moqtransport.Transport, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		log.Printf("got unexpected announcement: %v", a.Namespace())
+		arw.Reject(0, "date doesn't take announcements")
+	})
+}
+
+func (h *moqHandler) getSubscriptionHandler() moqtransport.SubscriptionHandler {
+	return moqtransport.SubscriptionHandlerFunc(func(t *moqtransport.Transport, sub moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
+		if !h.publish {
+			srw.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
+			return
+		}
+		if !tupleEuqal(sub.Namespace, h.namespace) || (sub.Trackname != h.trackname) {
+			srw.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
+			return
+		}
+		publisher, err := srw.Accept()
+		if err != nil {
+			log.Printf("failed to accept subscription: %v", err)
+			return
+		}
+		h.publishers <- publisher
+	})
+}
+
 func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
-	ms := &moqtransport.Session{
-		Conn:            conn,
-		EnableDatagrams: true,
-		LocalRole:       0,
-		RemoteRole:      0,
-		AnnouncementHandler: moqtransport.AnnouncementHandlerFunc(func(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-			log.Printf("got unexpected announcement: %v", a.Namespace())
-			arw.Reject(0, "date doesn't take announcements")
-		}),
-		SubscriptionHandler: moqtransport.SubscriptionHandlerFunc(func(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-			if !h.publish {
-				srw.Reject(0, "endpoint does not publish any tracks")
-				return
-			}
-			if !tupleEuqal(sub.Namespace, h.namespace) || !bytes.Equal(sub.Trackname, h.trackname) {
-				srw.Reject(0, "unknown track")
-				return
-			}
-			log.Printf("trying to subscribe to: %v", h.localTrack)
-			srw.Accept(h.localTrack)
-		}),
-		Path: "",
-	}
-	if h.server {
-		if err := ms.RunServer(ctx); err != nil {
-			log.Printf("MoQ Session initialization failed: %v", err)
-			ms.CloseWithError(0, "session initialization error")
-			return
-		}
-	} else {
-		if err := ms.RunClient(); err != nil {
-			log.Printf("MoQ Session initialization failed: %v", err)
-			ms.CloseWithError(0, "session initialization error")
-			return
-		}
+	ms, err := moqtransport.NewTransport(
+		ctx,
+		conn,
+		h.server,
+		h.quic,
+		moqtransport.OnSubscription(h.getSubscriptionHandler()),
+		moqtransport.OnAnnouncement(getAnnouncementHandler()),
+	)
+	if err != nil {
+		log.Printf("MoQ Session initialization failed: %v", err)
+		ms.Close()
+		conn.CloseWithError(0, "session initialization error")
+		return
 	}
 	if h.subscribe {
 		if err := h.subscribeAndRead(ctx, ms, h.namespace, h.trackname); err != nil {
-			log.Printf("failed to subscribe to track :%v", err)
-			ms.CloseWithError(0, "internal error")
+			log.Printf("failed to subscribe to track: %v", err)
+			ms.Close()
+			conn.CloseWithError(0, "internal error")
 			return
 		}
 	}
 }
 
-func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Session, namespace [][]byte, trackname []byte) error {
+func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Transport, namespace []string, trackname string) error {
 	rs, err := s.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
 		return err
@@ -155,20 +160,29 @@ func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Sessi
 }
 
 func (h *moqHandler) setupDateTrack() {
-	h.localTrack = moqtransport.NewListTrack()
 	go func() {
-		defer h.localTrack.Close()
+		publishers := []*moqtransport.Publisher{}
 		ticker := time.NewTicker(time.Second)
-		i := 0
-		for ts := range ticker.C {
-			h.localTrack.Append(moqtransport.Object{
-				GroupID:              uint64(i),
-				ObjectID:             0,
-				PublisherPriority:    0,
-				ForwardingPreference: moqtransport.ObjectForwardingPreferenceStream,
-				Payload:              []byte(fmt.Sprintf("%v", ts)),
-			})
-			i++
+		groupID := 0
+		for {
+			select {
+			case ts := <-ticker.C:
+				log.Printf("TICK: %v", ts)
+				for _, p := range publishers {
+					if err := p.SendDatagram(moqtransport.Object{
+						GroupID:    uint64(groupID),
+						SubGroupID: 0,
+						ObjectID:   0,
+						Payload:    []byte(fmt.Sprintf("%v", ts)),
+					}); err != nil {
+						panic(err)
+					}
+				}
+			case publisher := <-h.publishers:
+				log.Printf("got subscriber")
+				publishers = append(publishers, publisher)
+			}
+			groupID++
 		}
 	}()
 }
@@ -192,19 +206,19 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 			InsecureSkipVerify: true,
 		},
 	}
-	_, session, err := dialer.Dial(ctx, fmt.Sprintf("https://%v/moq", addr), nil)
+	_, session, err := dialer.Dial(ctx, addr, nil)
 	if err != nil {
 		return nil, err
 	}
 	return webtransportmoq.New(session), nil
 }
 
-func tupleEuqal(a, b [][]byte) bool {
+func tupleEuqal(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i, t := range a {
-		if !bytes.Equal(t, b[i]) {
+		if t != b[i] {
 			return false
 		}
 	}

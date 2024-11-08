@@ -94,7 +94,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 			err: io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'P'},
+			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x02, 0x01, 'P'},
 			expect: &SubscribeUpdateMessage{
 				SubscribeID:        1,
 				StartGroup:         2,
@@ -103,8 +103,8 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 				EndObject:          5,
 				SubscriberPriority: 6,
 				Parameters: Parameters{
-					PathParameterKey: StringParameter{
-						Type:  PathParameterKey,
+					AuthorizationParameterKey: StringParameter{
+						Type:  AuthorizationParameterKey,
 						Value: "P",
 					},
 				},
