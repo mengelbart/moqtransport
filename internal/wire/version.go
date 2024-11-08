@@ -15,9 +15,13 @@ const (
 	Draft_ietf_moq_transport_03 Version = 0xff000003
 	Draft_ietf_moq_transport_04 Version = 0xff000004
 	Draft_ietf_moq_transport_05 Version = 0xff000005
+	Draft_ietf_moq_transport_06 Version = 0xff000006
+	Draft_ietf_moq_transport_07 Version = 0xff000007
 
-	CurrentVersion = Draft_ietf_moq_transport_05
+	CurrentVersion = Draft_ietf_moq_transport_07
 )
+
+var SupportedVersions = []Version{CurrentVersion}
 
 func (v Version) String() string {
 	return fmt.Sprintf("0x%x", uint64(v))
@@ -28,6 +32,19 @@ func (v Version) Len() uint64 {
 }
 
 type versions []Version
+
+func (v versions) String() string {
+	res := "["
+	for i, e := range v {
+		if i < len(v)-1 {
+			res += fmt.Sprintf("%v, ", e)
+		} else {
+			res += fmt.Sprintf("%v", e)
+		}
+	}
+	res += "]"
+	return res
+}
 
 func (v versions) Len() uint64 {
 	l := uint64(0)

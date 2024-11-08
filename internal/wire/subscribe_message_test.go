@@ -18,7 +18,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			sm: SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("")},
+				TrackNamespace:     []string{""},
 				TrackName:          []byte(""),
 				SubscriberPriority: 0,
 				GroupOrder:         0,
@@ -38,7 +38,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			sm: SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
 				GroupOrder:         2,
@@ -56,7 +56,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			sm: SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
 				GroupOrder:         2,
@@ -65,16 +65,16 @@ func TestSubscribeMessageAppend(t *testing.T) {
 				StartObject:        2,
 				EndGroup:           3,
 				EndObject:          4,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x01, 'A'}...),
 		},
 		{
 			sm: SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
 				GroupOrder:         2,
@@ -83,10 +83,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 				StartObject:        0,
 				EndGroup:           0,
 				EndObject:          0,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
-			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 'A'}...),
 		},
 	}
 	for i, tc := range cases {
@@ -118,7 +118,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &SubscribeMessage{
 				SubscribeID:    9,
 				TrackAlias:     0,
-				TrackNamespace: [][]byte{[]byte("trackname")},
+				TrackNamespace: []string{"trackname"},
 				TrackName:      []byte{},
 			},
 			err: io.EOF,
@@ -128,7 +128,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 0,
 				GroupOrder:         0,
@@ -140,7 +140,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
 				GroupOrder:         2,
@@ -158,7 +158,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
 				GroupOrder:         2,
@@ -172,11 +172,11 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: io.EOF,
 		},
 		{
-			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 'A'),
+			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 'A'),
 			expect: &SubscribeMessage{
 				SubscribeID:        17,
 				TrackAlias:         18,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
 				GroupOrder:         2,
@@ -185,16 +185,16 @@ func TestParseSubscribeMessage(t *testing.T) {
 				StartObject:        0,
 				EndGroup:           0,
 				EndObject:          0,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
 			},
 			err: nil,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x02, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
 				GroupOrder:         2,
@@ -203,7 +203,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 				StartObject:        2,
 				EndGroup:           3,
 				EndObject:          4,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
 			},
 			err: nil,
 		},
@@ -212,7 +212,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 			expect: &SubscribeMessage{
 				SubscribeID:        0,
 				TrackAlias:         0,
-				TrackNamespace:     [][]byte{[]byte("ns")},
+				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
 				GroupOrder:         3,

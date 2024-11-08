@@ -32,5 +32,5 @@ func (m *ClientSetupMessage) parse(data []byte) error {
 	}
 	data = data[n:]
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data)
+	return m.SetupParameters.parse(data, setupParameterTypes)
 }

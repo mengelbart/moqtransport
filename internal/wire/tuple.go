@@ -1,12 +1,10 @@
 package wire
 
 import (
-	"bytes"
-
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type Tuple [][]byte
+type Tuple []string
 
 func (t Tuple) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(len(t)))
@@ -15,18 +13,6 @@ func (t Tuple) append(buf []byte) []byte {
 		buf = append(buf, t...)
 	}
 	return buf
-}
-
-func (t Tuple) Equal(other Tuple) bool {
-	if len(t) != len(other) {
-		return false
-	}
-	for i, t := range t {
-		if !bytes.Equal(t, other[i]) {
-			return false
-		}
-	}
-	return true
 }
 
 func (t Tuple) String() string {
@@ -44,7 +30,7 @@ func parseTuple(data []byte) (Tuple, int, error) {
 	}
 	data = data[parsed:]
 
-	tuple := make([][]byte, 0, length)
+	tuple := make([]string, 0, length)
 	for i := uint64(0); i < length; i++ {
 		l, n, err := quicvarint.Parse(data)
 		parsed += n
@@ -56,7 +42,7 @@ func parseTuple(data []byte) (Tuple, int, error) {
 		if uint64(len(data)) < l {
 			return tuple, parsed, errLengthMismatch
 		}
-		tuple = append(tuple, data[:l])
+		tuple = append(tuple, string(data[:l]))
 		data = data[l:]
 		parsed += int(l)
 	}

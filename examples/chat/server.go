@@ -53,16 +53,17 @@ func (s *server) run() error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		moqSession := &moqtransport.Session{
-			Conn:                webtransportmoq.New(session),
-			EnableDatagrams:     false,
-			LocalRole:           moqtransport.RolePubSub,
-			RemoteRole:          moqtransport.RolePubSub,
-			AnnouncementHandler: s.sessions,
-			SubscriptionHandler: s.sessions,
-		}
-		if err := moqSession.RunServer(r.Context()); err != nil {
+		moqSession, err := moqtransport.NewTransport(
+			r.Context(),
+			webtransportmoq.New(session),
+			true,
+			false,
+			moqtransport.OnAnnouncement(s.sessions),
+			moqtransport.OnSubscription(s.sessions),
+		)
+		if err != nil {
 			log.Printf("failed to run server session handshake: %v", err)
+			moqSession.Close()
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -77,16 +78,18 @@ func (s *server) run() error {
 		case "h3":
 			go wt.ServeQUICConn(conn)
 		case "moq-00":
-			p := &moqtransport.Session{
-				Conn:                quicmoq.New(conn),
-				EnableDatagrams:     true,
-				LocalRole:           moqtransport.RolePubSub,
-				AnnouncementHandler: s.sessions,
-				SubscriptionHandler: s.sessions,
-			}
-			if err := p.RunServer(ctx); err != nil {
-				p.Close()
+			p, err := moqtransport.NewTransport(
+				ctx,
+				quicmoq.New(conn),
+				true,
+				false,
+				moqtransport.OnAnnouncement(s.sessions),
+				moqtransport.OnSubscription(s.sessions),
+			)
+			if err != nil {
 				log.Printf("err opening moqtransport server session: %v", err)
+				p.Close()
+				conn.CloseWithError(0, "err opening moqtransport server session")
 				continue
 			}
 			go s.sessions.handle(p)

@@ -13,7 +13,7 @@ type VarintParameter struct {
 }
 
 func (r VarintParameter) String() string {
-	return fmt.Sprintf("key: %v, value: %v", r.Type, r.Value)
+	return fmt.Sprintf("{key: %v, value: %v}", r.Type, r.Value)
 }
 
 func (r VarintParameter) key() uint64 {
@@ -32,7 +32,7 @@ func (p *VarintParameter) parse(reader io.ByteReader) (err error) {
 	return
 }
 
-func parseVarintParameter(data []byte, typ uint64) (VarintParameter, int, error) {
+func parseVarintParameter(data []byte, typ uint64) (Parameter, int, error) {
 	parsed := 0
 	l, n, err := quicvarint.Parse(data)
 	if err != nil {

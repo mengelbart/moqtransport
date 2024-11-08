@@ -16,7 +16,7 @@ func TestAnnounceMessageAppend(t *testing.T) {
 	}{
 		{
 			am: AnnounceMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 				Parameters:     Parameters{},
 			},
 			buf: []byte{},
@@ -26,7 +26,7 @@ func TestAnnounceMessageAppend(t *testing.T) {
 		},
 		{
 			am: AnnounceMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				Parameters:     Parameters{},
 			},
 			buf:    []byte{0x0a, 0x0b},
@@ -60,7 +60,7 @@ func TestParseAnnounceMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x01, 0x09}, "trackname"...), 0x00),
 			expect: &AnnounceMessage{
-				TrackNamespace: [][]byte{[]byte("trackname")},
+				TrackNamespace: []string{"trackname"},
 				Parameters:     Parameters{},
 			},
 			err: nil,

@@ -1,5 +1,7 @@
 package moqtransport
 
+import "time"
+
 const (
 	SubscribeStatusUnsubscribed      = 0x00
 	SubscribeStatusInternalError     = 0x01
@@ -10,38 +12,23 @@ const (
 	SubscribeStatusExpired           = 0x06
 )
 
+type subscriptionResponse struct {
+	err   error
+	track *RemoteTrack
+}
+
 type Subscription struct {
 	ID            uint64
 	TrackAlias    uint64
-	Namespace     [][]byte
-	Trackname     []byte
+	Namespace     []string
+	Trackname     string
 	Authorization string
-}
+	Expires       time.Duration
+	GroupOrder    uint8
+	ContentExists bool
 
-type SubscriptionResponseWriter interface {
-	Accept(LocalTrack)
-	Reject(code uint64, reason string)
-}
+	publisher   *Publisher
+	remoteTrack *RemoteTrack
 
-type SubscriptionHandler interface {
-	HandleSubscription(*Session, *Subscription, SubscriptionResponseWriter)
-}
-
-type SubscriptionHandlerFunc func(*Session, *Subscription, SubscriptionResponseWriter)
-
-func (f SubscriptionHandlerFunc) HandleSubscription(se *Session, su *Subscription, srw SubscriptionResponseWriter) {
-	f(se, su, srw)
-}
-
-type defaultSubscriptionResponseWriter struct {
-	subscription *Subscription
-	session      *Session
-}
-
-func (w *defaultSubscriptionResponseWriter) Accept(t LocalTrack) {
-	w.session.subscribeToLocalTrack(w.subscription, t)
-}
-
-func (w *defaultSubscriptionResponseWriter) Reject(code uint64, reason string) {
-	w.session.rejectSubscription(w.subscription, code, reason)
+	response chan subscriptionResponse
 }

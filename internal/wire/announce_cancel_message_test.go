@@ -16,7 +16,7 @@ func TestAnnounceCancelMessageAppend(t *testing.T) {
 	}{
 		{
 			aom: AnnounceCancelMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
@@ -27,7 +27,7 @@ func TestAnnounceCancelMessageAppend(t *testing.T) {
 		},
 		{
 			aom: AnnounceCancelMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
@@ -64,7 +64,7 @@ func TestParseAnnounceCancelMessage(t *testing.T) {
 				[]byte{0x01, 0x0E}, append([]byte("tracknamespace"), 0x00, 0x00)...,
 			),
 			expect: &AnnounceCancelMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				ErrorCode:      0,
 				ReasonPhrase:   "",
 			},
@@ -73,7 +73,7 @@ func TestParseAnnounceCancelMessage(t *testing.T) {
 		{
 			data: append([]byte{0x01, 0x05}, append([]byte("track"), []byte{0x01, 0x06, 'r', 'e', 'a', 's', 'o', 'n', 'p', 'h', 'r', 'a', 's', 'e'}...)...),
 			expect: &AnnounceCancelMessage{
-				TrackNamespace: [][]byte{[]byte("track")},
+				TrackNamespace: []string{"track"},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
@@ -82,7 +82,7 @@ func TestParseAnnounceCancelMessage(t *testing.T) {
 		{
 			data: append([]byte{0x01, 0x0F}, "tracknamespace"...),
 			expect: &AnnounceCancelMessage{
-				TrackNamespace: [][]byte{},
+				TrackNamespace: []string{},
 			},
 			err: errLengthMismatch,
 		},

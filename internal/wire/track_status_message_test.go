@@ -16,7 +16,7 @@ func TestTrackStatusMessageAppend(t *testing.T) {
 	}{
 		{
 			tsm: TrackStatusMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 				TrackName:      "",
 				StatusCode:     0,
 				LastGroupID:    0,
@@ -27,7 +27,7 @@ func TestTrackStatusMessageAppend(t *testing.T) {
 		},
 		{
 			tsm: TrackStatusMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				TrackName:      "track",
 				StatusCode:     1,
 				LastGroupID:    2,
@@ -64,7 +64,7 @@ func TestParseTrackStatusMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x09, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 0x05, 't', 'r', 'a', 'c', 'k', 0x01, 0x02, 0x03},
 			expect: &TrackStatusMessage{
-				TrackNamespace: [][]byte{[]byte("trackname")},
+				TrackNamespace: []string{"trackname"},
 				TrackName:      "track",
 				StatusCode:     1,
 				LastGroupID:    2,

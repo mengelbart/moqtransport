@@ -30,7 +30,7 @@ type roomManager struct {
 }
 
 type Client struct {
-	session *moqtransport.Session
+	session *moqtransport.Transport
 	rm      *roomManager
 }
 
@@ -45,7 +45,7 @@ func NewQUICClient(ctx context.Context, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(quicmoq.New(conn))
+	return NewClient(quicmoq.New(conn), true)
 }
 
 func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
@@ -62,29 +62,22 @@ func NewWebTransportClient(ctx context.Context, addr string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewClient(webtransportmoq.New(session))
+	return NewClient(webtransportmoq.New(session), false)
 }
 
-func (r *roomManager) HandleAnnouncement(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+func (r *roomManager) HandleAnnouncement(s *moqtransport.Transport, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 	log.Printf("got Announcement: %v", a.Namespace())
 	arw.Accept()
 }
 
-func NewClient(conn moqtransport.Connection) (*Client, error) {
+func NewClient(conn moqtransport.Connection, isQUIC bool) (*Client, error) {
 	log.SetOutput(io.Discard)
 	rm := &roomManager{
 		rooms: map[string]*clientRoom{},
 		lock:  sync.Mutex{},
 	}
-	moqSession := &moqtransport.Session{
-		Conn:                conn,
-		EnableDatagrams:     true,
-		LocalRole:           moqtransport.RolePubSub,
-		RemoteRole:          0,
-		AnnouncementHandler: rm,
-		SubscriptionHandler: nil,
-	}
-	if err := moqSession.RunClient(); err != nil {
+	moqSession, err := moqtransport.NewTransport(context.TODO(), conn, false, false, moqtransport.OnAnnouncement(rm))
+	if err != nil {
 		return nil, err
 	}
 	return &Client{
@@ -121,7 +114,7 @@ func (c *Client) handleCatalogDeltas(roomID, username string, previous *chatalog
 			if p == username {
 				continue
 			}
-			t, err := c.session.Subscribe(context.Background(), 2, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p))}, []byte(""), username)
+			t, err := c.session.Subscribe(context.Background(), 2, 0, []string{fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p)}, "", username)
 			if err != nil {
 				return err
 			}
@@ -150,11 +143,11 @@ func (c *Client) joinRoom(roomID, username string) error {
 		lt:  lt,
 		rts: []*moqtransport.RemoteTrack{},
 	}
-	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v", roomID))}, []byte("/catalog"), username)
+	catalogTrack, err := c.session.Subscribe(context.Background(), 1, 0, []string{fmt.Sprintf("moq-chat/%v", roomID)}, "/catalog", username)
 	if err != nil {
 		return err
 	}
-	if err = c.session.Announce(context.Background(), [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username))}); err != nil {
+	if err = c.session.Announce(context.Background(), []string{fmt.Sprintf("moq-chat/%v/participant/%v", roomID, username)}); err != nil {
 		return err
 	}
 	o, err := catalogTrack.ReadObject(context.Background())
@@ -175,7 +168,7 @@ func (c *Client) joinRoom(roomID, username string) error {
 		if p == username {
 			continue
 		}
-		t, err := c.session.Subscribe(context.Background(), 2, 0, [][]byte{[]byte(fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p))}, []byte(""), username)
+		t, err := c.session.Subscribe(context.Background(), 2, 0, []string{fmt.Sprintf("moq-chat/%v/participant/%v", roomID, p)}, "", username)
 		if err != nil {
 			log.Fatalf("failed to subscribe to participant track: %v", err)
 		}

@@ -132,7 +132,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 		{
 			data: []byte{
 				0x01, 0x00,
-				0x02, 0x00, 0x01, 0x02, 0x02, 0x01, 'a',
+				0x02, 0x00, 0x01, 0x02, 0x01, 0x01, 'a',
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
@@ -141,8 +141,8 @@ func TestParseClientSetupMessage(t *testing.T) {
 						Type:  0,
 						Value: 2,
 					},
-					0x02: StringParameter{
-						Type:  2,
+					0x01: StringParameter{
+						Type:  1,
 						Value: "a",
 					},
 				},

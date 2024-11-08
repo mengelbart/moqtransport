@@ -29,25 +29,25 @@ type sessionManager struct {
 	rooms     map[roomID]*room
 	roomsLock sync.Mutex
 
-	sessions     []*moqtransport.Session
+	sessions     []*moqtransport.Transport
 	sessionsLock sync.Mutex
 }
 
 func newSessionManager() *sessionManager {
 	return &sessionManager{
 		rooms:        map[roomID]*room{},
-		sessions:     []*moqtransport.Session{},
+		sessions:     []*moqtransport.Transport{},
 		sessionsLock: sync.Mutex{},
 	}
 }
 
-func (m *sessionManager) handle(s *moqtransport.Session) {
+func (m *sessionManager) handle(s *moqtransport.Transport) {
 	m.sessionsLock.Lock()
 	defer m.sessionsLock.Unlock()
 	m.sessions = append(m.sessions, s)
 }
 
-func (m *sessionManager) HandleAnnouncement(s *moqtransport.Session, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+func (m *sessionManager) HandleAnnouncement(s *moqtransport.Transport, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
 	parts := strings.SplitN(namespaceToString(a.Namespace()), "/", 4)
 	if len(parts) != 4 {
 		arw.Reject(uint64(errorCodeInvalidNamespace), "namespace MUST be moq-chat/<room-id>/participant/<username>")
@@ -72,7 +72,7 @@ func (m *sessionManager) HandleAnnouncement(s *moqtransport.Session, a *moqtrans
 	room.announceUser(username, s, arw)
 }
 
-func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
+func (m *sessionManager) HandleSubscription(s *moqtransport.Transport, sub moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
 	parts := strings.SplitN(namespaceToString(sub.Namespace), "/", 4)
 	if len(parts) != 2 {
 		srw.Reject(uint64(errorCodeInvalidNamespace), "invalid namespace")
@@ -81,7 +81,7 @@ func (m *sessionManager) HandleSubscription(s *moqtransport.Session, sub *moqtra
 	m.handleCatalogSubscription(parts, s, sub, srw)
 }
 
-func (m *sessionManager) handleCatalogSubscription(namespaceParts []string, s *moqtransport.Session, sub *moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
+func (m *sessionManager) handleCatalogSubscription(namespaceParts []string, s *moqtransport.Transport, sub moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
 	if len(namespaceParts) != 2 {
 		panic("invalid namespace parts length")
 	}

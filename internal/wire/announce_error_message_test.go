@@ -16,7 +16,7 @@ func TestAnnounceErrorMessageAppend(t *testing.T) {
 	}{
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: [][]byte{[]byte("")},
+				TrackNamespace: []string{""},
 				ErrorCode:      0,
 				ReasonPhrase:   "",
 			},
@@ -27,7 +27,7 @@ func TestAnnounceErrorMessageAppend(t *testing.T) {
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: [][]byte{[]byte("trackname")},
+				TrackNamespace: []string{"trackname"},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
@@ -36,7 +36,7 @@ func TestAnnounceErrorMessageAppend(t *testing.T) {
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: [][]byte{[]byte("trackname")},
+				TrackNamespace: []string{"trackname"},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason",
 			},
@@ -66,7 +66,7 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x02, 'n', 's', 0x03},
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: [][]byte{[]byte("ns")},
+				TrackNamespace: []string{"ns"},
 				ErrorCode:      3,
 				ReasonPhrase:   "",
 			},
@@ -75,7 +75,7 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 		{
 			data: append(append(append([]byte{0x01, 0x0e}, "tracknamespace"...), 0x01, 0x0d), "reason phrase"...),
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: [][]byte{[]byte("tracknamespace")},
+				TrackNamespace: []string{"tracknamespace"},
 				ErrorCode:      1,
 				ReasonPhrase:   "reason phrase",
 			},

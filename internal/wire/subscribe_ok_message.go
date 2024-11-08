@@ -68,7 +68,7 @@ func (m *SubscribeOkMessage) parse(data []byte) (err error) {
 
 	if !m.ContentExists {
 		m.Parameters = Parameters{}
-		return m.Parameters.parse(data)
+		return m.Parameters.parse(data, versionSpecificParameterTypes)
 	}
 
 	m.LargestGroupID, n, err = quicvarint.Parse(data)
@@ -84,5 +84,5 @@ func (m *SubscribeOkMessage) parse(data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	return m.Parameters.parse(data, versionSpecificParameterTypes)
 }

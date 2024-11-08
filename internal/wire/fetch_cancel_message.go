@@ -1,6 +1,8 @@
 package wire
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"github.com/quic-go/quic-go/quicvarint"
+)
 
 // TODO: Add tests
 type FetchCancelMessage struct {
