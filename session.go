@@ -53,11 +53,11 @@ type Session struct {
 	incomingSubscriptionQueue chan Subscription
 	incomingSubscriptions     map[uint64]Subscription
 
-	pendingOutgoingAnnouncements *container.Trie[Announcement]
-	outgoingAnnouncements        *container.Trie[Announcement]
+	pendingOutgoingAnnouncements *container.Trie[string, Announcement]
+	outgoingAnnouncements        *container.Trie[string, Announcement]
 
 	incomingAnnouncementQueue chan Announcement
-	incomingAnnouncements     *container.Trie[Announcement]
+	incomingAnnouncements     *container.Trie[string, Announcement]
 }
 
 type SessionOption func(*Session)
@@ -106,11 +106,11 @@ func NewSession(isServer, isQUIC bool, options ...SessionOption) (*Session, erro
 		incomingSubscriptionQueue: make(chan Subscription, pendingRemoteSubscriptionQueueSize),
 		incomingSubscriptions:     map[uint64]Subscription{},
 
-		pendingOutgoingAnnouncements: container.NewTrie[Announcement](),
-		outgoingAnnouncements:        container.NewTrie[Announcement](),
+		pendingOutgoingAnnouncements: container.NewTrie[string, Announcement](),
+		outgoingAnnouncements:        container.NewTrie[string, Announcement](),
 
 		incomingAnnouncementQueue: make(chan Announcement, pendingRemoteAnnouncementsQueueSize),
-		incomingAnnouncements:     container.NewTrie[Announcement](),
+		incomingAnnouncements:     container.NewTrie[string, Announcement](),
 	}
 	for _, opt := range options {
 		opt(s)
@@ -253,7 +253,7 @@ func (s *Session) Announce(
 	if err := s.queueControlMessage(am); err != nil {
 		return err
 	}
-	s.pendingOutgoingAnnouncements.Insert(namespace, Announcement{
+	s.pendingOutgoingAnnouncements.Put(namespace, Announcement{
 		namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 	})
@@ -305,7 +305,7 @@ func (s *Session) AcceptAnnouncement(a Announcement) error {
 	}); err != nil {
 		return err
 	}
-	s.incomingAnnouncements.Insert(a.namespace, a)
+	s.incomingAnnouncements.Put(a.namespace, a)
 	return nil
 }
 
