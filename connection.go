@@ -19,13 +19,16 @@ type SendStream interface {
 }
 
 type Connection interface {
+	AcceptStream(context.Context) (Stream, error)
+	AcceptUniStream(context.Context) (ReceiveStream, error)
 	OpenStream() (Stream, error)
 	OpenStreamSync(context.Context) (Stream, error)
 	OpenUniStream() (SendStream, error)
 	OpenUniStreamSync(context.Context) (SendStream, error)
-	AcceptStream(context.Context) (Stream, error)
-	AcceptUniStream(context.Context) (ReceiveStream, error)
+
 	SendDatagram([]byte) error
 	ReceiveDatagram(context.Context) ([]byte, error)
+
 	CloseWithError(uint64, string) error
+	Context() context.Context
 }

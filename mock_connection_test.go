@@ -83,6 +83,20 @@ func (mr *MockConnectionMockRecorder) CloseWithError(arg0, arg1 any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseWithError", reflect.TypeOf((*MockConnection)(nil).CloseWithError), arg0, arg1)
 }
 
+// Context mocks base method.
+func (m *MockConnection) Context() context.Context {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Context")
+	ret0, _ := ret[0].(context.Context)
+	return ret0
+}
+
+// Context indicates an expected call of Context.
+func (mr *MockConnectionMockRecorder) Context() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Context", reflect.TypeOf((*MockConnection)(nil).Context))
+}
+
 // OpenStream mocks base method.
 func (m *MockConnection) OpenStream() (Stream, error) {
 	m.ctrl.T.Helper()

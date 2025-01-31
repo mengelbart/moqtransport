@@ -6,43 +6,32 @@ import (
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
-
-func assertFirstControlMessageEqual(t *testing.T, s *Session, expect wire.ControlMessage) {
-	var msg wire.ControlMessage
-	select {
-	case msg = <-s.SendControlMessages():
-	default:
-		assert.Fail(t, "session did not send control message")
-	}
-	assert.Equal(t, expect, msg)
-}
-
-func assertFirstSubscriptionEqual(t *testing.T, s *Session, expect Subscription) Subscription {
-	var sub Subscription
-	select {
-	case sub = <-s.IncomingSubscriptions():
-	default:
-		assert.Fail(t, "session did not receive subscription")
-	}
-	assert.Equal(t, expect, sub)
-	return sub
-}
-
-func assertFirstAnnouncementEqual(t *testing.T, s *Session, expect Announcement) Announcement {
-	var an Announcement
-	select {
-	case an = <-s.IncomingAnnouncements():
-	default:
-		assert.Fail(t, "session did not receive announcement")
-	}
-	assert.Equal(t, expect, an)
-	return an
-}
 
 func TestSession(t *testing.T) {
 	t.Run("sends_client_setup_quic", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		mcb.EXPECT().queueControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: wire.SupportedVersions,
+			SetupParameters: map[uint64]wire.Parameter{
+				wire.RoleParameterKey: wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
+				},
+				wire.PathParameterKey: wire.StringParameter{
+					Type:  wire.PathParameterKey,
+					Value: "/path",
+				},
+				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxSubscribeIDParameterKey,
+					Value: 100,
+				},
+			},
+		})
 		s, err := NewSession(
+			mcb,
 			false,
 			true,
 			RoleParameterOption(RolePubSub),
@@ -50,16 +39,18 @@ func TestSession(t *testing.T) {
 			MaxSubscribeIDOption(100),
 		)
 		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.ClientSetupMessage{
+		assert.NotNil(t, s)
+	})
+
+	t.Run("sends_client_setup_wt", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		mcb.EXPECT().queueControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.RoleParameterKey: wire.VarintParameter{
 					Type:  wire.RoleParameterKey,
 					Value: uint64(wire.RolePubSub),
-				},
-				wire.PathParameterKey: wire.StringParameter{
-					Type:  wire.PathParameterKey,
-					Value: "/path",
 				},
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
@@ -67,49 +58,23 @@ func TestSession(t *testing.T) {
 				},
 			},
 		})
-	})
-
-	t.Run("sends_client_setup_wt", func(t *testing.T) {
 		s, err := NewSession(
+			mcb,
 			false,
 			false,
 			RoleParameterOption(RolePubSub),
 			MaxSubscribeIDOption(100),
 		)
 		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.ClientSetupMessage{
-			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Value: 100,
-				},
-			},
-		})
+		assert.NotNil(t, s)
 	})
 
 	t.Run("sends_server_setup_quic", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
-		err = s.OnControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
-				wire.PathParameterKey: wire.StringParameter{
-					Type:  wire.PathParameterKey,
-					Value: "/path",
-				},
-			},
-		})
-		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.ServerSetupMessage{
+		mcb.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.RoleParameterKey: wire.VarintParameter{
@@ -122,11 +87,40 @@ func TestSession(t *testing.T) {
 				},
 			},
 		})
+		err = s.OnControlMessage(&wire.ClientSetupMessage{
+			SupportedVersions: wire.SupportedVersions,
+			SetupParameters: map[uint64]wire.Parameter{
+				wire.RoleParameterKey: wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
+				},
+				wire.PathParameterKey: wire.StringParameter{
+					Type:  wire.PathParameterKey,
+					Value: "/path",
+				},
+			},
+		})
+		assert.NoError(t, err)
 	})
 
 	t.Run("sends_server_setup_wt", func(t *testing.T) {
-		s, err := NewSession(true, false)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, false)
 		assert.NoError(t, err)
+		mcb.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
+			SelectedVersion: wire.CurrentVersion,
+			SetupParameters: map[uint64]wire.Parameter{
+				wire.RoleParameterKey: wire.VarintParameter{
+					Type:  wire.RoleParameterKey,
+					Value: uint64(wire.RolePubSub),
+				},
+				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxSubscribeIDParameterKey,
+					Value: 100,
+				},
+			},
+		})
 		err = s.OnControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
@@ -141,24 +135,12 @@ func TestSession(t *testing.T) {
 			},
 		})
 		assert.NoError(t, err)
-
-		assertFirstControlMessageEqual(t, s, &wire.ServerSetupMessage{
-			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Value: 100,
-				},
-			},
-		})
 	})
 
 	t.Run("rejects_quic_client_without_path", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		err = s.OnControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -173,7 +155,9 @@ func TestSession(t *testing.T) {
 	})
 
 	t.Run("rejects_quic_client_without_role", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		err = s.OnControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -188,7 +172,9 @@ func TestSession(t *testing.T) {
 	})
 
 	t.Run("rejects_wt_client_without_role", func(t *testing.T) {
-		s, err := NewSession(true, false)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, false)
 		assert.NoError(t, err)
 		err = s.OnControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -203,7 +189,9 @@ func TestSession(t *testing.T) {
 	})
 
 	t.Run("rejects_subscribe_on_max_subscribe_id", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
 		err = s.Subscribe(context.Background(), Subscription{
@@ -223,10 +211,26 @@ func TestSession(t *testing.T) {
 	})
 
 	t.Run("sends_subscribe", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
 		s.remoteMaxSubscribeID = 1
+		mcb.EXPECT().queueControlMessage(&wire.SubscribeMessage{
+			SubscribeID:        0,
+			TrackAlias:         0,
+			TrackNamespace:     nil,
+			TrackName:          []byte("track"),
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			EndObject:          0,
+			Parameters:         map[uint64]wire.Parameter{},
+		})
 		err = s.Subscribe(context.Background(), Subscription{
 			ID:            0,
 			TrackAlias:    0,
@@ -241,51 +245,24 @@ func TestSession(t *testing.T) {
 			response:      make(chan subscriptionResponse),
 		})
 		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.SubscribeMessage{
-			SubscribeID:        0,
-			TrackAlias:         0,
-			TrackNamespace:     nil,
-			TrackName:          []byte("track"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			EndObject:          0,
-			Parameters:         map[uint64]wire.Parameter{},
-		})
 	})
 
 	t.Run("sends_subscribe_ok", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		err = s.OnControlMessage(&wire.SubscribeMessage{
-			SubscribeID:        0,
-			TrackAlias:         0,
-			TrackNamespace:     []string{},
-			TrackName:          []byte{},
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			EndObject:          0,
-			Parameters:         map[uint64]wire.Parameter{},
-		})
-		assert.NoError(t, err)
-		sub := assertFirstSubscriptionEqual(t, s, Subscription{
+		mcb.EXPECT().onSubscription(Subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     []string{},
 			Trackname:     "",
 			Authorization: "",
+		}).Do(func(sub Subscription) {
+			assert.NoError(t, s.AcceptSubscription(sub))
 		})
-		err = s.AcceptSubscription(sub)
-		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.SubscribeOkMessage{
+		mcb.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
 			Expires:         0,
 			GroupOrder:      0,
@@ -294,12 +271,6 @@ func TestSession(t *testing.T) {
 			LargestObjectID: 0,
 			Parameters:      map[uint64]wire.Parameter{},
 		})
-	})
-
-	t.Run("sends_subscribe_error", func(t *testing.T) {
-		s, err := NewSession(true, true)
-		assert.NoError(t, err)
-		s.setupDone = true
 		err = s.OnControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        0,
 			TrackAlias:         0,
@@ -315,52 +286,79 @@ func TestSession(t *testing.T) {
 			Parameters:         map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
-		sub := assertFirstSubscriptionEqual(t, s, Subscription{
+	})
+
+	t.Run("sends_subscribe_error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
+		assert.NoError(t, err)
+		s.setupDone = true
+		mcb.EXPECT().onSubscription(Subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     []string{},
 			Trackname:     "",
 			Authorization: "",
+		}).Do(func(sub Subscription) {
+			assert.NoError(t, s.RejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found"))
 		})
-		err = s.RejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found")
-		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.SubscribeErrorMessage{
+		mcb.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
 			SubscribeID:  0,
 			ErrorCode:    SubscribeErrorTrackDoesNotExist,
 			ReasonPhrase: "track not found",
 			TrackAlias:   0,
 		})
+		err = s.OnControlMessage(&wire.SubscribeMessage{
+			SubscribeID:        0,
+			TrackAlias:         0,
+			TrackNamespace:     []string{},
+			TrackName:          []byte{},
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			EndObject:          0,
+			Parameters:         map[uint64]wire.Parameter{},
+		})
+		assert.NoError(t, err)
 	})
 
 	t.Run("sends_announce", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		err = s.Announce([]string{"namespace"})
-		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.AnnounceMessage{
+		mcb.EXPECT().queueControlMessage(&wire.AnnounceMessage{
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		})
+		err = s.Announce([]string{"namespace"})
+		assert.NoError(t, err)
 	})
 
 	t.Run("sends_announce_ok", func(t *testing.T) {
-		s, err := NewSession(true, true)
+		ctrl := gomock.NewController(t)
+		mcb := NewMockSessionCallbacks(ctrl)
+		s, err := NewSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
+		mcb.EXPECT().onAnnouncement(Announcement{
+			Namespace:  []string{"namespace"},
+			parameters: map[uint64]wire.Parameter{},
+		}).Do(func(a Announcement) {
+			assert.NoError(t, s.AcceptAnnouncement(a))
+		})
+		mcb.EXPECT().queueControlMessage(&wire.AnnounceOkMessage{
+			TrackNamespace: []string{"namespace"},
+		})
 		err = s.OnControlMessage(&wire.AnnounceMessage{
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
-		announcement := assertFirstAnnouncementEqual(t, s, Announcement{
-			namespace:  []string{"namespace"},
-			parameters: map[uint64]wire.Parameter{},
-		})
-		err = s.AcceptAnnouncement(announcement)
-		assert.NoError(t, err)
-		assertFirstControlMessageEqual(t, s, &wire.AnnounceOkMessage{
-			TrackNamespace: []string{"namespace"},
-		})
 	})
 }
