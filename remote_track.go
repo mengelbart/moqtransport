@@ -35,7 +35,5 @@ func (t *RemoteTrack) Unsubscribe() {
 }
 
 func (t *RemoteTrack) push(o *Object) {
-	select {
-	case t.buffer <- o:
-	}
+	t.buffer <- o
 }

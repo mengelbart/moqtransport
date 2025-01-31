@@ -62,14 +62,6 @@ func (p Parameters) String() string {
 	return res + "]"
 }
 
-func (pp Parameters) parseVersionSpecificParameters(data []byte) error {
-	return pp.parse(data, versionSpecificParameterTypes)
-}
-
-func (pp Parameters) parseSetupParameters(data []byte) error {
-	return pp.parse(data, setupParameterTypes)
-}
-
 func (pp Parameters) parse(data []byte, pm map[uint64]parameterParserFunc) error {
 	numParameters, n, err := quicvarint.Parse(data)
 	if err != nil {

@@ -35,7 +35,7 @@ func (m *SubscribeAnnouncesErrorMessage) parse(data []byte) (err error) {
 	}
 	data = data[n:]
 
-	reasonPhrase, n, err := parseVarIntBytes(data)
+	reasonPhrase, _, err := parseVarIntBytes(data)
 	if err != nil {
 		return err
 	}

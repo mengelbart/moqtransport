@@ -40,9 +40,11 @@ func (m *MockSessionCallbacks) EXPECT() *MockSessionCallbacksMockRecorder {
 }
 
 // onAnnouncement mocks base method.
-func (m *MockSessionCallbacks) onAnnouncement(arg0 Announcement) {
+func (m *MockSessionCallbacks) onAnnouncement(arg0 Announcement) bool {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "onAnnouncement", arg0)
+	ret := m.ctrl.Call(m, "onAnnouncement", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
 }
 
 // onAnnouncement indicates an expected call of onAnnouncement.
@@ -52,9 +54,11 @@ func (mr *MockSessionCallbacksMockRecorder) onAnnouncement(arg0 any) *gomock.Cal
 }
 
 // onAnnouncementSubscription mocks base method.
-func (m *MockSessionCallbacks) onAnnouncementSubscription(arg0 AnnouncementSubscription) {
+func (m *MockSessionCallbacks) onAnnouncementSubscription(arg0 AnnouncementSubscription) bool {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "onAnnouncementSubscription", arg0)
+	ret := m.ctrl.Call(m, "onAnnouncementSubscription", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
 }
 
 // onAnnouncementSubscription indicates an expected call of onAnnouncementSubscription.
@@ -64,9 +68,11 @@ func (mr *MockSessionCallbacksMockRecorder) onAnnouncementSubscription(arg0 any)
 }
 
 // onSubscription mocks base method.
-func (m *MockSessionCallbacks) onSubscription(arg0 Subscription) {
+func (m *MockSessionCallbacks) onSubscription(arg0 Subscription) bool {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "onSubscription", arg0)
+	ret := m.ctrl.Call(m, "onSubscription", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
 }
 
 // onSubscription indicates an expected call of onSubscription.
