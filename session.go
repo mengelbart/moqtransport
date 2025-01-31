@@ -1,7 +1,6 @@
 package moqtransport
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -176,10 +175,7 @@ func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 // Local API to trigger outgoing control messages
 
-func (s *session) subscribe(
-	ctx context.Context,
-	sub Subscription,
-) error {
+func (s *session) subscribe(sub Subscription) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 

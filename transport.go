@@ -301,7 +301,7 @@ func (t *Transport) Subscribe(
 		publisher:     nil,
 		response:      make(chan subscriptionResponse, 1),
 	}
-	if err := t.session.subscribe(ctx, ps); err != nil {
+	if err := t.session.subscribe(ps); err != nil {
 		return nil, err
 	}
 	select {

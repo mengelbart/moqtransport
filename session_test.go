@@ -1,7 +1,6 @@
 package moqtransport
 
 import (
-	"context"
 	"testing"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -194,7 +193,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		err = s.subscribe(context.Background(), Subscription{
+		err = s.subscribe(Subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     []string{"namespace"},
@@ -231,7 +230,7 @@ func TestSession(t *testing.T) {
 			EndObject:          0,
 			Parameters:         map[uint64]wire.Parameter{},
 		})
-		err = s.subscribe(context.Background(), Subscription{
+		err = s.subscribe(Subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     nil,
