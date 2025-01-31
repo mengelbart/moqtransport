@@ -14,6 +14,11 @@ func (c *callbacks) queueControlMessage(msg wire.ControlMessage) error {
 	return c.t.queueCtrlMessage(msg)
 }
 
+// onProtocolViolation implements sessionCallbacks.
+func (c *callbacks) onProtocolViolation(err ProtocolError) {
+	c.t.destroy(err)
+}
+
 // onSubscription implements sessionCallbacks.
 func (c *callbacks) onSubscription(s Subscription) bool {
 	if c.subscriptionHandler != nil {

@@ -11,27 +11,38 @@ import (
 )
 
 var (
-	errSetupNotDone                = errors.New("setup not done after first message exchange")
+	errSetupFailed                 = errors.New("setup not done after first message exchange")
 	errControlMessageQueueOverflow = errors.New("control message if full, message not queued")
 )
 
-type TransportOption func(*Transport)
+type transportConfig struct {
+	callbacks      *callbacks
+	sessionOptions []sessionOption
+}
+
+type TransportOption func(*transportConfig)
 
 func OnSubscription(h SubscriptionHandler) TransportOption {
-	return func(t *Transport) {
+	return func(t *transportConfig) {
 		t.callbacks.subscriptionHandler = h
 	}
 }
 
 func OnAnnouncement(h AnnouncementHandler) TransportOption {
-	return func(t *Transport) {
+	return func(t *transportConfig) {
 		t.callbacks.announcementHandler = h
 	}
 }
 
 func OnAnnouncementSubscription(h AnnouncementSubscriptionHandler) TransportOption {
-	return func(t *Transport) {
+	return func(t *transportConfig) {
 		t.callbacks.announcementSubscriptionHandler = h
+	}
+}
+
+func Path(p string) TransportOption {
+	return func(tc *transportConfig) {
+		tc.sessionOptions = append(tc.sessionOptions, pathParameterOption(p))
 	}
 }
 
@@ -44,11 +55,10 @@ type Transport struct {
 	conn          Connection
 	controlStream Stream
 
-	setupDone chan struct{}
-
 	ctrlMsgSendQueue chan wire.ControlMessage
 
-	session   *session
+	session *session
+
 	callbacks *callbacks
 }
 
@@ -74,18 +84,23 @@ func NewTransport(
 	opts ...TransportOption,
 ) (*Transport, error) {
 	cb := &callbacks{}
+	tc := &transportConfig{
+		callbacks: cb,
+	}
+	for _, opt := range opts {
+		opt(tc)
+	}
 	session, err := newSession(cb, isServer, isQUIC)
 	if err != nil {
 		return nil, err
 	}
-	return newTransportWithSession(conn, session, cb, opts...)
+	return newTransportWithSession(conn, session, tc)
 }
 
 func newTransportWithSession(
 	conn Connection,
 	session *session,
-	cb *callbacks,
-	opts ...TransportOption,
+	tc *transportConfig,
 ) (*Transport, error) {
 	var ctrlStream Stream
 	var err error
@@ -110,26 +125,34 @@ func newTransportWithSession(
 		logger:           defaultLogger.With("dir", dir),
 		conn:             conn,
 		controlStream:    ctrlStream,
-		setupDone:        make(chan struct{}),
 		ctrlMsgSendQueue: make(chan wire.ControlMessage, 100),
 		session:          session,
-		callbacks:        cb,
+		callbacks:        tc.callbacks,
 	}
-	cb.t = t
-	for _, opt := range opts {
-		opt(t)
+	tc.callbacks.t = t
+
+	if !session.isServer {
+		session.sendClientSetup()
 	}
 	go t.sendCtrlMsgs()
-	go t.readControlStream()
+
+	parser := wire.NewControlMessageParser(t.controlStream)
+	msg, err := parser.Parse()
+	if err != nil {
+		return nil, err
+	}
+	if err = t.recvCtrlMsg(msg); err != nil {
+		return nil, err
+	}
+	if !t.session.setupDone {
+		return nil, errSetupFailed
+	}
+
+	go t.readControlStream(parser)
 	go t.readStreams()
 	go t.readDatagrams()
 
-	select {
-	case <-t.setupDone:
-		return t, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return t, nil
 }
 
 func (t *Transport) destroy(err error) {
@@ -162,19 +185,7 @@ func (t *Transport) sendCtrlMsgs() {
 	}
 }
 
-func (t *Transport) readControlStream() {
-	parser := wire.NewControlMessageParser(t.controlStream)
-	msg, err := parser.Parse()
-	if err != nil {
-		t.destroy(err)
-	}
-	if err = t.recvCtrlMsg(msg); err != nil {
-		t.destroy(err)
-	}
-	if !t.session.setupDone {
-		t.destroy(errSetupNotDone)
-	}
-	close(t.setupDone)
+func (t *Transport) readControlStream(parser *wire.ControlMessageParser) {
 	for {
 		msg, err := parser.Parse()
 		if err != nil {
@@ -225,6 +236,7 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 	if !ok {
 		return errUnknownSubscribeID
 	}
+
 	for m, err := range parser.Messages() {
 		if err != nil {
 			panic(err)
@@ -266,6 +278,10 @@ func (t *Transport) readDatagrams() {
 }
 
 // Local API
+
+func (t *Transport) Path() string {
+	return t.session.path
+}
 
 func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
 	as := AnnouncementSubscription{

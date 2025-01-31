@@ -20,6 +20,7 @@ import (
 type MockSessionCallbacks struct {
 	ctrl     *gomock.Controller
 	recorder *MockSessionCallbacksMockRecorder
+	isgomock struct{}
 }
 
 // MockSessionCallbacksMockRecorder is the mock recorder for MockSessionCallbacks.
@@ -65,6 +66,18 @@ func (m *MockSessionCallbacks) onAnnouncementSubscription(arg0 AnnouncementSubsc
 func (mr *MockSessionCallbacksMockRecorder) onAnnouncementSubscription(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onAnnouncementSubscription", reflect.TypeOf((*MockSessionCallbacks)(nil).onAnnouncementSubscription), arg0)
+}
+
+// onProtocolViolation mocks base method.
+func (m *MockSessionCallbacks) onProtocolViolation(arg0 ProtocolError) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "onProtocolViolation", arg0)
+}
+
+// onProtocolViolation indicates an expected call of onProtocolViolation.
+func (mr *MockSessionCallbacksMockRecorder) onProtocolViolation(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onProtocolViolation", reflect.TypeOf((*MockSessionCallbacks)(nil).onProtocolViolation), arg0)
 }
 
 // onSubscription mocks base method.
