@@ -132,7 +132,9 @@ func newTransportWithSession(
 	tc.callbacks.t = t
 
 	if !session.isServer {
-		session.sendClientSetup()
+		if err := session.sendClientSetup(); err != nil {
+			return nil, err
+		}
 	}
 	go t.sendCtrlMsgs()
 
@@ -324,15 +326,25 @@ func (t *Transport) Subscribe(
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case res := <-ps.response:
-		if res.err != nil {
-			return nil, res.err
-		}
-		return res.track, nil
+		return res.track, res.err
 	}
 }
 
-func (t *Transport) Announce(namespace []string) error {
-	return t.session.announce(namespace)
+func (t *Transport) Announce(ctx context.Context, namespace []string) error {
+	a := Announcement{
+		Namespace:  namespace,
+		parameters: map[uint64]wire.Parameter{},
+		response:   make(chan announcementResponse, 1),
+	}
+	if err := t.session.announce(a); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case res := <-a.response:
+		return res.err
+	}
 }
 
 func (t *Transport) acceptAnnouncement(a Announcement) error {
@@ -349,7 +361,6 @@ func (t *Transport) acceptAnnouncementSubscription(as AnnouncementSubscription) 
 
 func (t *Transport) rejectAnnouncementSubscription(as AnnouncementSubscription, c uint64, r string) error {
 	return t.session.rejectAnnouncementSubscription(as, c, r)
-
 }
 
 func (t *Transport) acceptSubscription(sub Subscription) error {
