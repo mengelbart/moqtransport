@@ -3,12 +3,8 @@ package moqtransport
 import "github.com/mengelbart/moqtransport/internal/wire"
 
 type Announcement struct {
-	namespace  []string
+	Namespace  []string
 	parameters wire.Parameters // TODO: This is unexported, need better API?
-}
-
-func (a *Announcement) Namespace() []string {
-	return a.namespace
 }
 
 type AnnouncementResponseWriter interface {
@@ -17,12 +13,12 @@ type AnnouncementResponseWriter interface {
 }
 
 type AnnouncementHandler interface {
-	HandleAnnouncement(*Transport, *Announcement, AnnouncementResponseWriter)
+	HandleAnnouncement(*Transport, Announcement, AnnouncementResponseWriter)
 }
 
-type AnnouncementHandlerFunc func(*Transport, *Announcement, AnnouncementResponseWriter)
+type AnnouncementHandlerFunc func(*Transport, Announcement, AnnouncementResponseWriter)
 
-func (f AnnouncementHandlerFunc) HandleAnnouncement(s *Transport, a *Announcement, arw AnnouncementResponseWriter) {
+func (f AnnouncementHandlerFunc) HandleAnnouncement(s *Transport, a Announcement, arw AnnouncementResponseWriter) {
 	f(s, a, arw)
 }
 

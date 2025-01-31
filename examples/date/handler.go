@@ -41,9 +41,9 @@ func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
 		return err
 	}
 	if h.publish {
-		h.setupDateTrack()
+		go h.setupDateTrack()
 	}
-	h.handle(ctx, conn)
+	h.handle(conn)
 	select {}
 }
 
@@ -61,7 +61,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 		},
 	}
 	if h.publish {
-		h.setupDateTrack()
+		go h.setupDateTrack()
 	}
 	http.HandleFunc("/moq", func(w http.ResponseWriter, r *http.Request) {
 		session, err := wt.Upgrade(w, r)
@@ -70,7 +70,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		h.handle(r.Context(), webtransportmoq.New(session))
+		h.handle(webtransportmoq.New(session))
 	})
 	for {
 		conn, err := listener.Accept(ctx)
@@ -81,14 +81,14 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			go wt.ServeQUICConn(conn)
 		}
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "moq-00" {
-			go h.handle(ctx, quicmoq.New(conn))
+			go h.handle(quicmoq.New(conn))
 		}
 	}
 }
 
 func getAnnouncementHandler() moqtransport.AnnouncementHandler {
-	return moqtransport.AnnouncementHandlerFunc(func(t *moqtransport.Transport, a *moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-		log.Printf("got unexpected announcement: %v", a.Namespace())
+	return moqtransport.AnnouncementHandlerFunc(func(t *moqtransport.Transport, a moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
+		log.Printf("got unexpected announcement: %v", a.Namespace)
 		arw.Reject(0, "date doesn't take announcements")
 	})
 }
@@ -112,9 +112,8 @@ func (h *moqHandler) getSubscriptionHandler() moqtransport.SubscriptionHandler {
 	})
 }
 
-func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
+func (h *moqHandler) handle(conn moqtransport.Connection) {
 	ms, err := moqtransport.NewTransport(
-		ctx,
 		conn,
 		h.server,
 		h.quic,
@@ -123,68 +122,70 @@ func (h *moqHandler) handle(ctx context.Context, conn moqtransport.Connection) {
 	)
 	if err != nil {
 		log.Printf("MoQ Session initialization failed: %v", err)
-		ms.Close()
 		conn.CloseWithError(0, "session initialization error")
 		return
 	}
+	if h.publish {
+		if err := ms.Announce(h.namespace); err != nil {
+			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
+			conn.CloseWithError(0, "internal error")
+			return
+		}
+	}
 	if h.subscribe {
-		if err := h.subscribeAndRead(ctx, ms, h.namespace, h.trackname); err != nil {
+		if err := h.subscribeAndRead(ms, h.namespace, h.trackname); err != nil {
 			log.Printf("failed to subscribe to track: %v", err)
-			ms.Close()
 			conn.CloseWithError(0, "internal error")
 			return
 		}
 	}
 }
 
-func (h *moqHandler) subscribeAndRead(ctx context.Context, s *moqtransport.Transport, namespace []string, trackname string) error {
+func (h *moqHandler) subscribeAndRead(s *moqtransport.Transport, namespace []string, trackname string) error {
 	rs, err := s.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
 		return err
 	}
 	go func() {
 		for {
-			o, err := rs.ReadObject(ctx)
+			o, err := rs.ReadObject(context.Background())
 			if err != nil {
 				if err == io.EOF {
-					log.Printf("got last object, closing session")
-					s.Close()
+					log.Printf("got last object")
 					return
 				}
 				return
 			}
-			log.Printf("got object: %v\n", string(o.Payload))
+			log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
 		}
 	}()
 	return nil
 }
 
 func (h *moqHandler) setupDateTrack() {
-	go func() {
-		publishers := []*moqtransport.Publisher{}
-		ticker := time.NewTicker(time.Second)
-		groupID := 0
-		for {
-			select {
-			case ts := <-ticker.C:
-				log.Printf("TICK: %v", ts)
-				for _, p := range publishers {
-					if err := p.SendDatagram(moqtransport.Object{
-						GroupID:    uint64(groupID),
-						SubGroupID: 0,
-						ObjectID:   0,
-						Payload:    []byte(fmt.Sprintf("%v", ts)),
-					}); err != nil {
-						panic(err)
-					}
+	publishers := []*moqtransport.Publisher{}
+	ticker := time.NewTicker(time.Second)
+	groupID := 0
+	for {
+		select {
+		case ts := <-ticker.C:
+			log.Printf("TICK: %v", ts)
+			for _, p := range publishers {
+				if err := p.SendDatagram(moqtransport.Object{
+					GroupID:    uint64(groupID),
+					SubGroupID: 0,
+					ObjectID:   0,
+					Payload:    []byte(fmt.Sprintf("%v", ts)),
+				}); err != nil {
+					panic(err)
 				}
-			case publisher := <-h.publishers:
-				log.Printf("got subscriber")
-				publishers = append(publishers, publisher)
 			}
-			groupID++
+		case publisher := <-h.publishers:
+			log.Printf("got subscriber")
+			publishers = append(publishers, publisher)
 		}
-	}()
+		groupID++
+	}
 }
 
 func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error) {

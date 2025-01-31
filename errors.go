@@ -26,6 +26,10 @@ const (
 )
 
 const (
+	AnnouncementRejected = 0x01
+)
+
+const (
 	SubscribeDoneUnsubscribed  = 0x00
 	SubscribeDoneInternalError = 0x01
 	SubscribeDoneUnauthorized  = 0x02

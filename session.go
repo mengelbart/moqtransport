@@ -28,7 +28,14 @@ var (
 	errUnknownNamespace            = errors.New("unknown namespace")
 )
 
-type Session struct {
+type sessionCallbacks interface {
+	queueControlMessage(wire.ControlMessage) error
+	onSubscription(Subscription)
+	onAnnouncement(Announcement)
+	onAnnouncementSubscription(AnnouncementSubscription)
+}
+
+type session struct {
 	lock sync.Mutex
 
 	logger *slog.Logger
@@ -42,46 +49,49 @@ type Session struct {
 	localRole  Role
 	remoteRole Role
 
-	controlMessageQueue chan wire.ControlMessage
+	callbacks sessionCallbacks
+
+	pendingOutgointAnnouncementSubscriptions []AnnouncementSubscription
+	outgointAnnouncementSubscriptions        []AnnouncementSubscription
+
+	incomingAnnouncementSubscriptions []AnnouncementSubscription
 
 	remoteMaxSubscribeID         uint64
 	pendingOutgoingSubscriptions map[uint64]Subscription
 	outgoingSubscriptions        map[uint64]Subscription
 	trackAliasToSusbcribeID      map[uint64]uint64
 
-	localMaxSubscribeID       uint64
-	incomingSubscriptionQueue chan Subscription
-	incomingSubscriptions     map[uint64]Subscription
+	localMaxSubscribeID   uint64
+	incomingSubscriptions map[uint64]Subscription
 
-	pendingOutgoingAnnouncements *container.Trie[string, Announcement]
-	outgoingAnnouncements        *container.Trie[string, Announcement]
+	pendingOutgoingAnnouncements []Announcement
+	outgoingAnnouncements        []Announcement
 
-	incomingAnnouncementQueue chan Announcement
-	incomingAnnouncements     *container.Trie[string, Announcement]
+	incomingAnnouncements *container.Trie[string, Announcement]
 }
 
-type SessionOption func(*Session)
+type SessionOption func(*session)
 
 func PathParameterOption(path string) SessionOption {
-	return func(s *Session) {
+	return func(s *session) {
 		s.path = path
 	}
 }
 
 func RoleParameterOption(role Role) SessionOption {
-	return func(s *Session) {
+	return func(s *session) {
 		s.localRole = role
 	}
 }
 
 func MaxSubscribeIDOption(maxID uint64) SessionOption {
-	return func(s *Session) {
+	return func(s *session) {
 		s.localMaxSubscribeID = maxID
 	}
 }
 
-func NewSession(isServer, isQUIC bool, options ...SessionOption) (*Session, error) {
-	s := &Session{
+func NewSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...SessionOption) (*session, error) {
+	s := &session{
 		lock: sync.Mutex{},
 
 		logger: defaultLogger,
@@ -95,22 +105,20 @@ func NewSession(isServer, isQUIC bool, options ...SessionOption) (*Session, erro
 		localRole:  RolePubSub,
 		remoteRole: 0,
 
-		controlMessageQueue: make(chan wire.ControlMessage, controlMessageQueueSize),
+		callbacks: callbacks,
 
 		remoteMaxSubscribeID:         0,
 		pendingOutgoingSubscriptions: map[uint64]Subscription{},
 		outgoingSubscriptions:        map[uint64]Subscription{},
 		trackAliasToSusbcribeID:      map[uint64]uint64{},
 
-		localMaxSubscribeID:       0,
-		incomingSubscriptionQueue: make(chan Subscription, pendingRemoteSubscriptionQueueSize),
-		incomingSubscriptions:     map[uint64]Subscription{},
+		localMaxSubscribeID:   100,
+		incomingSubscriptions: map[uint64]Subscription{},
 
-		pendingOutgoingAnnouncements: container.NewTrie[string, Announcement](),
-		outgoingAnnouncements:        container.NewTrie[string, Announcement](),
+		pendingOutgoingAnnouncements: []Announcement{},
+		outgoingAnnouncements:        []Announcement{},
 
-		incomingAnnouncementQueue: make(chan Announcement, pendingRemoteAnnouncementsQueueSize),
-		incomingAnnouncements:     container.NewTrie[string, Announcement](),
+		incomingAnnouncements: container.NewTrie[string, Announcement](),
 	}
 	for _, opt := range options {
 		opt(s)
@@ -142,28 +150,11 @@ func NewSession(isServer, isQUIC bool, options ...SessionOption) (*Session, erro
 	return s, nil
 }
 
-func (s *Session) queueControlMessage(msg wire.ControlMessage) error {
-	select {
-	case s.controlMessageQueue <- msg:
-		return nil
-	default:
-		return errControlMessageQueueOverflow
-	}
+func (s *session) queueControlMessage(msg wire.ControlMessage) error {
+	return s.callbacks.queueControlMessage(msg)
 }
 
-func (s *Session) SendControlMessages() <-chan wire.ControlMessage {
-	return s.controlMessageQueue
-}
-
-func (s *Session) IncomingSubscriptions() <-chan Subscription {
-	return s.incomingSubscriptionQueue
-}
-
-func (s *Session) IncomingAnnouncements() <-chan Announcement {
-	return s.incomingAnnouncementQueue
-}
-
-func (s *Session) RemoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
+func (s *session) RemoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -175,7 +166,7 @@ func (s *Session) RemoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	return sub.remoteTrack, true
 }
 
-func (s *Session) subscribeIDForTrackAlias(alias uint64) (uint64, bool) {
+func (s *session) subscribeIDForTrackAlias(alias uint64) (uint64, bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -187,7 +178,7 @@ func (s *Session) subscribeIDForTrackAlias(alias uint64) (uint64, bool) {
 	return id, true
 }
 
-func (s *Session) RemoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
+func (s *session) RemoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	id, ok := s.subscribeIDForTrackAlias(alias)
 	if !ok {
 		return nil, false
@@ -197,7 +188,7 @@ func (s *Session) RemoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 // Local API to trigger outgoing control messages
 
-func (s *Session) Subscribe(
+func (s *session) Subscribe(
 	ctx context.Context,
 	sub Subscription,
 ) error {
@@ -240,7 +231,7 @@ func (s *Session) Subscribe(
 	return nil
 }
 
-func (s *Session) Announce(
+func (s *session) Announce(
 	namespace []string,
 ) error {
 	s.lock.Lock()
@@ -253,22 +244,35 @@ func (s *Session) Announce(
 	if err := s.queueControlMessage(am); err != nil {
 		return err
 	}
-	s.pendingOutgoingAnnouncements.Put(namespace, Announcement{
-		namespace:  namespace,
+	s.pendingOutgoingAnnouncements = append(s.pendingOutgoingAnnouncements, Announcement{
+		Namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 	})
 	return nil
 }
 
-func (s *Session) SubscribeAnnounces() {
+func (s *session) SubscribeAnnounces(subscription AnnouncementSubscription) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	sam := &wire.SubscribeAnnouncesMessage{
+		TrackNamespacePrefix: []string{},
+		Parameters:           map[uint64]wire.Parameter{},
+	}
+	if err := s.queueControlMessage(sam); err != nil {
+		return err
+	}
+	s.pendingOutgointAnnouncementSubscriptions = append(s.pendingOutgointAnnouncementSubscriptions, AnnouncementSubscription{
+		namespace: subscription.namespace,
+	})
+	return nil
+}
+
+func (s *session) Fetch() {
 
 }
 
-func (s *Session) Fetch() {
-
-}
-
-func (s *Session) AcceptSubscription(sub Subscription) error {
+func (s *session) AcceptSubscription(sub Subscription) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -287,7 +291,7 @@ func (s *Session) AcceptSubscription(sub Subscription) error {
 	return nil
 }
 
-func (s *Session) RejectSubscription(sub Subscription, errorCode uint64, reason string) error {
+func (s *session) RejectSubscription(sub Subscription, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeErrorMessage{
 		SubscribeID:  sub.ID,
 		ErrorCode:    errorCode,
@@ -296,22 +300,29 @@ func (s *Session) RejectSubscription(sub Subscription, errorCode uint64, reason 
 	})
 }
 
-func (s *Session) AcceptAnnouncement(a Announcement) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
+func (s *session) AcceptAnnouncement(a Announcement) error {
 	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
-		TrackNamespace: a.namespace,
+		TrackNamespace: a.Namespace,
 	}); err != nil {
 		return err
 	}
-	s.incomingAnnouncements.Put(a.namespace, a)
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.incomingAnnouncements.Put(a.Namespace, a)
 	return nil
+}
+
+func (s *session) RejectAnnouncement(a Announcement, errorCode uint64, reason string) error {
+	return s.queueControlMessage(&wire.AnnounceErrorMessage{
+		TrackNamespace: a.Namespace,
+		ErrorCode:      errorCode,
+		ReasonPhrase:   reason,
+	})
 }
 
 // Remote API for handling incoming control messages
 
-func (s *Session) OnControlMessage(msg wire.ControlMessage) error {
+func (s *session) OnControlMessage(msg wire.ControlMessage) error {
 	if s.setupDone {
 		switch m := msg.(type) {
 
@@ -403,7 +414,7 @@ func (s *Session) OnControlMessage(msg wire.ControlMessage) error {
 	}
 }
 
-func (s *Session) clientSetup(m *wire.ClientSetupMessage) (err error) {
+func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 	if !s.isServer {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -456,7 +467,7 @@ func (s *Session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 	return nil
 }
 
-func (s *Session) serverSetup(m *wire.ServerSetupMessage) (err error) {
+func (s *session) serverSetup(m *wire.ServerSetupMessage) (err error) {
 	if s.isServer {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -483,14 +494,12 @@ func (s *Session) serverSetup(m *wire.ServerSetupMessage) (err error) {
 	return nil
 }
 
-func (s *Session) subscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+func (s *session) subscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
 	return nil
 }
 
-func (s *Session) subscribe(msg *wire.SubscribeMessage) error {
+func (s *session) subscribe(msg *wire.SubscribeMessage) error {
 	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	auth, err := validateAuthParameter(msg.Parameters)
 	if err != nil {
 		return err
@@ -514,15 +523,13 @@ func (s *Session) subscribe(msg *wire.SubscribeMessage) error {
 		Trackname:     string(msg.TrackName),
 		Authorization: auth,
 	}
-	select {
-	case s.incomingSubscriptionQueue <- sub:
-	default:
-		panic("TODO pendingRemoteSubscriptionsOverflow")
-	}
+	s.lock.Unlock()
+
+	s.callbacks.onSubscription(sub)
 	return nil
 }
 
-func (s *Session) subscribeOk(msg *wire.SubscribeOkMessage) error {
+func (s *session) subscribeOk(msg *wire.SubscribeOkMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -545,12 +552,12 @@ func (s *Session) subscribeOk(msg *wire.SubscribeOkMessage) error {
 		track: subscription.remoteTrack,
 	}:
 	default:
-		panic("TODO localSubscriptionResponsesOverflow")
+		panic("TODO unhandled subscription response")
 	}
 	return nil
 }
 
-func (s *Session) subscribeError(msg *wire.SubscribeErrorMessage) error {
+func (s *session) subscribeError(msg *wire.SubscribeErrorMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -571,15 +578,13 @@ func (s *Session) subscribeError(msg *wire.SubscribeErrorMessage) error {
 		track: nil,
 	}:
 	default:
-		panic("TODO localSubscriptionResponsesOverflow")
+		panic("TODO unhandled subscription response")
 	}
 	return nil
 }
 
-func (s *Session) announce(msg *wire.AnnounceMessage) error {
+func (s *session) announce(msg *wire.AnnounceMessage) error {
 	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	if len(msg.TrackNamespace) > 32 {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -598,70 +603,91 @@ func (s *Session) announce(msg *wire.AnnounceMessage) error {
 			message: "duplicate announcement",
 		}
 	}
-	select {
-	case s.incomingAnnouncementQueue <- Announcement{
-		namespace:  msg.TrackNamespace,
+	s.lock.Unlock()
+
+	s.callbacks.onAnnouncement(Announcement{
+		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
+	})
+	return nil
+}
+
+func (s *session) announceOk(msg *wire.AnnounceOkMessage) error {
+	return nil
+}
+
+func (s *session) announceError(msg *wire.AnnounceErrorMessage) error {
+	return nil
+}
+
+func (s *session) unannounce(msg *wire.UnannounceMessage) error {
+	return nil
+}
+
+func (s *session) unsubscribe(msg *wire.UnsubscribeMessage) error {
+	return nil
+}
+
+func (s *session) subscribeDone(msg *wire.SubscribeDoneMessage) error {
+	return nil
+}
+
+func (s *session) announceCancel(msg *wire.AnnounceCancelMessage) error {
+	return nil
+}
+
+func (s *session) trackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
+	return nil
+}
+
+func (s *session) trackStatus(msg *wire.TrackStatusMessage) error {
+	return nil
+}
+
+func (s *session) goAway(msg *wire.GoAwayMessage) error {
+	return nil
+}
+
+func (s *session) subscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
+	return nil
+}
+
+func (s *session) subscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	i := slices.IndexFunc(s.pendingOutgointAnnouncementSubscriptions, func(as AnnouncementSubscription) bool {
+		return slices.Equal(as.namespace, msg.TrackNamespacePrefix)
+	})
+	if i == -1 {
+		return ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe_announces prefix",
+		}
+	}
+	s.logger.Info("got subscribeAnnouncesOk", "prefix", msg.TrackNamespacePrefix)
+	as := s.pendingOutgointAnnouncementSubscriptions[i]
+	s.outgointAnnouncementSubscriptions = append(s.outgointAnnouncementSubscriptions, as)
+	s.pendingOutgointAnnouncementSubscriptions = append(s.pendingOutgointAnnouncementSubscriptions[:i], s.pendingOutgointAnnouncementSubscriptions[i+1:]...)
+	select {
+	case as.response <- announcementSubscriptionResponse{
+		err: nil,
 	}:
 	default:
-		panic("TODO pendingRemoteAnnouncementsQueueOverflow")
+		panic("TODO: unhandled announcement subscription response")
 	}
 	return nil
 }
 
-func (s *Session) announceOk(msg *wire.AnnounceOkMessage) error {
+func (s *session) subscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
 	return nil
 }
 
-func (s *Session) announceError(msg *wire.AnnounceErrorMessage) error {
+func (s *session) unsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
 	return nil
 }
 
-func (s *Session) unannounce(msg *wire.UnannounceMessage) error {
-	return nil
-}
-
-func (s *Session) unsubscribe(msg *wire.UnsubscribeMessage) error {
-	return nil
-}
-
-func (s *Session) subscribeDone(msg *wire.SubscribeDoneMessage) error {
-	return nil
-}
-
-func (s *Session) announceCancel(msg *wire.AnnounceCancelMessage) error {
-	return nil
-}
-
-func (s *Session) trackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	return nil
-}
-
-func (s *Session) trackStatus(msg *wire.TrackStatusMessage) error {
-	return nil
-}
-
-func (s *Session) goAway(msg *wire.GoAwayMessage) error {
-	return nil
-}
-
-func (s *Session) subscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
-	return nil
-}
-
-func (s *Session) subscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
-	return nil
-}
-
-func (s *Session) subscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
-	return nil
-}
-
-func (s *Session) unsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	return nil
-}
-
-func (s *Session) maxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
+func (s *session) maxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -675,19 +701,19 @@ func (s *Session) maxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
 	return nil
 }
 
-func (s *Session) fetch(msg *wire.FetchMessage) error {
+func (s *session) fetch(msg *wire.FetchMessage) error {
 	return nil
 }
 
-func (s *Session) fetchCancel(msg *wire.FetchCancelMessage) error {
+func (s *session) fetchCancel(msg *wire.FetchCancelMessage) error {
 	return nil
 }
 
-func (s *Session) fetchOk(msg *wire.FetchOkMessage) error {
+func (s *session) fetchOk(msg *wire.FetchOkMessage) error {
 	return nil
 }
 
-func (s *Session) fetchError(msg *wire.FetchErrorMessage) error {
+func (s *session) fetchError(msg *wire.FetchErrorMessage) error {
 	return nil
 }
 
