@@ -5,28 +5,20 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sync"
 
 	"github.com/mengelbart/moqtransport/internal/container"
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-var (
-	errDuplicateSubscribeID    = errors.New("duplicate subscribe ID")
-	errMaxSubscribeIDViolation = errors.New("selected subscribe ID violates remote maximum subscribe ID")
-	errUnknownSubscribeID      = errors.New("unknown subscribe ID")
-)
-
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
+	onProtocolViolation(ProtocolError)
 	onSubscription(Subscription) bool
 	onAnnouncement(Announcement) bool
 	onAnnouncementSubscription(AnnouncementSubscription) bool
 }
 
 type session struct {
-	lock sync.Mutex
-
 	logger *slog.Logger
 
 	isServer       bool
@@ -40,101 +32,88 @@ type session struct {
 
 	callbacks sessionCallbacks
 
-	pendingOutgointAnnouncementSubscriptions []AnnouncementSubscription
-	outgointAnnouncementSubscriptions        []AnnouncementSubscription
+	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
 
-	remoteMaxSubscribeID         uint64
-	pendingOutgoingSubscriptions map[uint64]Subscription
-	outgoingSubscriptions        map[uint64]Subscription
-	trackAliasToSusbcribeID      map[uint64]uint64
+	outgoingSubscriptions *subscriptionMap
+	incomingSubscriptions *subscriptionMap
 
-	localMaxSubscribeID   uint64
-	incomingSubscriptions map[uint64]Subscription
-
-	pendingOutgoingAnnouncements []Announcement
-	outgoingAnnouncements        []Announcement
+	outgoingAnnouncements *announcementMap
 
 	incomingAnnouncements *container.Trie[string, Announcement]
 }
 
-type sessionOption func(*session)
+type sessionOption func(*session) error
 
 func pathParameterOption(path string) sessionOption {
-	return func(s *session) {
+	return func(s *session) error {
 		s.path = path
+		return nil
 	}
 }
 
 func roleParameterOption(role Role) sessionOption {
-	return func(s *session) {
+	return func(s *session) error {
 		s.localRole = role
+		return nil
 	}
 }
 
 func maxSubscribeIDOption(maxID uint64) sessionOption {
-	return func(s *session) {
-		s.localMaxSubscribeID = maxID
+	return func(s *session) error {
+		s.incomingSubscriptions = newSubscriptionMap(maxID)
+		return nil
 	}
 }
 
 func newSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...sessionOption) (*session, error) {
 	s := &session{
-		lock: sync.Mutex{},
-
-		logger: defaultLogger,
-
-		isServer:       isServer,
-		protocolIsQUIC: isQUIC,
-		version:        0,
-		setupDone:      false,
-
-		path:       "",
-		localRole:  RolePubSub,
-		remoteRole: 0,
-
-		callbacks: callbacks,
-
-		remoteMaxSubscribeID:         0,
-		pendingOutgoingSubscriptions: map[uint64]Subscription{},
-		outgoingSubscriptions:        map[uint64]Subscription{},
-		trackAliasToSusbcribeID:      map[uint64]uint64{},
-
-		localMaxSubscribeID:   100,
-		incomingSubscriptions: map[uint64]Subscription{},
-
-		pendingOutgoingAnnouncements: []Announcement{},
-		outgoingAnnouncements:        []Announcement{},
-
-		incomingAnnouncements: container.NewTrie[string, Announcement](),
+		logger:                                   defaultLogger,
+		isServer:                                 isServer,
+		protocolIsQUIC:                           isQUIC,
+		version:                                  0,
+		setupDone:                                false,
+		path:                                     "",
+		localRole:                                RolePubSub,
+		remoteRole:                               0,
+		callbacks:                                callbacks,
+		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
+		outgoingSubscriptions:                    newSubscriptionMap(0),
+		incomingSubscriptions:                    newSubscriptionMap(100),
+		outgoingAnnouncements:                    newAnnouncementMap(),
+		incomingAnnouncements:                    container.NewTrie[string, Announcement](),
 	}
 	for _, opt := range options {
-		opt(s)
-	}
-	if !s.isServer {
-		params := map[uint64]wire.Parameter{
-			wire.RoleParameterKey: wire.VarintParameter{
-				Type:  wire.RoleParameterKey,
-				Value: uint64(s.localRole),
-			},
-			wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-				Type:  wire.MaxSubscribeIDParameterKey,
-				Value: s.localMaxSubscribeID,
-			},
-		}
-		if s.protocolIsQUIC {
-			params[wire.PathParameterKey] = wire.StringParameter{
-				Type:  wire.PathParameterKey,
-				Value: s.path,
-			}
-		}
-		if err := s.queueControlMessage(&wire.ClientSetupMessage{
-			SupportedVersions: wire.SupportedVersions,
-			SetupParameters:   params,
-		}); err != nil {
+		if err := opt(s); err != nil {
 			return nil, err
 		}
 	}
 	return s, nil
+}
+
+func (s *session) sendClientSetup() error {
+	params := map[uint64]wire.Parameter{
+		wire.RoleParameterKey: wire.VarintParameter{
+			Type:  wire.RoleParameterKey,
+			Value: uint64(s.localRole),
+		},
+		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
+			Type:  wire.MaxSubscribeIDParameterKey,
+			Value: s.incomingSubscriptions.getMaxSubscribeID(),
+		},
+	}
+	if s.protocolIsQUIC {
+		params[wire.PathParameterKey] = wire.StringParameter{
+			Type:  wire.PathParameterKey,
+			Value: s.path,
+		}
+	}
+	if err := s.queueControlMessage(&wire.ClientSetupMessage{
+		SupportedVersions: wire.SupportedVersions,
+		SetupParameters:   params,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *session) queueControlMessage(msg wire.ControlMessage) error {
@@ -142,51 +121,18 @@ func (s *session) queueControlMessage(msg wire.ControlMessage) error {
 }
 
 func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	sub, ok := s.outgoingSubscriptions[id]
-	if !ok {
-		s.logger.Info("could not find remote track for subscribe ID", "subscribeID", id)
-		return nil, false
-	}
-	return sub.remoteTrack, true
-}
-
-func (s *session) subscribeIDForTrackAlias(alias uint64) (uint64, bool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	id, ok := s.trackAliasToSusbcribeID[alias]
-	if !ok {
-		s.logger.Info("could not find remote track for track alias", "trackAlias", alias)
-		return 0, false
-	}
-	return id, true
+	return s.outgoingSubscriptions.remoteTrackBySubscribeID(id)
 }
 
 func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
-	id, ok := s.subscribeIDForTrackAlias(alias)
-	if !ok {
-		return nil, false
-	}
-	return s.remoteTrackBySubscribeID(id)
+	return s.outgoingSubscriptions.remoteTrackByTrackAlias(alias)
 }
 
 // Local API to trigger outgoing control messages
 
 func (s *session) subscribe(sub Subscription) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if sub.ID >= s.remoteMaxSubscribeID {
-		return errMaxSubscribeIDViolation
-	}
-	if _, ok := s.pendingOutgoingSubscriptions[sub.ID]; ok {
-		return errDuplicateSubscribeID
-	}
-	if _, ok := s.outgoingSubscriptions[sub.ID]; ok {
-		return errDuplicateSubscribeID
+	if err := s.outgoingSubscriptions.addPending(sub); err != nil {
+		return err
 	}
 	sm := &wire.SubscribeMessage{
 		SubscribeID:        sub.ID,
@@ -211,16 +157,12 @@ func (s *session) subscribe(sub Subscription) error {
 	if err := s.queueControlMessage(sm); err != nil {
 		return err
 	}
-	s.pendingOutgoingSubscriptions[sub.ID] = sub
 	return nil
 }
 
 func (s *session) announce(
 	namespace []string,
 ) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	am := &wire.AnnounceMessage{
 		TrackNamespace: namespace,
 		Parameters:     map[uint64]wire.Parameter{},
@@ -228,7 +170,7 @@ func (s *session) announce(
 	if err := s.queueControlMessage(am); err != nil {
 		return err
 	}
-	s.pendingOutgoingAnnouncements = append(s.pendingOutgoingAnnouncements, Announcement{
+	s.outgoingAnnouncements.add(Announcement{
 		Namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 	})
@@ -236,9 +178,6 @@ func (s *session) announce(
 }
 
 func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	sam := &wire.SubscribeAnnouncesMessage{
 		TrackNamespacePrefix: []string{},
 		Parameters:           map[uint64]wire.Parameter{},
@@ -246,16 +185,17 @@ func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) erro
 	if err := s.queueControlMessage(sam); err != nil {
 		return err
 	}
-	s.pendingOutgointAnnouncementSubscriptions = append(s.pendingOutgointAnnouncementSubscriptions, AnnouncementSubscription{
+	s.pendingOutgointAnnouncementSubscriptions.add(AnnouncementSubscription{
 		namespace: subscription.namespace,
 	})
 	return nil
 }
 
 func (s *session) acceptSubscription(sub Subscription) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
+	err := s.incomingSubscriptions.confirm(sub)
+	if err != nil {
+		return err
+	}
 	if err := s.queueControlMessage(&wire.SubscribeOkMessage{
 		SubscribeID:     sub.ID,
 		Expires:         sub.Expires,
@@ -267,7 +207,6 @@ func (s *session) acceptSubscription(sub Subscription) error {
 	}); err != nil {
 		return err
 	}
-	s.incomingSubscriptions[sub.ID] = sub
 	return nil
 }
 
@@ -286,8 +225,6 @@ func (s *session) acceptAnnouncement(a Announcement) error {
 	}); err != nil {
 		return err
 	}
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	s.incomingAnnouncements.Put(a.Namespace, a)
 	return nil
 }
@@ -440,9 +377,14 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 		return err
 	}
 
-	s.remoteMaxSubscribeID, err = validateMaxSubscribeIDParameter(m.SetupParameters)
+	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
 	if err != nil {
 		return err
+	}
+	if remoteMaxSubscribeID > 0 {
+		if err = s.outgoingSubscriptions.updateMaxSubscribeID(remoteMaxSubscribeID); err != nil {
+			return err
+		}
 	}
 
 	if err := s.queueControlMessage(&wire.ServerSetupMessage{
@@ -483,35 +425,26 @@ func (s *session) serverSetup(m *wire.ServerSetupMessage) (err error) {
 		return err
 	}
 
-	s.remoteMaxSubscribeID, err = validateMaxSubscribeIDParameter(m.SetupParameters)
+	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
 	if err != nil {
 		return err
 	}
+	if err = s.outgoingSubscriptions.updateMaxSubscribeID(remoteMaxSubscribeID); err != nil {
+		return err
+	}
+
 	s.setupDone = true
 	return nil
 }
 
-func (s *session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+func (s *session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
 	return nil
 }
 
 func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
-	s.lock.Lock()
 	auth, err := validateAuthParameter(msg.Parameters)
 	if err != nil {
 		return err
-	}
-	if msg.SubscribeID > s.localMaxSubscribeID {
-		return ProtocolError{
-			code:    ErrorTooManySubscribes,
-			message: "",
-		}
-	}
-	if _, ok := s.incomingSubscriptions[msg.SubscribeID]; ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "duplicate subscribe ID",
-		}
 	}
 	sub := Subscription{
 		ID:            msg.SubscribeID,
@@ -520,8 +453,13 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		Trackname:     string(msg.TrackName),
 		Authorization: auth,
 	}
-	s.lock.Unlock()
-
+	if err := s.incomingSubscriptions.addPending(sub); err != nil {
+		pv := &ProtocolError{}
+		if errors.As(err, pv) {
+			s.callbacks.onProtocolViolation(*pv)
+		}
+		return err
+	}
 	if !s.callbacks.onSubscription(sub) {
 		return s.rejectSubscription(sub, SubscribeErrorUnhandled, "unhandled subscription")
 	}
@@ -529,22 +467,10 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 }
 
 func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	subscription, ok := s.pendingOutgoingSubscriptions[msg.SubscribeID]
-	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe ID",
-		}
+	subscription, err := s.outgoingSubscriptions.confirmAndGet(msg.SubscribeID)
+	if err != nil {
+		return err
 	}
-	s.logger.Info("got subscribeOk", "subscription", subscription)
-	delete(s.pendingOutgoingSubscriptions, msg.SubscribeID)
-	subscription.remoteTrack = newRemoteTrack(subscription.ID)
-	s.logger.Info("got subscribeOk", "subscription", subscription, "track", subscription.remoteTrack)
-	s.outgoingSubscriptions[msg.SubscribeID] = subscription
-	s.trackAliasToSusbcribeID[subscription.TrackAlias] = subscription.ID
 	select {
 	case subscription.response <- subscriptionResponse{
 		err:   nil,
@@ -557,17 +483,10 @@ func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 }
 
 func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	sub, ok := s.pendingOutgoingSubscriptions[msg.SubscribeID]
-	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe ID",
-		}
+	sub, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
+	if err != nil {
+		return err
 	}
-	delete(s.pendingOutgoingSubscriptions, msg.SubscribeID)
 	select {
 	case sub.response <- subscriptionResponse{
 		err: ProtocolError{
@@ -583,7 +502,6 @@ func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 }
 
 func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
-	s.lock.Lock()
 	if len(msg.TrackNamespace) > 32 {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -602,8 +520,6 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 			message: "duplicate announcement",
 		}
 	}
-	s.lock.Unlock()
-
 	a := Announcement{
 		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
@@ -655,22 +571,14 @@ func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 }
 
 func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	i := slices.IndexFunc(s.pendingOutgointAnnouncementSubscriptions, func(as AnnouncementSubscription) bool {
-		return slices.Equal(as.namespace, msg.TrackNamespacePrefix)
-	})
-	if i == -1 {
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	if !ok {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe_announces prefix",
 		}
 	}
 	s.logger.Info("got subscribeAnnouncesOk", "prefix", msg.TrackNamespacePrefix)
-	as := s.pendingOutgointAnnouncementSubscriptions[i]
-	s.outgointAnnouncementSubscriptions = append(s.outgointAnnouncementSubscriptions, as)
-	s.pendingOutgointAnnouncementSubscriptions = append(s.pendingOutgointAnnouncementSubscriptions[:i], s.pendingOutgointAnnouncementSubscriptions[i+1:]...)
 	select {
 	case as.response <- announcementSubscriptionResponse{
 		err: nil,
@@ -690,17 +598,7 @@ func (s *session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) 
 }
 
 func (s *session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if msg.SubscribeID <= s.remoteMaxSubscribeID {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "max subscribe ID decreased",
-		}
-	}
-	s.remoteMaxSubscribeID = msg.SubscribeID
-	return nil
+	return s.outgoingSubscriptions.updateMaxSubscribeID(msg.SubscribeID)
 }
 
 func (s *session) onFetch(msg *wire.FetchMessage) error {

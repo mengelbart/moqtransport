@@ -19,6 +19,7 @@ import (
 type MockSendStream struct {
 	ctrl     *gomock.Controller
 	recorder *MockSendStreamMockRecorder
+	isgomock struct{}
 }
 
 // MockSendStreamMockRecorder is the mock recorder for MockSendStream.
@@ -53,16 +54,16 @@ func (mr *MockSendStreamMockRecorder) Close() *gomock.Call {
 }
 
 // Write mocks base method.
-func (m *MockSendStream) Write(arg0 []byte) (int, error) {
+func (m *MockSendStream) Write(p []byte) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Write", arg0)
+	ret := m.ctrl.Call(m, "Write", p)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Write indicates an expected call of Write.
-func (mr *MockSendStreamMockRecorder) Write(arg0 any) *gomock.Call {
+func (mr *MockSendStreamMockRecorder) Write(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockSendStream)(nil).Write), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockSendStream)(nil).Write), p)
 }

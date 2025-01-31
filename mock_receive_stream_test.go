@@ -19,6 +19,7 @@ import (
 type MockReceiveStream struct {
 	ctrl     *gomock.Controller
 	recorder *MockReceiveStreamMockRecorder
+	isgomock struct{}
 }
 
 // MockReceiveStreamMockRecorder is the mock recorder for MockReceiveStream.
@@ -39,16 +40,16 @@ func (m *MockReceiveStream) EXPECT() *MockReceiveStreamMockRecorder {
 }
 
 // Read mocks base method.
-func (m *MockReceiveStream) Read(arg0 []byte) (int, error) {
+func (m *MockReceiveStream) Read(p []byte) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Read", arg0)
+	ret := m.ctrl.Call(m, "Read", p)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Read indicates an expected call of Read.
-func (mr *MockReceiveStreamMockRecorder) Read(arg0 any) *gomock.Call {
+func (mr *MockReceiveStreamMockRecorder) Read(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockReceiveStream)(nil).Read), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockReceiveStream)(nil).Read), p)
 }

@@ -24,6 +24,7 @@ const (
 	SubscribeErrorUnauthorized      = 0x04
 	SubscribeErrorTimeout           = 0x05
 	SubscribeErrorUnhandled         = 0x06
+	SubscribeErrorUnknownID         = 0x07
 )
 
 const (
@@ -40,6 +41,15 @@ const (
 	SubscribeDoneExpired       = 0x05
 )
 
+type ApplicationError struct {
+	code   uint64
+	mesage string
+}
+
+func (e ApplicationError) Error() string {
+	return fmt.Sprintf("MoQ Application Error %v: %v", e.code, e.mesage)
+}
+
 type ProtocolError struct {
 	code    uint64
 	message string
@@ -53,11 +63,21 @@ func (e ProtocolError) Code() uint64 {
 	return e.code
 }
 
-type ApplicationError struct {
-	code   uint64
-	mesage string
-}
-
-func (e ApplicationError) Error() string {
-	return fmt.Sprintf("MoQ Application Error %v: %v", e.code, e.mesage)
-}
+var (
+	errDuplicateSubscribeID = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "duplicate subscribe ID",
+	}
+	errTooManySubscribes = ProtocolError{
+		code:    ErrorTooManySubscribes,
+		message: "too many subscribes",
+	}
+	errMaxSubscribeIDDecreased = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "max subscribe ID decreased",
+	}
+	errUnknownSubscribeID = ProtocolError{
+		code:    SubscribeErrorUnknownID,
+		message: "unknown subscribe ID",
+	}
+)

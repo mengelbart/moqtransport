@@ -38,6 +38,8 @@ func TestSession(t *testing.T) {
 			maxSubscribeIDOption(100),
 		)
 		assert.NoError(t, err)
+		err = s.sendClientSetup()
+		assert.NoError(t, err)
 		assert.NotNil(t, s)
 	})
 
@@ -64,6 +66,8 @@ func TestSession(t *testing.T) {
 			roleParameterOption(RolePubSub),
 			maxSubscribeIDOption(100),
 		)
+		assert.NoError(t, err)
+		err = s.sendClientSetup()
 		assert.NoError(t, err)
 		assert.NotNil(t, s)
 	})
@@ -215,7 +219,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		s.remoteMaxSubscribeID = 1
+		s.outgoingSubscriptions.maxSubscribeID = 1
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        0,
 			TrackAlias:         0,
