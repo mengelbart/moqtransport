@@ -52,5 +52,5 @@ func (c *webTransportConn) CloseWithError(e uint64, msg string) error {
 }
 
 func (c *webTransportConn) Context() context.Context {
-	return c.Context()
+	return c.session.Context()
 }

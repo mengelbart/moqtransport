@@ -8,8 +8,8 @@ type Announcement struct {
 }
 
 type AnnouncementResponseWriter interface {
-	Accept()
-	Reject(code uint64, reason string)
+	Accept() error
+	Reject(code uint64, reason string) error
 }
 
 type AnnouncementHandler interface {
@@ -27,10 +27,10 @@ type defaultAnnouncementResponseWriter struct {
 	transport    *Transport
 }
 
-func (a *defaultAnnouncementResponseWriter) Accept() {
-	a.transport.acceptAnnouncement(a.announcement)
+func (a *defaultAnnouncementResponseWriter) Accept() error {
+	return a.transport.acceptAnnouncement(a.announcement)
 }
 
-func (a *defaultAnnouncementResponseWriter) Reject(code uint64, reason string) {
-	a.transport.rejectAnnouncement(a.announcement, code, reason)
+func (a *defaultAnnouncementResponseWriter) Reject(code uint64, reason string) error {
+	return a.transport.rejectAnnouncement(a.announcement, code, reason)
 }

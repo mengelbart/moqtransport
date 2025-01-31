@@ -2,7 +2,6 @@ package wire
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -25,11 +24,6 @@ func (r VarintParameter) append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(quicvarint.Len(r.Value)))
 	buf = quicvarint.Append(buf, r.Value)
 	return buf
-}
-
-func (p *VarintParameter) parse(reader io.ByteReader) (err error) {
-	p.Value, err = quicvarint.Read(reader)
-	return
 }
 
 func parseVarintParameter(data []byte, typ uint64) (Parameter, int, error) {

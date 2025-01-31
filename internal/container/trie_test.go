@@ -115,6 +115,7 @@ func TestTrieGet(t *testing.T) {
 
 	v, ok = n.Get([]string{"third"})
 	assert.False(t, ok)
+	assert.Equal(t, "", v)
 
 	v, ok = n.Get([]string{"third", "key"})
 	assert.True(t, ok)

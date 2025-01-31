@@ -23,10 +23,12 @@ const (
 	SubscribeErrorTrackDoesNotExist = 0x03
 	SubscribeErrorUnauthorized      = 0x04
 	SubscribeErrorTimeout           = 0x05
+	SubscribeErrorUnhandled         = 0x06
 )
 
 const (
-	AnnouncementRejected = 0x01
+	AnnouncementRejected  = 0x01
+	AnnouncementUnhandled = 0x02
 )
 
 const (

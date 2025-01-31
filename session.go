@@ -12,27 +12,17 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-const (
-	controlMessageQueueSize                   = 1024
-	pendingRemoteSubscriptionQueueSize        = 1024
-	pendingLocalSubscriptionResponseQueueSize = 1024
-	pendingLocalAnnouncementsQueueSize        = 1024
-	pendingRemoteAnnouncementsQueueSize       = 1024
-)
-
 var (
-	errControlMessageQueueOverflow = errors.New("control message if full, message not queued")
-	errDuplicateSubscribeID        = errors.New("duplicate subscribe ID")
-	errMaxSubscribeIDViolation     = errors.New("selected subscribe ID violates remote maximum subscribe ID")
-	errUnknownSubscribeID          = errors.New("unknown subscribe ID")
-	errUnknownNamespace            = errors.New("unknown namespace")
+	errDuplicateSubscribeID    = errors.New("duplicate subscribe ID")
+	errMaxSubscribeIDViolation = errors.New("selected subscribe ID violates remote maximum subscribe ID")
+	errUnknownSubscribeID      = errors.New("unknown subscribe ID")
 )
 
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
-	onSubscription(Subscription)
-	onAnnouncement(Announcement)
-	onAnnouncementSubscription(AnnouncementSubscription)
+	onSubscription(Subscription) bool
+	onAnnouncement(Announcement) bool
+	onAnnouncementSubscription(AnnouncementSubscription) bool
 }
 
 type session struct {
@@ -54,8 +44,6 @@ type session struct {
 	pendingOutgointAnnouncementSubscriptions []AnnouncementSubscription
 	outgointAnnouncementSubscriptions        []AnnouncementSubscription
 
-	incomingAnnouncementSubscriptions []AnnouncementSubscription
-
 	remoteMaxSubscribeID         uint64
 	pendingOutgoingSubscriptions map[uint64]Subscription
 	outgoingSubscriptions        map[uint64]Subscription
@@ -70,27 +58,27 @@ type session struct {
 	incomingAnnouncements *container.Trie[string, Announcement]
 }
 
-type SessionOption func(*session)
+type sessionOption func(*session)
 
-func PathParameterOption(path string) SessionOption {
+func pathParameterOption(path string) sessionOption {
 	return func(s *session) {
 		s.path = path
 	}
 }
 
-func RoleParameterOption(role Role) SessionOption {
+func roleParameterOption(role Role) sessionOption {
 	return func(s *session) {
 		s.localRole = role
 	}
 }
 
-func MaxSubscribeIDOption(maxID uint64) SessionOption {
+func maxSubscribeIDOption(maxID uint64) sessionOption {
 	return func(s *session) {
 		s.localMaxSubscribeID = maxID
 	}
 }
 
-func NewSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...SessionOption) (*session, error) {
+func newSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...sessionOption) (*session, error) {
 	s := &session{
 		lock: sync.Mutex{},
 
@@ -154,7 +142,7 @@ func (s *session) queueControlMessage(msg wire.ControlMessage) error {
 	return s.callbacks.queueControlMessage(msg)
 }
 
-func (s *session) RemoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
+func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -178,17 +166,17 @@ func (s *session) subscribeIDForTrackAlias(alias uint64) (uint64, bool) {
 	return id, true
 }
 
-func (s *session) RemoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
+func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	id, ok := s.subscribeIDForTrackAlias(alias)
 	if !ok {
 		return nil, false
 	}
-	return s.RemoteTrackBySubscribeID(id)
+	return s.remoteTrackBySubscribeID(id)
 }
 
 // Local API to trigger outgoing control messages
 
-func (s *session) Subscribe(
+func (s *session) subscribe(
 	ctx context.Context,
 	sub Subscription,
 ) error {
@@ -231,7 +219,7 @@ func (s *session) Subscribe(
 	return nil
 }
 
-func (s *session) Announce(
+func (s *session) announce(
 	namespace []string,
 ) error {
 	s.lock.Lock()
@@ -251,7 +239,7 @@ func (s *session) Announce(
 	return nil
 }
 
-func (s *session) SubscribeAnnounces(subscription AnnouncementSubscription) error {
+func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -268,11 +256,7 @@ func (s *session) SubscribeAnnounces(subscription AnnouncementSubscription) erro
 	return nil
 }
 
-func (s *session) Fetch() {
-
-}
-
-func (s *session) AcceptSubscription(sub Subscription) error {
+func (s *session) acceptSubscription(sub Subscription) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -291,7 +275,7 @@ func (s *session) AcceptSubscription(sub Subscription) error {
 	return nil
 }
 
-func (s *session) RejectSubscription(sub Subscription, errorCode uint64, reason string) error {
+func (s *session) rejectSubscription(sub Subscription, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeErrorMessage{
 		SubscribeID:  sub.ID,
 		ErrorCode:    errorCode,
@@ -300,7 +284,7 @@ func (s *session) RejectSubscription(sub Subscription, errorCode uint64, reason 
 	})
 }
 
-func (s *session) AcceptAnnouncement(a Announcement) error {
+func (s *session) acceptAnnouncement(a Announcement) error {
 	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
 		TrackNamespace: a.Namespace,
 	}); err != nil {
@@ -312,7 +296,7 @@ func (s *session) AcceptAnnouncement(a Announcement) error {
 	return nil
 }
 
-func (s *session) RejectAnnouncement(a Announcement, errorCode uint64, reason string) error {
+func (s *session) rejectAnnouncement(a Announcement, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.AnnounceErrorMessage{
 		TrackNamespace: a.Namespace,
 		ErrorCode:      errorCode,
@@ -320,80 +304,95 @@ func (s *session) RejectAnnouncement(a Announcement, errorCode uint64, reason st
 	})
 }
 
+func (s *session) acceptAnnouncementSubscription(as AnnouncementSubscription) error {
+	return s.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
+		TrackNamespacePrefix: as.namespace,
+	})
+}
+
+func (s *session) rejectAnnouncementSubscription(as AnnouncementSubscription, code uint64, reason string) error {
+	return s.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
+		TrackNamespacePrefix: as.namespace,
+		ErrorCode:            code,
+		ReasonPhrase:         reason,
+	})
+
+}
+
 // Remote API for handling incoming control messages
 
-func (s *session) OnControlMessage(msg wire.ControlMessage) error {
+func (s *session) onControlMessage(msg wire.ControlMessage) error {
 	if s.setupDone {
 		switch m := msg.(type) {
 
 		case *wire.SubscribeUpdateMessage:
-			return s.subscribeUpdate(m)
+			return s.onSubscribeUpdate(m)
 
 		case *wire.SubscribeMessage:
-			return s.subscribe(m)
+			return s.onSubscribe(m)
 
 		case *wire.SubscribeOkMessage:
-			return s.subscribeOk(m)
+			return s.onSubscribeOk(m)
 
 		case *wire.SubscribeErrorMessage:
-			return s.subscribeError(m)
+			return s.onSubscribeError(m)
 
 		case *wire.AnnounceMessage:
-			return s.announce(m)
+			return s.onAnnounce(m)
 
 		case *wire.AnnounceOkMessage:
-			return s.announceOk(m)
+			return s.onAnnounceOk(m)
 
 		case *wire.AnnounceErrorMessage:
-			return s.announceError(m)
+			return s.onAnnounceError(m)
 
 		case *wire.UnannounceMessage:
-			return s.unannounce(m)
+			return s.onUnannounce(m)
 
 		case *wire.UnsubscribeMessage:
-			return s.unsubscribe(m)
+			return s.onUnsubscribe(m)
 
 		case *wire.SubscribeDoneMessage:
-			return s.subscribeDone(m)
+			return s.onSubscribeDone(m)
 
 		case *wire.AnnounceCancelMessage:
-			return s.announceCancel(m)
+			return s.onAnnounceCancel(m)
 
 		case *wire.TrackStatusRequestMessage:
-			return s.trackStatusRequest(m)
+			return s.onTrackStatusRequest(m)
 
 		case *wire.TrackStatusMessage:
-			return s.trackStatus(m)
+			return s.onTrackStatus(m)
 
 		case *wire.GoAwayMessage:
-			return s.goAway(m)
+			return s.onGoAway(m)
 
 		case *wire.SubscribeAnnouncesMessage:
-			return s.subscribeAnnounces(m)
+			return s.onSubscribeAnnounces(m)
 
 		case *wire.SubscribeAnnouncesOkMessage:
-			return s.subscribeAnnouncesOk(m)
+			return s.onSubscribeAnnouncesOk(m)
 
 		case *wire.SubscribeAnnouncesErrorMessage:
-			return s.subscribeAnnouncesError(m)
+			return s.onSubscribeAnnouncesError(m)
 
 		case *wire.UnsubscribeAnnouncesMessage:
-			return s.unsubscribeAnnounces(m)
+			return s.onUnsubscribeAnnounces(m)
 
 		case *wire.MaxSubscribeIDMessage:
-			return s.maxSubscribeID(m)
+			return s.onMaxSubscribeID(m)
 
 		case *wire.FetchMessage:
-			return s.fetch(m)
+			return s.onFetch(m)
 
 		case *wire.FetchCancelMessage:
-			return s.fetchCancel(m)
+			return s.onFetchCancel(m)
 
 		case *wire.FetchOkMessage:
-			return s.fetchOk(m)
+			return s.onFetchOk(m)
 
 		case *wire.FetchErrorMessage:
-			return s.fetchError(m)
+			return s.onFetchError(m)
 		}
 
 		return ProtocolError{
@@ -450,7 +449,7 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 		return err
 	}
 
-	s.queueControlMessage(&wire.ServerSetupMessage{
+	if err := s.queueControlMessage(&wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: map[uint64]wire.Parameter{
 			wire.RoleParameterKey: wire.VarintParameter{
@@ -462,7 +461,9 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 				Value: 100,
 			},
 		},
-	})
+	}); err != nil {
+		return err
+	}
 	s.setupDone = true
 	return nil
 }
@@ -494,11 +495,11 @@ func (s *session) serverSetup(m *wire.ServerSetupMessage) (err error) {
 	return nil
 }
 
-func (s *session) subscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+func (s *session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
 	return nil
 }
 
-func (s *session) subscribe(msg *wire.SubscribeMessage) error {
+func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 	s.lock.Lock()
 	auth, err := validateAuthParameter(msg.Parameters)
 	if err != nil {
@@ -525,11 +526,13 @@ func (s *session) subscribe(msg *wire.SubscribeMessage) error {
 	}
 	s.lock.Unlock()
 
-	s.callbacks.onSubscription(sub)
+	if !s.callbacks.onSubscription(sub) {
+		return s.rejectSubscription(sub, SubscribeErrorUnhandled, "unhandled subscription")
+	}
 	return nil
 }
 
-func (s *session) subscribeOk(msg *wire.SubscribeOkMessage) error {
+func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -557,7 +560,7 @@ func (s *session) subscribeOk(msg *wire.SubscribeOkMessage) error {
 	return nil
 }
 
-func (s *session) subscribeError(msg *wire.SubscribeErrorMessage) error {
+func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -583,7 +586,7 @@ func (s *session) subscribeError(msg *wire.SubscribeErrorMessage) error {
 	return nil
 }
 
-func (s *session) announce(msg *wire.AnnounceMessage) error {
+func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 	s.lock.Lock()
 	if len(msg.TrackNamespace) > 32 {
 		return ProtocolError{
@@ -605,54 +608,57 @@ func (s *session) announce(msg *wire.AnnounceMessage) error {
 	}
 	s.lock.Unlock()
 
-	s.callbacks.onAnnouncement(Announcement{
+	a := Announcement{
 		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
-	})
+	}
+	if !s.callbacks.onAnnouncement(a) {
+		return s.rejectAnnouncement(a, AnnouncementUnhandled, "unhandled announcement")
+	}
 	return nil
 }
 
-func (s *session) announceOk(msg *wire.AnnounceOkMessage) error {
+func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 	return nil
 }
 
-func (s *session) announceError(msg *wire.AnnounceErrorMessage) error {
+func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 	return nil
 }
 
-func (s *session) unannounce(msg *wire.UnannounceMessage) error {
+func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 	return nil
 }
 
-func (s *session) unsubscribe(msg *wire.UnsubscribeMessage) error {
+func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	return nil
 }
 
-func (s *session) subscribeDone(msg *wire.SubscribeDoneMessage) error {
+func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 	return nil
 }
 
-func (s *session) announceCancel(msg *wire.AnnounceCancelMessage) error {
+func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 	return nil
 }
 
-func (s *session) trackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
+func (s *session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
 	return nil
 }
 
-func (s *session) trackStatus(msg *wire.TrackStatusMessage) error {
+func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 	return nil
 }
 
-func (s *session) goAway(msg *wire.GoAwayMessage) error {
+func (s *session) onGoAway(msg *wire.GoAwayMessage) error {
 	return nil
 }
 
-func (s *session) subscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
+func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
 	return nil
 }
 
-func (s *session) subscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
+func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -679,15 +685,15 @@ func (s *session) subscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) er
 	return nil
 }
 
-func (s *session) subscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
+func (s *session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
 	return nil
 }
 
-func (s *session) unsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
+func (s *session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
 	return nil
 }
 
-func (s *session) maxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
+func (s *session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -701,19 +707,19 @@ func (s *session) maxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
 	return nil
 }
 
-func (s *session) fetch(msg *wire.FetchMessage) error {
+func (s *session) onFetch(msg *wire.FetchMessage) error {
 	return nil
 }
 
-func (s *session) fetchCancel(msg *wire.FetchCancelMessage) error {
+func (s *session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 	return nil
 }
 
-func (s *session) fetchOk(msg *wire.FetchOkMessage) error {
+func (s *session) onFetchOk(msg *wire.FetchOkMessage) error {
 	return nil
 }
 
-func (s *session) fetchError(msg *wire.FetchErrorMessage) error {
+func (s *session) onFetchError(msg *wire.FetchErrorMessage) error {
 	return nil
 }
 

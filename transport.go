@@ -10,11 +10,10 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var errSetupNotDone = errors.New("setup not done after first message exchange")
-
-type pendingSubscription struct {
-	response chan error
-}
+var (
+	errSetupNotDone                = errors.New("setup not done after first message exchange")
+	errControlMessageQueueOverflow = errors.New("control message if full, message not queued")
+)
 
 type TransportOption func(*Transport)
 
@@ -75,7 +74,7 @@ func NewTransport(
 	opts ...TransportOption,
 ) (*Transport, error) {
 	cb := &callbacks{}
-	session, err := NewSession(cb, isServer, isQUIC)
+	session, err := newSession(cb, isServer, isQUIC)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +111,7 @@ func newTransportWithSession(
 		conn:             conn,
 		controlStream:    ctrlStream,
 		setupDone:        make(chan struct{}),
-		ctrlMsgSendQueue: make(chan wire.ControlMessage),
+		ctrlMsgSendQueue: make(chan wire.ControlMessage, 100),
 		session:          session,
 		callbacks:        cb,
 	}
@@ -139,7 +138,7 @@ func (t *Transport) destroy(err error) {
 
 func (t *Transport) recvCtrlMsg(msg wire.ControlMessage) error {
 	t.logControlMessage(msg, false)
-	return t.session.OnControlMessage(msg)
+	return t.session.onControlMessage(msg)
 }
 
 func (t *Transport) queueCtrlMessage(msg wire.ControlMessage) error {
@@ -148,6 +147,8 @@ func (t *Transport) queueCtrlMessage(msg wire.ControlMessage) error {
 		return t.ctx.Err()
 	case t.ctrlMsgSendQueue <- msg:
 		return nil
+	default:
+		return errControlMessageQueueOverflow
 	}
 }
 
@@ -206,7 +207,9 @@ func (t *Transport) handleUniStream(stream ReceiveStream) {
 	switch parser.Typ {
 	case wire.StreamTypeFetch:
 	case wire.StreamTypeSubgroup:
-		t.readSubgroupStream(parser)
+		if err := t.readSubgroupStream(parser); err != nil {
+			panic("TODO: Close stream")
+		}
 	default:
 		panic(fmt.Sprintf("unexpected wire.StreamType: %#v", parser.Typ))
 	}
@@ -218,7 +221,7 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 		return err
 	}
 
-	subscription, ok := t.session.RemoteTrackBySubscribeID(sid)
+	subscription, ok := t.session.remoteTrackBySubscribeID(sid)
 	if !ok {
 		return errUnknownSubscribeID
 	}
@@ -248,7 +251,7 @@ func (t *Transport) readDatagrams() {
 			t.destroy(errUnknownSubscribeID)
 			return
 		}
-		subscription, ok := t.session.RemoteTrackByTrackAlias(msg.TrackAlias)
+		subscription, ok := t.session.remoteTrackByTrackAlias(msg.TrackAlias)
 		if !ok {
 			t.destroy(errUnknownSubscribeID)
 			return
@@ -268,7 +271,7 @@ func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string)
 	as := AnnouncementSubscription{
 		namespace: prefix,
 	}
-	if err := t.session.SubscribeAnnounces(as); err != nil {
+	if err := t.session.subscribeAnnounces(as); err != nil {
 		return err
 	}
 	select {
@@ -298,7 +301,7 @@ func (t *Transport) Subscribe(
 		publisher:     nil,
 		response:      make(chan subscriptionResponse, 1),
 	}
-	if err := t.session.Subscribe(ctx, ps); err != nil {
+	if err := t.session.subscribe(ctx, ps); err != nil {
 		return nil, err
 	}
 	select {
@@ -313,35 +316,32 @@ func (t *Transport) Subscribe(
 }
 
 func (t *Transport) Announce(namespace []string) error {
-	return t.session.Announce(namespace)
+	return t.session.announce(namespace)
 }
 
-func (t *Transport) acceptAnnouncement(a Announcement) {
-	t.session.AcceptAnnouncement(a)
+func (t *Transport) acceptAnnouncement(a Announcement) error {
+	return t.session.acceptAnnouncement(a)
 }
 
-func (t *Transport) rejectAnnouncement(Announcement, uint64, string) {
-
+func (t *Transport) rejectAnnouncement(a Announcement, c uint64, r string) error {
+	return t.session.rejectAnnouncement(a, c, r)
 }
 
-func (t *Transport) acceptAnnouncementSubscription(AnnouncementSubscription) {
-
+func (t *Transport) acceptAnnouncementSubscription(as AnnouncementSubscription) error {
+	return t.session.acceptAnnouncementSubscription(as)
 }
 
-func (t *Transport) rejectAnnouncementSubscription(AnnouncementSubscription, uint64, string) {
+func (t *Transport) rejectAnnouncementSubscription(as AnnouncementSubscription, c uint64, r string) error {
+	return t.session.rejectAnnouncementSubscription(as, c, r)
 
 }
 
 func (t *Transport) acceptSubscription(sub Subscription) error {
-	return t.session.AcceptSubscription(sub)
+	return t.session.acceptSubscription(sub)
 }
 
 func (t *Transport) rejectSubscription(sub Subscription, code uint64, reason string) error {
-	return t.session.RejectSubscription(sub, code, reason)
-}
-
-func (t *Transport) unsubscribe(uint64) {
-
+	return t.session.rejectSubscription(sub, code, reason)
 }
 
 func compileMessage(msg wire.ControlMessage) []byte {

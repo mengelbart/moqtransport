@@ -15,30 +15,30 @@ func (c *callbacks) queueControlMessage(msg wire.ControlMessage) error {
 }
 
 // onSubscription implements sessionCallbacks.
-func (c *callbacks) onSubscription(s Subscription) {
+func (c *callbacks) onSubscription(s Subscription) bool {
 	if c.subscriptionHandler != nil {
 		c.subscriptionHandler.HandleSubscription(c.t, s, &defaultSubscriptionResponseWriter{
 			subscription: s,
 			transport:    c.t,
 		})
-	} else {
-		c.t.session.RejectSubscription(s, SubscribeErrorTrackDoesNotExist, "track not found")
+		return true
 	}
+	return false
 }
 
 // onAnnouncement implements sessionCallbacks.
-func (c *callbacks) onAnnouncement(a Announcement) {
+func (c *callbacks) onAnnouncement(a Announcement) bool {
 	if c.announcementHandler != nil {
 		c.announcementHandler.HandleAnnouncement(c.t, a, &defaultAnnouncementResponseWriter{
 			announcement: a,
 			transport:    c.t,
 		})
-	} else {
-		c.t.session.RejectAnnouncement(a, AnnouncementRejected, "session does not accept announcements")
+		return true
 	}
+	return false
 }
 
 // onAnnouncementSubscription implements sessionCallbacks.
-func (c *callbacks) onAnnouncementSubscription(AnnouncementSubscription) {
+func (c *callbacks) onAnnouncementSubscription(AnnouncementSubscription) bool {
 	panic("unimplemented")
 }
