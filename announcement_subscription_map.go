@@ -21,16 +21,16 @@ func newAnnouncementSubscriptionMap() *announcementSubscriptionMap {
 }
 
 // add returns an error if the entry is already present
-func (m *announcementSubscriptionMap) add(as AnnouncementSubscription) error {
+func (m *announcementSubscriptionMap) add(a AnnouncementSubscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	i := slices.IndexFunc(m.as, func(as AnnouncementSubscription) bool {
-		return slices.Equal(as.namespace, as.namespace)
+		return slices.Equal(a.namespace, as.namespace)
 	})
 	if i >= 0 {
 		return errDuplicateEntry
 	}
-	m.as = append(m.as, as)
+	m.as = append(m.as, a)
 	return nil
 }
 
@@ -60,5 +60,4 @@ func (m *announcementSubscriptionMap) delete(namespace []string) (AnnouncementSu
 	e := m.as[i]
 	m.as = append(m.as[:i], m.as[i+1:]...)
 	return e, true
-
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
+var errUnknownAnnouncement = errors.New("unknown announcement")
+
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
@@ -155,39 +157,43 @@ func (s *session) subscribe(sub Subscription) error {
 		}
 	}
 	if err := s.queueControlMessage(sm); err != nil {
+		_, _ = s.outgoingSubscriptions.reject(sub.ID)
 		return err
 	}
 	return nil
 }
 
 func (s *session) announce(
-	namespace []string,
+	a Announcement,
 ) error {
-	am := &wire.AnnounceMessage{
-		TrackNamespace: namespace,
-		Parameters:     map[uint64]wire.Parameter{},
-	}
-	if err := s.queueControlMessage(am); err != nil {
+	if err := s.outgoingAnnouncements.add(a); err != nil {
 		return err
 	}
-	s.outgoingAnnouncements.add(Announcement{
-		Namespace:  namespace,
-		parameters: map[uint64]wire.Parameter{},
-	})
+	am := &wire.AnnounceMessage{
+		TrackNamespace: a.Namespace,
+		Parameters:     a.parameters,
+	}
+	if err := s.queueControlMessage(am); err != nil {
+		_, _ = s.outgoingAnnouncements.delete(a.Namespace)
+		return err
+	}
 	return nil
 }
 
 func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) error {
+	if err := s.pendingOutgointAnnouncementSubscriptions.add(AnnouncementSubscription{
+		namespace: subscription.namespace,
+	}); err != nil {
+		return err
+	}
 	sam := &wire.SubscribeAnnouncesMessage{
 		TrackNamespacePrefix: []string{},
 		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.queueControlMessage(sam); err != nil {
+		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(subscription.namespace)
 		return err
 	}
-	s.pendingOutgointAnnouncementSubscriptions.add(AnnouncementSubscription{
-		namespace: subscription.namespace,
-	})
 	return nil
 }
 
@@ -531,6 +537,17 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 }
 
 func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
+	announcement, ok := s.outgoingAnnouncements.delete(msg.TrackNamespace)
+	if !ok {
+		return errUnknownAnnouncement
+	}
+	select {
+	case announcement.response <- announcementResponse{
+		err: nil,
+	}:
+	default:
+		panic("TODO unhandled announcement response")
+	}
 	return nil
 }
 

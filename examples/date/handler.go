@@ -126,7 +126,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 		return
 	}
 	if h.publish {
-		if err := ms.Announce(h.namespace); err != nil {
+		if err := ms.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
 			conn.CloseWithError(0, "internal error")
 			return
