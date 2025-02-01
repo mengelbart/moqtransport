@@ -7,24 +7,24 @@ import (
 
 type announcementMap struct {
 	lock          sync.Mutex
-	pending       []*Announcement
-	announcements []*Announcement
+	pending       []*announcement
+	announcements []*announcement
 }
 
 func newAnnouncementMap() *announcementMap {
 	return &announcementMap{
 		lock:    sync.Mutex{},
-		pending: []*Announcement{},
+		pending: []*announcement{},
 	}
 }
 
-func find(as []*Announcement, namespace []string) int {
-	return slices.IndexFunc(as, func(x *Announcement) bool {
+func find(as []*announcement, namespace []string) int {
+	return slices.IndexFunc(as, func(x *announcement) bool {
 		return slices.Equal(namespace, x.Namespace)
 	})
 }
 
-func (m *announcementMap) add(a *Announcement) error {
+func (m *announcementMap) add(a *announcement) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	i := find(m.pending, a.Namespace)
@@ -35,7 +35,7 @@ func (m *announcementMap) add(a *Announcement) error {
 	return nil
 }
 
-func (m *announcementMap) confirmAndGet(namespace []string) (*Announcement, error) {
+func (m *announcementMap) confirmAndGet(namespace []string) (*announcement, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	i := find(m.pending, namespace)
@@ -52,10 +52,10 @@ func (m *announcementMap) confirmAndGet(namespace []string) (*Announcement, erro
 	return e, nil
 }
 
-func (m *announcementMap) confirm(a *Announcement) error {
+func (m *announcementMap) confirm(namespace []string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := find(m.pending, a.Namespace)
+	i := find(m.pending, namespace)
 	if i < 0 {
 		return errUnknownAnnouncement
 	}
@@ -70,7 +70,7 @@ func (m *announcementMap) confirm(a *Announcement) error {
 	return nil
 }
 
-func (m *announcementMap) reject(namespace []string) (*Announcement, bool) {
+func (m *announcementMap) reject(namespace []string) (*announcement, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	i := find(m.pending, namespace)

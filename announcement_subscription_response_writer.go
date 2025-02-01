@@ -1,7 +1,7 @@
 package moqtransport
 
 type announcementSubscriptionResponseWriter struct {
-	subscription AnnouncementSubscription
+	subscription announcementSubscription
 	transport    *Transport
 }
 

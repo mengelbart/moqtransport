@@ -17,7 +17,7 @@ type subscriptionResponse struct {
 	track *RemoteTrack
 }
 
-type Subscription struct {
+type subscription struct {
 	ID            uint64
 	TrackAlias    uint64
 	Namespace     []string

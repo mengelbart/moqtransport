@@ -17,18 +17,20 @@ func (c *callbacks) onProtocolViolation(err ProtocolError) {
 	c.t.destroy(err)
 }
 
+func (c *callbacks) onSubscription(r *Request, s *subscription) {
+	c.handler.Handle(&subscriptionResponseWriter{
+		subscription: s,
+		transport:    c.t,
+	}, r)
+}
+
 func (c *callbacks) onRequest(r *Request) {
 	if c.handler != nil {
 		switch r.Method {
-		case MethodSubscribe:
-			c.handler.Handle(&subscriptionResponseWriter{
-				subscription: r.Subscription,
-				transport:    c.t,
-			}, r)
 		case MethodAnnounce:
 			c.handler.Handle(&announcementResponseWriter{
-				announcement: r.Announcement,
-				transport:    c.t,
+				namespace: r.Namespace,
+				transport: c.t,
 			}, r)
 		}
 	}

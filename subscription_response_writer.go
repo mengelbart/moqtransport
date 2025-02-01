@@ -5,7 +5,7 @@ import "errors"
 var errSubscriptionNotAccepted = errors.New("publish before subscription accepted")
 
 type subscriptionResponseWriter struct {
-	subscription *Subscription
+	subscription *subscription
 	transport    *Transport
 }
 
