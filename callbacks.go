@@ -24,7 +24,6 @@ func (c *callbacks) onRequest(r *Request) {
 			c.handler.Handle(&subscriptionResponseWriter{
 				subscription: r.Subscription,
 				transport:    c.t,
-				localTrack:   nil,
 			}, r)
 		case MethodAnnounce:
 			c.handler.Handle(&announcementResponseWriter{
