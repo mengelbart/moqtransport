@@ -28,6 +28,7 @@ type Subscription struct {
 	ContentExists bool
 
 	remoteTrack *RemoteTrack
+	localTrack  *LocalTrack
 
 	response chan subscriptionResponse
 }

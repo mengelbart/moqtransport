@@ -117,11 +117,19 @@ func (s *session) queueControlMessage(msg wire.ControlMessage) error {
 }
 
 func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
-	return s.outgoingSubscriptions.remoteTrackBySubscribeID(id)
+	sub, ok := s.outgoingSubscriptions.findBySubscribeID(id)
+	if ok && sub.remoteTrack != nil {
+		return sub.remoteTrack, true
+	}
+	return nil, false
 }
 
 func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
-	return s.outgoingSubscriptions.remoteTrackByTrackAlias(alias)
+	sub, ok := s.outgoingSubscriptions.findByTrackAlias(alias)
+	if ok && sub.remoteTrack != nil {
+		return sub.remoteTrack, true
+	}
+	return nil, false
 }
 
 // Local API to trigger outgoing control messages
@@ -567,7 +575,12 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 }
 
 func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
-	return nil
+	sub, ok := s.incomingSubscriptions.delete(msg.SubscribeID)
+	if !ok {
+		s.callbacks.onProtocolViolation(errUnknownSubscribeID)
+		return errUnknownSubscribeID
+	}
+	return sub.localTrack.Close()
 }
 
 func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {

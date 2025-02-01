@@ -103,22 +103,38 @@ func (m *subscriptionMap) reject(id uint64) (*Subscription, error) {
 	return sub, nil
 }
 
-func (m *subscriptionMap) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
+func (m *subscriptionMap) delete(id uint64) (*Subscription, bool) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	sub, ok := m.pendingSubscriptions[id]
+	if !ok {
+		sub, ok = m.subscriptions[id]
+	}
+	if !ok {
+		return nil, false
+	}
+	delete(m.pendingSubscriptions, id)
+	delete(m.subscriptions, id)
+	delete(m.trackAliasToSusbcribeID, sub.TrackAlias)
+	return sub, true
+}
+
+func (m *subscriptionMap) findBySubscribeID(id uint64) (*Subscription, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	sub, ok := m.subscriptions[id]
 	if !ok {
 		return nil, false
 	}
-	return sub.remoteTrack, true
+	return sub, true
 }
 
-func (m *subscriptionMap) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
+func (m *subscriptionMap) findByTrackAlias(alias uint64) (*Subscription, bool) {
 	m.lock.Lock()
 	id, ok := m.trackAliasToSusbcribeID[alias]
 	m.lock.Unlock()
 	if !ok {
 		return nil, false
 	}
-	return m.remoteTrackBySubscribeID(id)
+	return m.findBySubscribeID(id)
 }
