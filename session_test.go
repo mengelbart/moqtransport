@@ -343,7 +343,7 @@ func TestSession(t *testing.T) {
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		})
-		err = s.announce(Announcement{
+		err = s.announce(&Announcement{
 			Namespace:  []string{"namespace"},
 			parameters: map[uint64]wire.Parameter{},
 			response:   make(chan announcementResponse),

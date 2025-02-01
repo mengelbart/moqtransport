@@ -80,4 +80,13 @@ var (
 		code:    SubscribeErrorUnknownID,
 		message: "unknown subscribe ID",
 	}
+
+	errDuplicateAnnouncementNamespace = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "duplicate announcement namespace",
+	}
+	errUnknownAnnouncement = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "unknown announcement",
+	}
 )
