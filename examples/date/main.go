@@ -40,7 +40,7 @@ func main() {
 		trackname:  *trackname,
 		publish:    *publish,
 		subscribe:  *subscribe,
-		publishers: make(chan *moqtransport.Publisher),
+		publishers: make(chan moqtransport.Publisher),
 	}
 	if *server {
 		if err := h.runServer(context.TODO()); err != nil {

@@ -3,10 +3,8 @@ package moqtransport
 import "github.com/mengelbart/moqtransport/internal/wire"
 
 type callbacks struct {
-	t                               *Transport
-	subscriptionHandler             SubscriptionHandler
-	announcementHandler             AnnouncementHandler
-	announcementSubscriptionHandler AnnouncementSubscriptionHandler
+	t       *Transport
+	handler Handler
 }
 
 // queueControlMessage implements sessionCallbacks.
@@ -19,31 +17,21 @@ func (c *callbacks) onProtocolViolation(err ProtocolError) {
 	c.t.destroy(err)
 }
 
-// onSubscription implements sessionCallbacks.
-func (c *callbacks) onSubscription(s Subscription) bool {
-	if c.subscriptionHandler != nil {
-		c.subscriptionHandler.HandleSubscription(c.t, s, &defaultSubscriptionResponseWriter{
-			subscription: s,
-			transport:    c.t,
-		})
-		return true
+func (c *callbacks) onRequest(r *Request) {
+	if c.handler != nil {
+		switch r.Method {
+		case MethodSubscribe:
+			c.handler.Handle(&subscriptionResponseWriter{
+				subscription: r.Subscription,
+				transport:    c.t,
+				localTrack:   nil,
+			}, r)
+		case MethodAnnounce:
+			c.handler.Handle(&announcementResponseWriter{
+				announcement: r.Announcement,
+				transport:    c.t,
+			}, r)
+		}
 	}
-	return false
-}
-
-// onAnnouncement implements sessionCallbacks.
-func (c *callbacks) onAnnouncement(a Announcement) bool {
-	if c.announcementHandler != nil {
-		c.announcementHandler.HandleAnnouncement(c.t, a, &defaultAnnouncementResponseWriter{
-			announcement: a,
-			transport:    c.t,
-		})
-		return true
-	}
-	return false
-}
-
-// onAnnouncementSubscription implements sessionCallbacks.
-func (c *callbacks) onAnnouncementSubscription(AnnouncementSubscription) bool {
-	panic("unimplemented")
+	// TODO: Handle unhandled request
 }

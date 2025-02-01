@@ -4,15 +4,15 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-type Publisher struct {
+type LocalTrack struct {
 	conn        Connection
 	subscribeID uint64
 	trackAlias  uint64
 	subgroups   map[uint64]*Subgroup
 }
 
-func newPublisher(conn Connection, subscribeID, trackAlias uint64) *Publisher {
-	publisher := &Publisher{
+func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *LocalTrack {
+	publisher := &LocalTrack{
 		conn:        conn,
 		subscribeID: subscribeID,
 		trackAlias:  trackAlias,
@@ -21,7 +21,7 @@ func newPublisher(conn Connection, subscribeID, trackAlias uint64) *Publisher {
 	return publisher
 }
 
-func (p *Publisher) SendDatagram(o Object) error {
+func (p *LocalTrack) SendDatagram(o Object) error {
 	om := &wire.ObjectMessage{
 		TrackAlias:        0,
 		GroupID:           o.GroupID,
@@ -36,7 +36,7 @@ func (p *Publisher) SendDatagram(o Object) error {
 	return p.conn.SendDatagram(buf)
 }
 
-func (p *Publisher) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
+func (p *LocalTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -44,6 +44,6 @@ func (p *Publisher) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, err
 	return newSubgroup(stream, p.subscribeID, p.trackAlias, groupID, priority)
 }
 
-func (s *Publisher) Close() error {
+func (s *LocalTrack) Close() error {
 	panic("TODO")
 }

@@ -7,8 +7,8 @@ import (
 type subscriptionMap struct {
 	lock                    sync.Mutex
 	maxSubscribeID          uint64
-	pendingSubscriptions    map[uint64]Subscription
-	subscriptions           map[uint64]Subscription
+	pendingSubscriptions    map[uint64]*Subscription
+	subscriptions           map[uint64]*Subscription
 	trackAliasToSusbcribeID map[uint64]uint64
 }
 
@@ -16,8 +16,8 @@ func newSubscriptionMap(maxID uint64) *subscriptionMap {
 	return &subscriptionMap{
 		lock:                    sync.Mutex{},
 		maxSubscribeID:          maxID,
-		pendingSubscriptions:    map[uint64]Subscription{},
-		subscriptions:           map[uint64]Subscription{},
+		pendingSubscriptions:    map[uint64]*Subscription{},
+		subscriptions:           map[uint64]*Subscription{},
 		trackAliasToSusbcribeID: map[uint64]uint64{},
 	}
 }
@@ -38,7 +38,7 @@ func (m *subscriptionMap) updateMaxSubscribeID(next uint64) error {
 	return nil
 }
 
-func (m *subscriptionMap) addPending(s Subscription) error {
+func (m *subscriptionMap) addPending(s *Subscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if s.ID >= m.maxSubscribeID {
@@ -54,7 +54,7 @@ func (m *subscriptionMap) addPending(s Subscription) error {
 	return nil
 }
 
-func (m *subscriptionMap) confirm(s Subscription) error {
+func (m *subscriptionMap) confirm(s *Subscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[s.ID]
@@ -71,12 +71,12 @@ func (m *subscriptionMap) confirm(s Subscription) error {
 	return nil
 }
 
-func (m *subscriptionMap) confirmAndGet(id uint64) (Subscription, error) {
+func (m *subscriptionMap) confirmAndGet(id uint64) (*Subscription, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[id]
 	if !ok {
-		return Subscription{}, ProtocolError{
+		return nil, ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}
@@ -89,12 +89,12 @@ func (m *subscriptionMap) confirmAndGet(id uint64) (Subscription, error) {
 	return s, nil
 }
 
-func (m *subscriptionMap) reject(id uint64) (Subscription, error) {
+func (m *subscriptionMap) reject(id uint64) (*Subscription, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	sub, ok := m.pendingSubscriptions[id]
 	if !ok {
-		return Subscription{}, ProtocolError{
+		return nil, ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}

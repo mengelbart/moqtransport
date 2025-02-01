@@ -15,9 +15,7 @@ var errUnknownAnnouncement = errors.New("unknown announcement")
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
-	onSubscription(Subscription) bool
-	onAnnouncement(Announcement) bool
-	onAnnouncementSubscription(AnnouncementSubscription) bool
+	onRequest(*Request)
 }
 
 type session struct {
@@ -41,7 +39,7 @@ type session struct {
 
 	outgoingAnnouncements *announcementMap
 
-	incomingAnnouncements *container.Trie[string, Announcement]
+	incomingAnnouncements *container.Trie[string, *Announcement]
 }
 
 type sessionOption func(*session) error
@@ -82,7 +80,7 @@ func newSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...se
 		outgoingSubscriptions:                    newSubscriptionMap(0),
 		incomingSubscriptions:                    newSubscriptionMap(100),
 		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    container.NewTrie[string, Announcement](),
+		incomingAnnouncements:                    container.NewTrie[string, *Announcement](),
 	}
 	for _, opt := range options {
 		if err := opt(s); err != nil {
@@ -132,7 +130,7 @@ func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 // Local API to trigger outgoing control messages
 
-func (s *session) subscribe(sub Subscription) error {
+func (s *session) subscribe(sub *Subscription) error {
 	if err := s.outgoingSubscriptions.addPending(sub); err != nil {
 		return err
 	}
@@ -197,7 +195,7 @@ func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) erro
 	return nil
 }
 
-func (s *session) acceptSubscription(sub Subscription) error {
+func (s *session) acceptSubscription(sub *Subscription) error {
 	err := s.incomingSubscriptions.confirm(sub)
 	if err != nil {
 		return err
@@ -216,7 +214,7 @@ func (s *session) acceptSubscription(sub Subscription) error {
 	return nil
 }
 
-func (s *session) rejectSubscription(sub Subscription, errorCode uint64, reason string) error {
+func (s *session) rejectSubscription(sub *Subscription, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeErrorMessage{
 		SubscribeID:  sub.ID,
 		ErrorCode:    errorCode,
@@ -225,7 +223,7 @@ func (s *session) rejectSubscription(sub Subscription, errorCode uint64, reason 
 	})
 }
 
-func (s *session) acceptAnnouncement(a Announcement) error {
+func (s *session) acceptAnnouncement(a *Announcement) error {
 	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
 		TrackNamespace: a.Namespace,
 	}); err != nil {
@@ -235,7 +233,7 @@ func (s *session) acceptAnnouncement(a Announcement) error {
 	return nil
 }
 
-func (s *session) rejectAnnouncement(a Announcement, errorCode uint64, reason string) error {
+func (s *session) rejectAnnouncement(a *Announcement, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.AnnounceErrorMessage{
 		TrackNamespace: a.Namespace,
 		ErrorCode:      errorCode,
@@ -452,7 +450,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	sub := Subscription{
+	sub := &Subscription{
 		ID:            msg.SubscribeID,
 		TrackAlias:    msg.TrackAlias,
 		Namespace:     msg.TrackNamespace,
@@ -466,9 +464,11 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		}
 		return err
 	}
-	if !s.callbacks.onSubscription(sub) {
-		return s.rejectSubscription(sub, SubscribeErrorUnhandled, "unhandled subscription")
+	req := &Request{
+		Method:       MethodSubscribe,
+		Subscription: sub,
 	}
+	s.callbacks.onRequest(req)
 	return nil
 }
 
@@ -526,13 +526,15 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 			message: "duplicate announcement",
 		}
 	}
-	a := Announcement{
+	a := &Announcement{
 		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
 	}
-	if !s.callbacks.onAnnouncement(a) {
-		return s.rejectAnnouncement(a, AnnouncementUnhandled, "unhandled announcement")
+	req := &Request{
+		Method:       MethodAnnounce,
+		Announcement: a,
 	}
+	s.callbacks.onRequest(req)
 	return nil
 }
 

@@ -27,7 +27,6 @@ type Subscription struct {
 	GroupOrder    uint8
 	ContentExists bool
 
-	publisher   *Publisher
 	remoteTrack *RemoteTrack
 
 	response chan subscriptionResponse

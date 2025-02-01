@@ -26,7 +26,7 @@ type moqHandler struct {
 	trackname  string
 	publish    bool
 	subscribe  bool
-	publishers chan *moqtransport.Publisher
+	publishers chan moqtransport.Publisher
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -86,29 +86,32 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 	}
 }
 
-func getAnnouncementHandler() moqtransport.AnnouncementHandler {
-	return moqtransport.AnnouncementHandlerFunc(func(t *moqtransport.Transport, a moqtransport.Announcement, arw moqtransport.AnnouncementResponseWriter) {
-		log.Printf("got unexpected announcement: %v", a.Namespace)
-		arw.Reject(0, "date doesn't take announcements")
-	})
-}
-
-func (h *moqHandler) getSubscriptionHandler() moqtransport.SubscriptionHandler {
-	return moqtransport.SubscriptionHandlerFunc(func(t *moqtransport.Transport, sub moqtransport.Subscription, srw moqtransport.SubscriptionResponseWriter) {
-		if !h.publish {
-			srw.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
-			return
+func (h *moqHandler) getHandler() moqtransport.Handler {
+	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Request) {
+		switch r.Method {
+		case moqtransport.MethodAnnounce:
+			log.Printf("got unexpected announcement: %v", r.Announcement.Namespace)
+			w.Reject(0, "date doesn't take announcements")
+		case moqtransport.MethodSubscribe:
+			if !h.publish {
+				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
+				return
+			}
+			if !tupleEuqal(r.Subscription.Namespace, h.namespace) || (r.Subscription.Trackname != h.trackname) {
+				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
+				return
+			}
+			err := w.Accept()
+			if err != nil {
+				log.Printf("failed to accept subscription: %v", err)
+				return
+			}
+			publisher, ok := w.(moqtransport.Publisher)
+			if !ok {
+				log.Printf("subscription response writer does not implement publisher?")
+			}
+			h.publishers <- publisher
 		}
-		if !tupleEuqal(sub.Namespace, h.namespace) || (sub.Trackname != h.trackname) {
-			srw.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
-			return
-		}
-		publisher, err := srw.Accept()
-		if err != nil {
-			log.Printf("failed to accept subscription: %v", err)
-			return
-		}
-		h.publishers <- publisher
 	})
 }
 
@@ -117,8 +120,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 		conn,
 		h.server,
 		h.quic,
-		moqtransport.OnSubscription(h.getSubscriptionHandler()),
-		moqtransport.OnAnnouncement(getAnnouncementHandler()),
+		moqtransport.OnRequest(h.getHandler()),
 	)
 	if err != nil {
 		log.Printf("MoQ Session initialization failed: %v", err)
@@ -163,7 +165,7 @@ func (h *moqHandler) subscribeAndRead(s *moqtransport.Transport, namespace []str
 }
 
 func (h *moqHandler) setupDateTrack() {
-	publishers := []*moqtransport.Publisher{}
+	publishers := []moqtransport.Publisher{}
 	ticker := time.NewTicker(time.Second)
 	groupID := 0
 	for {

@@ -13,30 +13,15 @@ type Announcement struct {
 	response chan announcementResponse
 }
 
-type AnnouncementResponseWriter interface {
-	Accept() error
-	Reject(code uint64, reason string) error
-}
-
-type AnnouncementHandler interface {
-	HandleAnnouncement(*Transport, Announcement, AnnouncementResponseWriter)
-}
-
-type AnnouncementHandlerFunc func(*Transport, Announcement, AnnouncementResponseWriter)
-
-func (f AnnouncementHandlerFunc) HandleAnnouncement(s *Transport, a Announcement, arw AnnouncementResponseWriter) {
-	f(s, a, arw)
-}
-
-type defaultAnnouncementResponseWriter struct {
-	announcement Announcement
+type announcementResponseWriter struct {
+	announcement *Announcement
 	transport    *Transport
 }
 
-func (a *defaultAnnouncementResponseWriter) Accept() error {
+func (a *announcementResponseWriter) Accept() error {
 	return a.transport.acceptAnnouncement(a.announcement)
 }
 
-func (a *defaultAnnouncementResponseWriter) Reject(code uint64, reason string) error {
+func (a *announcementResponseWriter) Reject(code uint64, reason string) error {
 	return a.transport.rejectAnnouncement(a.announcement, code, reason)
 }

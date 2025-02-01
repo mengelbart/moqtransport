@@ -22,21 +22,9 @@ type transportConfig struct {
 
 type TransportOption func(*transportConfig)
 
-func OnSubscription(h SubscriptionHandler) TransportOption {
+func OnRequest(h Handler) TransportOption {
 	return func(t *transportConfig) {
-		t.callbacks.subscriptionHandler = h
-	}
-}
-
-func OnAnnouncement(h AnnouncementHandler) TransportOption {
-	return func(t *transportConfig) {
-		t.callbacks.announcementHandler = h
-	}
-}
-
-func OnAnnouncementSubscription(h AnnouncementSubscriptionHandler) TransportOption {
-	return func(t *transportConfig) {
-		t.callbacks.announcementSubscriptionHandler = h
+		t.callbacks.handler = h
 	}
 }
 
@@ -307,7 +295,7 @@ func (t *Transport) Subscribe(
 	name string,
 	auth string,
 ) (*RemoteTrack, error) {
-	ps := Subscription{
+	ps := &Subscription{
 		ID:            id,
 		TrackAlias:    alias,
 		Namespace:     namespace,
@@ -316,7 +304,6 @@ func (t *Transport) Subscribe(
 		Expires:       0,
 		GroupOrder:    0,
 		ContentExists: false,
-		publisher:     nil,
 		response:      make(chan subscriptionResponse, 1),
 	}
 	if err := t.session.subscribe(ps); err != nil {
@@ -347,11 +334,11 @@ func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	}
 }
 
-func (t *Transport) acceptAnnouncement(a Announcement) error {
+func (t *Transport) acceptAnnouncement(a *Announcement) error {
 	return t.session.acceptAnnouncement(a)
 }
 
-func (t *Transport) rejectAnnouncement(a Announcement, c uint64, r string) error {
+func (t *Transport) rejectAnnouncement(a *Announcement, c uint64, r string) error {
 	return t.session.rejectAnnouncement(a, c, r)
 }
 
@@ -363,11 +350,11 @@ func (t *Transport) rejectAnnouncementSubscription(as AnnouncementSubscription, 
 	return t.session.rejectAnnouncementSubscription(as, c, r)
 }
 
-func (t *Transport) acceptSubscription(sub Subscription) error {
+func (t *Transport) acceptSubscription(sub *Subscription) error {
 	return t.session.acceptSubscription(sub)
 }
 
-func (t *Transport) rejectSubscription(sub Subscription, code uint64, reason string) error {
+func (t *Transport) rejectSubscription(sub *Subscription, code uint64, reason string) error {
 	return t.session.rejectSubscription(sub, code, reason)
 }
 
