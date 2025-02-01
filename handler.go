@@ -3,15 +3,17 @@ package moqtransport
 import "io"
 
 const (
-	MethodSubscribe         = "SUBSCRIBE"
-	MethodFetch             = "FETCH"
-	MethodAnnounce          = "ANNOUNCE"
-	MethodAnnounceCancel    = "ANNOUNCE_CANCEL"
-	MethodUnannounce        = "UNANNOUNCE"
-	MethodSubscribeAnnounce = "SUBSCRIBE_ANNOUNCE"
+	MethodSubscribe          = "SUBSCRIBE"
+	MethodFetch              = "FETCH"
+	MethodAnnounce           = "ANNOUNCE"
+	MethodAnnounceCancel     = "ANNOUNCE_CANCEL"
+	MethodUnannounce         = "UNANNOUNCE"
+	MethodSubscribeAnnounce  = "SUBSCRIBE_ANNOUNCE"
+	MethodTrackStatusRequest = "TRACK_STATUS_REQUEST"
+	MethodTrackStatus        = "TRACK_STATUS"
 )
 
-type Request struct {
+type Message struct {
 	Method string
 
 	Namespace []string
@@ -19,6 +21,12 @@ type Request struct {
 
 	Authorization string
 
+	// TrackStatusMessage
+	Status       uint64
+	LastGroupID  uint64
+	LastObjectID uint64
+
+	// Generic Errors
 	ErrorCode    uint64
 	ReasonPhrase string
 }
@@ -35,11 +43,11 @@ type Publisher interface {
 }
 
 type Handler interface {
-	Handle(ResponseWriter, *Request)
+	Handle(ResponseWriter, *Message)
 }
 
-type HandlerFunc func(ResponseWriter, *Request)
+type HandlerFunc func(ResponseWriter, *Message)
 
-func (f HandlerFunc) Handle(rw ResponseWriter, r *Request) {
+func (f HandlerFunc) Handle(rw ResponseWriter, r *Message) {
 	f(rw, r)
 }

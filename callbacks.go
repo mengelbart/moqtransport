@@ -17,14 +17,14 @@ func (c *callbacks) onProtocolViolation(err ProtocolError) {
 	c.t.destroy(err)
 }
 
-func (c *callbacks) onSubscription(r *Request, s *subscription) {
+func (c *callbacks) onSubscription(r *Message, s *subscription) {
 	c.handler.Handle(&subscriptionResponseWriter{
 		subscription: s,
 		transport:    c.t,
 	}, r)
 }
 
-func (c *callbacks) onRequest(r *Request) {
+func (c *callbacks) onMessage(r *Message) {
 	if c.handler != nil {
 		switch r.Method {
 		case MethodAnnounce:
