@@ -571,6 +571,17 @@ func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 }
 
 func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
+	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
+		s.callbacks.onProtocolViolation(errUnknownAnnouncement)
+		return errUnknownAnnouncement
+	}
+	req := &Request{
+		Method: MethodUnannounce,
+		Unannouncement: &Unannouncement{
+			Namespace: msg.TrackNamespace,
+		},
+	}
+	s.callbacks.onRequest(req)
 	return nil
 }
 

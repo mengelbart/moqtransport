@@ -43,7 +43,7 @@ func (m *announcementMap) confirmAndGet(namespace []string) (*Announcement, erro
 		return nil, errUnknownAnnouncement
 	}
 	e := m.pending[i]
-	m.pending = append(m.pending[:i], m.pending[i+1:]...)
+	m.pending = slices.Delete(m.pending, i, i+1)
 	i = find(m.announcements, e.Namespace)
 	if i > 0 {
 		return nil, errDuplicateAnnouncementNamespace
@@ -60,7 +60,7 @@ func (m *announcementMap) confirm(a *Announcement) error {
 		return errUnknownAnnouncement
 	}
 	e := m.pending[i]
-	m.pending = append(m.pending[:i], m.pending[i+1:]...)
+	m.pending = slices.Delete(m.pending, i, i+1)
 
 	i = find(m.announcements, e.Namespace)
 	if i > 0 {
@@ -78,6 +78,23 @@ func (m *announcementMap) reject(namespace []string) (*Announcement, bool) {
 		return nil, false
 	}
 	e := m.pending[i]
-	m.pending = append(m.pending[:i], m.pending[i+1:]...)
+	m.pending = slices.Delete(m.pending, i, i+1)
 	return e, true
+}
+
+func (m *announcementMap) delete(namespace []string) bool {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	deleted := false
+	i := find(m.pending, namespace)
+	if i >= 0 {
+		m.pending = slices.Delete(m.pending, i, i+1)
+		deleted = true
+	}
+	i = find(m.announcements, namespace)
+	if i < 0 {
+		m.announcements = slices.Delete(m.announcements, i, i+1)
+		deleted = true
+	}
+	return deleted
 }
