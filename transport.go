@@ -318,7 +318,7 @@ func (t *Transport) Subscribe(
 }
 
 func (t *Transport) Announce(ctx context.Context, namespace []string) error {
-	a := Announcement{
+	a := &Announcement{
 		Namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 		response:   make(chan announcementResponse, 1),

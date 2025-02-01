@@ -1,12 +1,9 @@
 package moqtransport
 
 import (
-	"errors"
 	"slices"
 	"sync"
 )
-
-var errDuplicateEntry = errors.New("entry already present")
 
 type announcementSubscriptionMap struct {
 	lock sync.Mutex
@@ -28,7 +25,7 @@ func (m *announcementSubscriptionMap) add(a AnnouncementSubscription) error {
 		return slices.Equal(a.namespace, as.namespace)
 	})
 	if i >= 0 {
-		return errDuplicateEntry
+		return errDuplicateAnnouncementNamespace
 	}
 	m.as = append(m.as, a)
 	return nil

@@ -6,11 +6,8 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/mengelbart/moqtransport/internal/container"
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
-
-var errUnknownAnnouncement = errors.New("unknown announcement")
 
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
@@ -38,8 +35,7 @@ type session struct {
 	incomingSubscriptions *subscriptionMap
 
 	outgoingAnnouncements *announcementMap
-
-	incomingAnnouncements *container.Trie[string, *Announcement]
+	incomingAnnouncements *announcementMap
 }
 
 type sessionOption func(*session) error
@@ -80,7 +76,7 @@ func newSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...se
 		outgoingSubscriptions:                    newSubscriptionMap(0),
 		incomingSubscriptions:                    newSubscriptionMap(100),
 		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    container.NewTrie[string, *Announcement](),
+		incomingAnnouncements:                    newAnnouncementMap(),
 	}
 	for _, opt := range options {
 		if err := opt(s); err != nil {
@@ -162,7 +158,7 @@ func (s *session) subscribe(sub *Subscription) error {
 }
 
 func (s *session) announce(
-	a Announcement,
+	a *Announcement,
 ) error {
 	if err := s.outgoingAnnouncements.add(a); err != nil {
 		return err
@@ -172,7 +168,7 @@ func (s *session) announce(
 		Parameters:     a.parameters,
 	}
 	if err := s.queueControlMessage(am); err != nil {
-		_, _ = s.outgoingAnnouncements.delete(a.Namespace)
+		_, _ = s.outgoingAnnouncements.reject(a.Namespace)
 		return err
 	}
 	return nil
@@ -224,16 +220,19 @@ func (s *session) rejectSubscription(sub *Subscription, errorCode uint64, reason
 }
 
 func (s *session) acceptAnnouncement(a *Announcement) error {
+	if err := s.incomingAnnouncements.confirm(a); err != nil {
+		return err
+	}
 	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
 		TrackNamespace: a.Namespace,
 	}); err != nil {
 		return err
 	}
-	s.incomingAnnouncements.Put(a.Namespace, a)
 	return nil
 }
 
 func (s *session) rejectAnnouncement(a *Announcement, errorCode uint64, reason string) error {
+
 	return s.queueControlMessage(&wire.AnnounceErrorMessage{
 		TrackNamespace: a.Namespace,
 		ErrorCode:      errorCode,
@@ -514,21 +513,16 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 			message: "namespace tuple with more than 32 items",
 		}
 	}
-	if _, ok := s.incomingAnnouncements.Get(msg.TrackNamespace); ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "duplicate announcement",
-		}
-	}
-	if _, ok := s.incomingAnnouncements.Get(msg.TrackNamespace); ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "duplicate announcement",
-		}
-	}
 	a := &Announcement{
 		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
+	}
+	if err := s.incomingAnnouncements.add(a); err != nil {
+		pv := &ProtocolError{}
+		if errors.As(err, pv) {
+			s.callbacks.onProtocolViolation(*pv)
+		}
+		return err
 	}
 	req := &Request{
 		Method:       MethodAnnounce,
@@ -539,8 +533,8 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 }
 
 func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
-	announcement, ok := s.outgoingAnnouncements.delete(msg.TrackNamespace)
-	if !ok {
+	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.TrackNamespace)
+	if err != nil {
 		return errUnknownAnnouncement
 	}
 	select {
@@ -554,6 +548,17 @@ func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 }
 
 func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
+	announcement, ok := s.outgoingAnnouncements.reject(msg.TrackNamespace)
+	if !ok {
+		return errUnknownAnnouncement
+	}
+	select {
+	case announcement.response <- announcementResponse{
+		err: nil,
+	}:
+	default:
+		panic("TODO unhandled announcement response")
+	}
 	return nil
 }
 
