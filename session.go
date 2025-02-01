@@ -638,6 +638,10 @@ func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 }
 
 func (s *session) onGoAway(msg *wire.GoAwayMessage) error {
+	s.callbacks.onMessage(&Message{
+		Method:        MethodGoAway,
+		NewSessionURI: msg.NewSessionURI,
+	})
 	return nil
 }
 

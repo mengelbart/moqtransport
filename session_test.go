@@ -371,7 +371,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onRequest(&Message{
+		mcb.EXPECT().onMessage(&Message{
 			Method:    MethodAnnounce,
 			Namespace: []string{"namespace"},
 		}).DoAndReturn(func(req *Message) {

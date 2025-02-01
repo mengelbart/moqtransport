@@ -11,6 +11,7 @@ const (
 	MethodSubscribeAnnounce  = "SUBSCRIBE_ANNOUNCE"
 	MethodTrackStatusRequest = "TRACK_STATUS_REQUEST"
 	MethodTrackStatus        = "TRACK_STATUS"
+	MethodGoAway             = "GO_AWAY"
 )
 
 type Message struct {
@@ -25,6 +26,9 @@ type Message struct {
 	Status       uint64
 	LastGroupID  uint64
 	LastObjectID uint64
+
+	// GoAway
+	NewSessionURI string
 
 	// Generic Errors
 	ErrorCode    uint64
