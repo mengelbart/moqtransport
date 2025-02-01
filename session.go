@@ -13,6 +13,7 @@ type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
 	onRequest(*Request)
+	onSubscription(*Request, *subscription)
 }
 
 type session struct {
@@ -134,7 +135,7 @@ func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 // Local API to trigger outgoing control messages
 
-func (s *session) subscribe(sub *Subscription) error {
+func (s *session) subscribe(sub *subscription) error {
 	if err := s.outgoingSubscriptions.addPending(sub); err != nil {
 		return err
 	}
@@ -166,7 +167,7 @@ func (s *session) subscribe(sub *Subscription) error {
 }
 
 func (s *session) announce(
-	a *Announcement,
+	a *announcement,
 ) error {
 	if err := s.outgoingAnnouncements.add(a); err != nil {
 		return err
@@ -182,8 +183,8 @@ func (s *session) announce(
 	return nil
 }
 
-func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) error {
-	if err := s.pendingOutgointAnnouncementSubscriptions.add(AnnouncementSubscription{
+func (s *session) subscribeAnnounces(subscription announcementSubscription) error {
+	if err := s.pendingOutgointAnnouncementSubscriptions.add(announcementSubscription{
 		namespace: subscription.namespace,
 	}); err != nil {
 		return err
@@ -199,7 +200,7 @@ func (s *session) subscribeAnnounces(subscription AnnouncementSubscription) erro
 	return nil
 }
 
-func (s *session) acceptSubscription(sub *Subscription) error {
+func (s *session) acceptSubscription(sub *subscription) error {
 	err := s.incomingSubscriptions.confirm(sub)
 	if err != nil {
 		return err
@@ -218,7 +219,7 @@ func (s *session) acceptSubscription(sub *Subscription) error {
 	return nil
 }
 
-func (s *session) rejectSubscription(sub *Subscription, errorCode uint64, reason string) error {
+func (s *session) rejectSubscription(sub *subscription, errorCode uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeErrorMessage{
 		SubscribeID:  sub.ID,
 		ErrorCode:    errorCode,
@@ -227,34 +228,34 @@ func (s *session) rejectSubscription(sub *Subscription, errorCode uint64, reason
 	})
 }
 
-func (s *session) acceptAnnouncement(a *Announcement) error {
-	if err := s.incomingAnnouncements.confirm(a); err != nil {
+func (s *session) acceptAnnouncement(namespace []string) error {
+	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
 		return err
 	}
 	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
-		TrackNamespace: a.Namespace,
+		TrackNamespace: namespace,
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *session) rejectAnnouncement(a *Announcement, errorCode uint64, reason string) error {
+func (s *session) rejectAnnouncement(namespace []string, errorCode uint64, reason string) error {
 
 	return s.queueControlMessage(&wire.AnnounceErrorMessage{
-		TrackNamespace: a.Namespace,
+		TrackNamespace: namespace,
 		ErrorCode:      errorCode,
 		ReasonPhrase:   reason,
 	})
 }
 
-func (s *session) acceptAnnouncementSubscription(as AnnouncementSubscription) error {
+func (s *session) acceptAnnouncementSubscription(as announcementSubscription) error {
 	return s.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
 		TrackNamespacePrefix: as.namespace,
 	})
 }
 
-func (s *session) rejectAnnouncementSubscription(as AnnouncementSubscription, code uint64, reason string) error {
+func (s *session) rejectAnnouncementSubscription(as announcementSubscription, code uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
 		TrackNamespacePrefix: as.namespace,
 		ErrorCode:            code,
@@ -457,7 +458,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	sub := &Subscription{
+	sub := &subscription{
 		ID:            msg.SubscribeID,
 		TrackAlias:    msg.TrackAlias,
 		Namespace:     msg.TrackNamespace,
@@ -472,10 +473,14 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		return err
 	}
 	req := &Request{
-		Method:       MethodSubscribe,
-		Subscription: sub,
+		Method:        MethodSubscribe,
+		Namespace:     sub.Namespace,
+		Track:         sub.Trackname,
+		Authorization: sub.Authorization,
+		ErrorCode:     0,
+		ReasonPhrase:  "",
 	}
-	s.callbacks.onRequest(req)
+	s.callbacks.onSubscription(req, sub)
 	return nil
 }
 
@@ -521,7 +526,7 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 			message: "namespace tuple with more than 32 items",
 		}
 	}
-	a := &Announcement{
+	a := &announcement{
 		Namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
 	}
@@ -533,8 +538,8 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 		return err
 	}
 	req := &Request{
-		Method:       MethodAnnounce,
-		Announcement: a,
+		Method:    MethodAnnounce,
+		Namespace: a.Namespace,
 	}
 	s.callbacks.onRequest(req)
 	return nil
@@ -576,10 +581,8 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 		return errUnknownAnnouncement
 	}
 	req := &Request{
-		Method: MethodUnannounce,
-		Unannouncement: &Unannouncement{
-			Namespace: msg.TrackNamespace,
-		},
+		Method:    MethodUnannounce,
+		Namespace: msg.TrackNamespace,
 	}
 	s.callbacks.onRequest(req)
 	return nil
@@ -599,6 +602,12 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 }
 
 func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
+	s.callbacks.onRequest(&Request{
+		Method:       MethodAnnounceCancel,
+		Namespace:    msg.TrackNamespace,
+		ErrorCode:    msg.ErrorCode,
+		ReasonPhrase: msg.ReasonPhrase,
+	})
 	return nil
 }
 

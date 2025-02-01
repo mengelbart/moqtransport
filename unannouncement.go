@@ -1,5 +1,5 @@
 package moqtransport
 
-type Unannouncement struct {
+type unannouncement struct {
 	Namespace []string
 }

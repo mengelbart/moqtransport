@@ -197,7 +197,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		err = s.subscribe(&Subscription{
+		err = s.subscribe(&subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     []string{"namespace"},
@@ -233,7 +233,7 @@ func TestSession(t *testing.T) {
 			EndObject:          0,
 			Parameters:         map[uint64]wire.Parameter{},
 		})
-		err = s.subscribe(&Subscription{
+		err = s.subscribe(&subscription{
 			ID:            0,
 			TrackAlias:    0,
 			Namespace:     nil,
@@ -254,17 +254,24 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onRequest(&Request{
-			Method: MethodSubscribe,
-			Subscription: &Subscription{
+		mcb.EXPECT().onSubscription(
+			&Request{
+				Method:        MethodSubscribe,
+				Namespace:     []string{},
+				Track:         "",
+				Authorization: "",
+				ErrorCode:     0,
+				ReasonPhrase:  "",
+			},
+			&subscription{
 				ID:            0,
 				TrackAlias:    0,
 				Namespace:     []string{},
 				Trackname:     "",
 				Authorization: "",
 			},
-		}).Do(func(req *Request) {
-			assert.NoError(t, s.acceptSubscription(req.Subscription))
+		).Do(func(req *Request, sub *subscription) {
+			assert.NoError(t, s.acceptSubscription(sub))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
@@ -298,17 +305,24 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onRequest(&Request{
-			Method: MethodSubscribe,
-			Subscription: &Subscription{
+		mcb.EXPECT().onSubscription(
+			&Request{
+				Method:        MethodSubscribe,
+				Namespace:     []string{},
+				Track:         "",
+				Authorization: "",
+				ErrorCode:     0,
+				ReasonPhrase:  "",
+			},
+			&subscription{
 				ID:            0,
 				TrackAlias:    0,
 				Namespace:     []string{},
 				Trackname:     "",
 				Authorization: "",
 			},
-		}).DoAndReturn(func(req *Request) {
-			assert.NoError(t, s.rejectSubscription(req.Subscription, SubscribeErrorTrackDoesNotExist, "track not found"))
+		).DoAndReturn(func(req *Request, sub *subscription) {
+			assert.NoError(t, s.rejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found"))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
 			SubscribeID:  0,
@@ -343,7 +357,7 @@ func TestSession(t *testing.T) {
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		})
-		err = s.announce(&Announcement{
+		err = s.announce(&announcement{
 			Namespace:  []string{"namespace"},
 			parameters: map[uint64]wire.Parameter{},
 			response:   make(chan announcementResponse),
@@ -358,13 +372,10 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onRequest(&Request{
-			Method: MethodAnnounce,
-			Announcement: &Announcement{
-				Namespace:  []string{"namespace"},
-				parameters: map[uint64]wire.Parameter{},
-			},
+			Method:    MethodAnnounce,
+			Namespace: []string{"namespace"},
 		}).DoAndReturn(func(req *Request) {
-			assert.NoError(t, s.acceptAnnouncement(req.Announcement))
+			assert.NoError(t, s.acceptAnnouncement(req.Namespace))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.AnnounceOkMessage{
 			TrackNamespace: []string{"namespace"},

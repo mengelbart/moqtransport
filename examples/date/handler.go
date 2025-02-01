@@ -90,14 +90,14 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Request) {
 		switch r.Method {
 		case moqtransport.MethodAnnounce:
-			log.Printf("got unexpected announcement: %v", r.Announcement.Namespace)
+			log.Printf("got unexpected announcement: %v", r.Namespace)
 			w.Reject(0, "date doesn't take announcements")
 		case moqtransport.MethodSubscribe:
 			if !h.publish {
 				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
 				return
 			}
-			if !tupleEuqal(r.Subscription.Namespace, h.namespace) || (r.Subscription.Trackname != h.trackname) {
+			if !tupleEuqal(r.Namespace, h.namespace) || (r.Track != h.trackname) {
 				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
 				return
 			}

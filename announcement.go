@@ -6,7 +6,7 @@ type announcementResponse struct {
 	err error
 }
 
-type Announcement struct {
+type announcement struct {
 	Namespace  []string
 	parameters wire.Parameters // TODO: This is unexported, need better API?
 

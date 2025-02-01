@@ -6,6 +6,7 @@ const (
 	MethodSubscribe         = "SUBSCRIBE"
 	MethodFetch             = "FETCH"
 	MethodAnnounce          = "ANNOUNCE"
+	MethodAnnounceCancel    = "ANNOUNCE_CANCEL"
 	MethodUnannounce        = "UNANNOUNCE"
 	MethodSubscribeAnnounce = "SUBSCRIBE_ANNOUNCE"
 )
@@ -13,10 +14,13 @@ const (
 type Request struct {
 	Method string
 
-	Subscription             *Subscription
-	Announcement             *Announcement
-	AnnouncementSubscription *AnnouncementSubscription
-	Unannouncement           *Unannouncement
+	Namespace []string
+	Track     string
+
+	Authorization string
+
+	ErrorCode    uint64
+	ReasonPhrase string
 }
 
 type ResponseWriter interface {
