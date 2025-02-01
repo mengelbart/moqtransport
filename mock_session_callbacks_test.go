@@ -40,6 +40,18 @@ func (m *MockSessionCallbacks) EXPECT() *MockSessionCallbacksMockRecorder {
 	return m.recorder
 }
 
+// onMessage mocks base method.
+func (m *MockSessionCallbacks) onMessage(arg0 *Message) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "onMessage", arg0)
+}
+
+// onMessage indicates an expected call of onMessage.
+func (mr *MockSessionCallbacksMockRecorder) onMessage(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onMessage", reflect.TypeOf((*MockSessionCallbacks)(nil).onMessage), arg0)
+}
+
 // onProtocolViolation mocks base method.
 func (m *MockSessionCallbacks) onProtocolViolation(arg0 ProtocolError) {
 	m.ctrl.T.Helper()
@@ -52,20 +64,8 @@ func (mr *MockSessionCallbacksMockRecorder) onProtocolViolation(arg0 any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onProtocolViolation", reflect.TypeOf((*MockSessionCallbacks)(nil).onProtocolViolation), arg0)
 }
 
-// onRequest mocks base method.
-func (m *MockSessionCallbacks) onRequest(arg0 *Request) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "onRequest", arg0)
-}
-
-// onRequest indicates an expected call of onRequest.
-func (mr *MockSessionCallbacksMockRecorder) onRequest(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onRequest", reflect.TypeOf((*MockSessionCallbacks)(nil).onRequest), arg0)
-}
-
 // onSubscription mocks base method.
-func (m *MockSessionCallbacks) onSubscription(arg0 *Request, arg1 *subscription) {
+func (m *MockSessionCallbacks) onSubscription(arg0 *Message, arg1 *subscription) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "onSubscription", arg0, arg1)
 }

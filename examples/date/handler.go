@@ -87,7 +87,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 }
 
 func (h *moqHandler) getHandler() moqtransport.Handler {
-	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Request) {
+	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
 		switch r.Method {
 		case moqtransport.MethodAnnounce:
 			log.Printf("got unexpected announcement: %v", r.Namespace)

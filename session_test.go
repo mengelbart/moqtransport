@@ -255,7 +255,7 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onSubscription(
-			&Request{
+			&Message{
 				Method:        MethodSubscribe,
 				Namespace:     []string{},
 				Track:         "",
@@ -270,7 +270,7 @@ func TestSession(t *testing.T) {
 				Trackname:     "",
 				Authorization: "",
 			},
-		).Do(func(req *Request, sub *subscription) {
+		).Do(func(req *Message, sub *subscription) {
 			assert.NoError(t, s.acceptSubscription(sub))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
@@ -306,7 +306,7 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onSubscription(
-			&Request{
+			&Message{
 				Method:        MethodSubscribe,
 				Namespace:     []string{},
 				Track:         "",
@@ -321,7 +321,7 @@ func TestSession(t *testing.T) {
 				Trackname:     "",
 				Authorization: "",
 			},
-		).DoAndReturn(func(req *Request, sub *subscription) {
+		).DoAndReturn(func(req *Message, sub *subscription) {
 			assert.NoError(t, s.rejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found"))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
@@ -371,10 +371,10 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onRequest(&Request{
+		mcb.EXPECT().onRequest(&Message{
 			Method:    MethodAnnounce,
 			Namespace: []string{"namespace"},
-		}).DoAndReturn(func(req *Request) {
+		}).DoAndReturn(func(req *Message) {
 			assert.NoError(t, s.acceptAnnouncement(req.Namespace))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.AnnounceOkMessage{

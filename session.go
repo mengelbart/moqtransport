@@ -12,8 +12,8 @@ import (
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
-	onRequest(*Request)
-	onSubscription(*Request, *subscription)
+	onMessage(*Message)
+	onSubscription(*Message, *subscription)
 }
 
 type session struct {
@@ -472,7 +472,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		}
 		return err
 	}
-	req := &Request{
+	req := &Message{
 		Method:        MethodSubscribe,
 		Namespace:     sub.Namespace,
 		Track:         sub.Trackname,
@@ -537,11 +537,11 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 		}
 		return err
 	}
-	req := &Request{
+	req := &Message{
 		Method:    MethodAnnounce,
 		Namespace: a.Namespace,
 	}
-	s.callbacks.onRequest(req)
+	s.callbacks.onMessage(req)
 	return nil
 }
 
@@ -580,11 +580,11 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 		s.callbacks.onProtocolViolation(errUnknownAnnouncement)
 		return errUnknownAnnouncement
 	}
-	req := &Request{
+	req := &Message{
 		Method:    MethodUnannounce,
 		Namespace: msg.TrackNamespace,
 	}
-	s.callbacks.onRequest(req)
+	s.callbacks.onMessage(req)
 	return nil
 }
 
@@ -602,7 +602,7 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 }
 
 func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	s.callbacks.onRequest(&Request{
+	s.callbacks.onMessage(&Message{
 		Method:       MethodAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
@@ -611,11 +611,29 @@ func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 	return nil
 }
 
+// TODO: Does a track status request expect a response? If so, we need to make
+// sure we send one here, in case it is not done by the callback.
 func (s *session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
+	s.callbacks.onMessage(&Message{
+		Method:    MethodTrackStatusRequest,
+		Namespace: msg.TrackNamespace,
+		Track:     msg.TrackName,
+	})
 	return nil
 }
 
 func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
+	s.callbacks.onMessage(&Message{
+		Method:        MethodTrackStatus,
+		Namespace:     msg.TrackNamespace,
+		Track:         msg.TrackName,
+		Authorization: "",
+		Status:        msg.StatusCode,
+		LastGroupID:   msg.LastGroupID,
+		LastObjectID:  msg.LastObjectID,
+		ErrorCode:     0,
+		ReasonPhrase:  "",
+	})
 	return nil
 }
 
