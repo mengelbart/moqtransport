@@ -24,14 +24,24 @@ func (c *callbacks) onSubscription(r *Message, s *subscription) {
 	}, r)
 }
 
-func (c *callbacks) onMessage(r *Message) {
+func (c *callbacks) onMessage(m *Message) {
 	if c.handler != nil {
-		switch r.Method {
+		switch m.Method {
 		case MethodAnnounce:
 			c.handler.Handle(&announcementResponseWriter{
-				namespace: r.Namespace,
+				namespace: m.Namespace,
 				transport: c.t,
-			}, r)
+			}, m)
+		case MethodSubscribeAnnounces:
+			c.handler.Handle(&announcementSubscriptionResponseWriter{
+				subscription: announcementSubscription{
+					namespace: m.Namespace,
+					response:  make(chan announcementSubscriptionResponse),
+				},
+				transport: c.t,
+			}, m)
+		default:
+			c.handler.Handle(nil, m)
 		}
 	}
 	// TODO: Handle unhandled request

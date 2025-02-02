@@ -3,15 +3,16 @@ package moqtransport
 import "io"
 
 const (
-	MethodSubscribe          = "SUBSCRIBE"
-	MethodFetch              = "FETCH"
-	MethodAnnounce           = "ANNOUNCE"
-	MethodAnnounceCancel     = "ANNOUNCE_CANCEL"
-	MethodUnannounce         = "UNANNOUNCE"
-	MethodSubscribeAnnounce  = "SUBSCRIBE_ANNOUNCE"
-	MethodTrackStatusRequest = "TRACK_STATUS_REQUEST"
-	MethodTrackStatus        = "TRACK_STATUS"
-	MethodGoAway             = "GO_AWAY"
+	MethodSubscribe            = "SUBSCRIBE"
+	MethodFetch                = "FETCH"
+	MethodAnnounce             = "ANNOUNCE"
+	MethodAnnounceCancel       = "ANNOUNCE_CANCEL"
+	MethodUnannounce           = "UNANNOUNCE"
+	MethodTrackStatusRequest   = "TRACK_STATUS_REQUEST"
+	MethodTrackStatus          = "TRACK_STATUS"
+	MethodGoAway               = "GO_AWAY"
+	MethodSubscribeAnnounces   = "SUBSCRIBE_ANNOUNCES"
+	MethodUnsubscribeAnnounces = "UNSUBSCRIBE_ANNOUNCES"
 )
 
 type Message struct {

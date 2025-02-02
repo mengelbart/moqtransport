@@ -276,8 +276,9 @@ func (t *Transport) Path() string {
 }
 
 func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
-	as := announcementSubscription{
+	as := &announcementSubscription{
 		namespace: prefix,
+		response:  make(chan announcementSubscriptionResponse, 1),
 	}
 	if err := t.session.subscribeAnnounces(as); err != nil {
 		return err

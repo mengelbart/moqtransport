@@ -30,6 +30,7 @@ type session struct {
 
 	callbacks sessionCallbacks
 
+	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
 	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
 
 	outgoingSubscriptions *subscriptionMap
@@ -190,10 +191,8 @@ func (s *session) announce(
 	return nil
 }
 
-func (s *session) subscribeAnnounces(subscription announcementSubscription) error {
-	if err := s.pendingOutgointAnnouncementSubscriptions.add(announcementSubscription{
-		namespace: subscription.namespace,
-	}); err != nil {
+func (s *session) subscribeAnnounces(as *announcementSubscription) error {
+	if err := s.pendingOutgointAnnouncementSubscriptions.add(as); err != nil {
 		return err
 	}
 	sam := &wire.SubscribeAnnouncesMessage{
@@ -201,7 +200,7 @@ func (s *session) subscribeAnnounces(subscription announcementSubscription) erro
 		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.queueControlMessage(sam); err != nil {
-		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(subscription.namespace)
+		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(as.namespace)
 		return err
 	}
 	return nil
@@ -553,11 +552,11 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 		}
 		return err
 	}
-	req := &Message{
+	message := &Message{
 		Method:    MethodAnnounce,
 		Namespace: a.Namespace,
 	}
-	s.callbacks.onMessage(req)
+	s.callbacks.onMessage(message)
 	return nil
 }
 
@@ -583,7 +582,10 @@ func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 	}
 	select {
 	case announcement.response <- announcementResponse{
-		err: nil,
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
 	}:
 	default:
 		s.logger.Info("dropping unhandled AnnounceError response")
@@ -670,6 +672,15 @@ func (s *session) onGoAway(msg *wire.GoAwayMessage) error {
 }
 
 func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
+	if err := s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
+		namespace: msg.TrackNamespacePrefix,
+	}); err != nil {
+		return err
+	}
+	s.callbacks.onMessage(&Message{
+		Method:    MethodSubscribeAnnounces,
+		Namespace: msg.TrackNamespacePrefix,
+	})
 	return nil
 }
 
@@ -681,7 +692,6 @@ func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 			message: "unknown subscribe_announces prefix",
 		}
 	}
-	s.logger.Info("got subscribeAnnouncesOk", "prefix", msg.TrackNamespacePrefix)
 	select {
 	case as.response <- announcementSubscriptionResponse{
 		err: nil,
@@ -693,10 +703,32 @@ func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 }
 
 func (s *session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	if !ok {
+		return ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe_announces prefix",
+		}
+	}
+	select {
+	case as.response <- announcementSubscriptionResponse{
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeAnnounces response")
+	}
 	return nil
+
 }
 
 func (s *session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
+	s.callbacks.onMessage(&Message{
+		Method:    MethodUnsubscribeAnnounces,
+		Namespace: msg.TrackNamespacePrefix,
+	})
 	return nil
 }
 

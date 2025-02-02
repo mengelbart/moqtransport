@@ -18,7 +18,7 @@ func newAnnouncementMap() *announcementMap {
 	}
 }
 
-func find(as []*announcement, namespace []string) int {
+func findAnnouncement(as []*announcement, namespace []string) int {
 	return slices.IndexFunc(as, func(x *announcement) bool {
 		return slices.Equal(namespace, x.Namespace)
 	})
@@ -27,7 +27,7 @@ func find(as []*announcement, namespace []string) int {
 func (m *announcementMap) add(a *announcement) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := find(m.pending, a.Namespace)
+	i := findAnnouncement(m.pending, a.Namespace)
 	if i >= 0 {
 		return errDuplicateAnnouncementNamespace
 	}
@@ -38,13 +38,13 @@ func (m *announcementMap) add(a *announcement) error {
 func (m *announcementMap) confirmAndGet(namespace []string) (*announcement, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := find(m.pending, namespace)
+	i := findAnnouncement(m.pending, namespace)
 	if i < 0 {
 		return nil, errUnknownAnnouncement
 	}
 	e := m.pending[i]
 	m.pending = slices.Delete(m.pending, i, i+1)
-	i = find(m.announcements, e.Namespace)
+	i = findAnnouncement(m.announcements, e.Namespace)
 	if i > 0 {
 		return nil, errDuplicateAnnouncementNamespace
 	}
@@ -55,14 +55,14 @@ func (m *announcementMap) confirmAndGet(namespace []string) (*announcement, erro
 func (m *announcementMap) confirm(namespace []string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := find(m.pending, namespace)
+	i := findAnnouncement(m.pending, namespace)
 	if i < 0 {
 		return errUnknownAnnouncement
 	}
 	e := m.pending[i]
 	m.pending = slices.Delete(m.pending, i, i+1)
 
-	i = find(m.announcements, e.Namespace)
+	i = findAnnouncement(m.announcements, e.Namespace)
 	if i > 0 {
 		return errDuplicateAnnouncementNamespace
 	}
@@ -73,7 +73,7 @@ func (m *announcementMap) confirm(namespace []string) error {
 func (m *announcementMap) reject(namespace []string) (*announcement, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := find(m.pending, namespace)
+	i := findAnnouncement(m.pending, namespace)
 	if i < 0 {
 		return nil, false
 	}
@@ -86,12 +86,12 @@ func (m *announcementMap) delete(namespace []string) bool {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	deleted := false
-	i := find(m.pending, namespace)
+	i := findAnnouncement(m.pending, namespace)
 	if i >= 0 {
 		m.pending = slices.Delete(m.pending, i, i+1)
 		deleted = true
 	}
-	i = find(m.announcements, namespace)
+	i = findAnnouncement(m.announcements, namespace)
 	if i < 0 {
 		m.announcements = slices.Delete(m.announcements, i, i+1)
 		deleted = true
