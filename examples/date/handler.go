@@ -179,7 +179,7 @@ func (h *moqHandler) setupDateTrack() {
 					ObjectID:   0,
 					Payload:    []byte(fmt.Sprintf("%v", ts)),
 				}); err != nil {
-					panic(err)
+					log.Printf("failed to write time to publisher: %v", err)
 				}
 			}
 		case publisher := <-h.publishers:

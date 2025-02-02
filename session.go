@@ -495,7 +495,7 @@ func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		track: subscription.remoteTrack,
 	}:
 	default:
-		panic("TODO unhandled subscription response")
+		s.logger.Info("dropping unhandled SubscribeOk response")
 	}
 	return nil
 }
@@ -514,7 +514,7 @@ func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 		track: nil,
 	}:
 	default:
-		panic("TODO unhandled subscription response")
+		s.logger.Info("dropping unhandled SubscribeError response")
 	}
 	return nil
 }
@@ -555,7 +555,7 @@ func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 		err: nil,
 	}:
 	default:
-		panic("TODO unhandled announcement response")
+		s.logger.Info("dopping unhandled AnnouncemeOk response")
 	}
 	return nil
 }
@@ -570,7 +570,7 @@ func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 		err: nil,
 	}:
 	default:
-		panic("TODO unhandled announcement response")
+		s.logger.Info("dropping unhandled AnnounceError response")
 	}
 	return nil
 }
@@ -663,7 +663,7 @@ func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 		err: nil,
 	}:
 	default:
-		panic("TODO: unhandled announcement subscription response")
+		s.logger.Info("dropping unhandled SubscribeAnnounces response")
 	}
 	return nil
 }

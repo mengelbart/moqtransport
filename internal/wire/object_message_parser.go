@@ -3,7 +3,6 @@ package wire
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"iter"
 
@@ -105,7 +104,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 	case StreamTypeSubgroup:
 		err = m.readSubgroup(p.reader)
 	default:
-		panic(fmt.Sprintf("unexpected wire.streamType: %#v", p.Typ))
+		return nil, errInvalidStreamType
 	}
 	return m, err
 }
