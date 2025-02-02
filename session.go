@@ -166,6 +166,13 @@ func (s *session) subscribe(sub *subscription) error {
 	return nil
 }
 
+// used by RemoteRole
+func (s *session) unsubscribe(id uint64) error {
+	return s.queueControlMessage(&wire.UnsubscribeMessage{
+		SubscribeID: id,
+	})
+}
+
 func (s *session) announce(
 	a *announcement,
 ) error {
@@ -201,7 +208,7 @@ func (s *session) subscribeAnnounces(subscription announcementSubscription) erro
 }
 
 func (s *session) acceptSubscription(sub *subscription) error {
-	err := s.incomingSubscriptions.confirm(sub)
+	err := s.incomingSubscriptions.confirm(sub, nil)
 	if err != nil {
 		return err
 	}
@@ -485,7 +492,16 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 }
 
 func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
-	subscription, err := s.outgoingSubscriptions.confirmAndGet(msg.SubscribeID)
+	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
+		err := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe ID",
+		}
+		s.callbacks.onProtocolViolation(err)
+		return err
+	}
+	rt := newRemoteTrack(msg.SubscribeID, s)
+	subscription, err := s.outgoingSubscriptions.confirmAndGet(msg.SubscribeID, rt)
 	if err != nil {
 		return err
 	}
@@ -598,6 +614,14 @@ func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 }
 
 func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
+	sub, ok := s.outgoingSubscriptions.findBySubscribeID(msg.SubscribeID)
+	if !ok {
+		// TODO: Protocol violation?
+		return errUnknownSubscribeID
+	}
+	sub.remoteTrack.done(msg.StatusCode, msg.ReasonPhrase, msg.ContentExists, msg.FinalGroup, msg.FinalObject)
+	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
+	// after timeout to wait for late coming objects?
 	return nil
 }
 
