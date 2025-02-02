@@ -29,7 +29,10 @@ func main() {
 	tlsConfig, err := generateTLSConfigWithCertAndKey(*certFile, *keyFile)
 	if err != nil {
 		log.Printf("failed to generate TLS config from cert file and key, generating in memory certs: %v", err)
-		tlsConfig = generateTLSConfig()
+		tlsConfig, err = generateTLSConfig()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	h := &moqHandler{
 		server:     *server,
@@ -65,25 +68,25 @@ func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, err
 }
 
 // Setup a bare-bones TLS config for the server
-func generateTLSConfig() *tls.Config {
+func generateTLSConfig() (*tls.Config, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	template := x509.Certificate{SerialNumber: big.NewInt(1)}
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 
 	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
 		NextProtos:   []string{"moq-00", "h3"},
-	}
+	}, nil
 }
