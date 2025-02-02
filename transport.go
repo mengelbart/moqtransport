@@ -119,7 +119,7 @@ func newTransportWithSession(
 	tc.callbacks.t = t
 
 	if !session.isServer {
-		if err := session.sendClientSetup(); err != nil {
+		if err = session.sendClientSetup(); err != nil {
 			return nil, err
 		}
 	}

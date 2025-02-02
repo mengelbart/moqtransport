@@ -54,7 +54,7 @@ func (m *subscriptionMap) addPending(s *subscription) error {
 	return nil
 }
 
-func (m *subscriptionMap) confirm(s *subscription) error {
+func (m *subscriptionMap) confirm(s *subscription, rt *RemoteTrack) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[s.ID]
@@ -65,13 +65,13 @@ func (m *subscriptionMap) confirm(s *subscription) error {
 		}
 	}
 	delete(m.pendingSubscriptions, s.ID)
-	s.remoteTrack = newRemoteTrack(s.ID)
+	s.remoteTrack = rt
 	m.subscriptions[s.ID] = s
 	m.trackAliasToSusbcribeID[s.TrackAlias] = s.ID
 	return nil
 }
 
-func (m *subscriptionMap) confirmAndGet(id uint64) (*subscription, error) {
+func (m *subscriptionMap) confirmAndGet(id uint64, rt *RemoteTrack) (*subscription, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[id]
@@ -83,10 +83,17 @@ func (m *subscriptionMap) confirmAndGet(id uint64) (*subscription, error) {
 	}
 	s := m.pendingSubscriptions[id]
 	delete(m.pendingSubscriptions, id)
-	s.remoteTrack = newRemoteTrack(id)
+	s.remoteTrack = rt
 	m.subscriptions[id] = s
 	m.trackAliasToSusbcribeID[s.TrackAlias] = id
 	return s, nil
+}
+
+func (m *subscriptionMap) hasPending(id uint64) bool {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	_, ok := m.pendingSubscriptions[id]
+	return ok
 }
 
 func (m *subscriptionMap) reject(id uint64) (*subscription, error) {
