@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -203,16 +202,19 @@ func (t *Transport) readStreams() {
 func (t *Transport) handleUniStream(stream ReceiveStream) {
 	parser, err := wire.NewObjectStreamParser(stream)
 	if err != nil {
-		panic(err)
+		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
+		return
 	}
 	switch parser.Typ {
 	case wire.StreamTypeFetch:
 	case wire.StreamTypeSubgroup:
 		if err := t.readSubgroupStream(parser); err != nil {
-			panic("TODO: Close stream")
+			stream.Stop(0) // TODO: Set correct error and possibly destroy session?
+			return
 		}
 	default:
-		panic(fmt.Sprintf("unexpected wire.StreamType: %#v", parser.Typ))
+		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
+		return
 	}
 }
 
@@ -229,7 +231,7 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 
 	for m, err := range parser.Messages() {
 		if err != nil {
-			panic(err)
+			return err
 		}
 		subscription.push(&Object{
 			GroupID:    m.GroupID,
