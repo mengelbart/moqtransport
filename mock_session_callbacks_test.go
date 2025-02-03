@@ -64,18 +64,6 @@ func (mr *MockSessionCallbacksMockRecorder) onProtocolViolation(arg0 any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onProtocolViolation", reflect.TypeOf((*MockSessionCallbacks)(nil).onProtocolViolation), arg0)
 }
 
-// onSubscription mocks base method.
-func (m *MockSessionCallbacks) onSubscription(arg0 *Message, arg1 *subscription) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "onSubscription", arg0, arg1)
-}
-
-// onSubscription indicates an expected call of onSubscription.
-func (mr *MockSessionCallbacksMockRecorder) onSubscription(arg0, arg1 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "onSubscription", reflect.TypeOf((*MockSessionCallbacks)(nil).onSubscription), arg0, arg1)
-}
-
 // queueControlMessage mocks base method.
 func (m *MockSessionCallbacks) queueControlMessage(arg0 wire.ControlMessage) error {
 	m.ctrl.T.Helper()

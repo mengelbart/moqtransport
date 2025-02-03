@@ -53,6 +53,18 @@ func (mr *MockSendStreamMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockSendStream)(nil).Close))
 }
 
+// Reset mocks base method.
+func (m *MockSendStream) Reset(arg0 uint32) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Reset", arg0)
+}
+
+// Reset indicates an expected call of Reset.
+func (mr *MockSendStreamMockRecorder) Reset(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockSendStream)(nil).Reset), arg0)
+}
+
 // Write mocks base method.
 func (m *MockSendStream) Write(p []byte) (int, error) {
 	m.ctrl.T.Helper()

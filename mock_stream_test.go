@@ -68,6 +68,30 @@ func (mr *MockStreamMockRecorder) Read(p any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockStream)(nil).Read), p)
 }
 
+// Reset mocks base method.
+func (m *MockStream) Reset(arg0 uint32) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Reset", arg0)
+}
+
+// Reset indicates an expected call of Reset.
+func (mr *MockStreamMockRecorder) Reset(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockStream)(nil).Reset), arg0)
+}
+
+// Stop mocks base method.
+func (m *MockStream) Stop(arg0 uint32) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Stop", arg0)
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockStreamMockRecorder) Stop(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockStream)(nil).Stop), arg0)
+}
+
 // Write mocks base method.
 func (m *MockStream) Write(p []byte) (int, error) {
 	m.ctrl.T.Helper()

@@ -18,6 +18,9 @@ const (
 type Message struct {
 	Method string
 
+	SubscribeID uint64
+	TrackAlias  uint64
+
 	Namespace []string
 	Track     string
 

@@ -17,16 +17,15 @@ func (c *callbacks) onProtocolViolation(err ProtocolError) {
 	c.t.destroy(err)
 }
 
-func (c *callbacks) onSubscription(r *Message, s *subscription) {
-	c.handler.Handle(&subscriptionResponseWriter{
-		subscription: s,
-		transport:    c.t,
-	}, r)
-}
-
 func (c *callbacks) onMessage(m *Message) {
 	if c.handler != nil {
 		switch m.Method {
+		case MethodSubscribe:
+			c.handler.Handle(&subscriptionResponseWriter{
+				id:         m.SubscribeID,
+				trackAlias: m.TrackAlias,
+				transport:  c.t,
+			}, m)
 		case MethodAnnounce:
 			c.handler.Handle(&announcementResponseWriter{
 				namespace: m.Namespace,
