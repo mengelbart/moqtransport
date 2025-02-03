@@ -646,7 +646,7 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 		// TODO: Protocol violation?
 		return errUnknownSubscribeID
 	}
-	sub.remoteTrack.done(msg.StatusCode, msg.ReasonPhrase, msg.ContentExists, msg.FinalGroup, msg.FinalObject)
+	sub.remoteTrack.done(msg.StatusCode, msg.ReasonPhrase)
 	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
 	// after timeout to wait for late coming objects?
 	return nil
