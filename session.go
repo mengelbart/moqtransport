@@ -13,7 +13,6 @@ type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
 	onMessage(*Message)
-	onSubscription(*Message, *subscription)
 }
 
 type session struct {
@@ -206,32 +205,56 @@ func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 	return nil
 }
 
-func (s *session) acceptSubscription(sub *subscription) error {
-	err := s.incomingSubscriptions.confirm(sub, nil)
+func (s *session) acceptSubscription(id uint64, lt *LocalTrack) error {
+	sub, err := s.incomingSubscriptions.confirm(id)
 	if err != nil {
 		return err
 	}
-	if err := s.queueControlMessage(&wire.SubscribeOkMessage{
-		SubscribeID:     sub.ID,
-		Expires:         sub.Expires,
-		GroupOrder:      sub.GroupOrder,
-		ContentExists:   sub.ContentExists,
-		LargestGroupID:  0,
-		LargestObjectID: 0,
-		Parameters:      map[uint64]wire.Parameter{},
-	}); err != nil {
-		return err
+	sub.localTrack = lt
+	if sub.isFetch {
+		if err := s.queueControlMessage(&wire.FetchOkMessage{
+			SubscribeID:     sub.ID,
+			GroupOrder:      sub.GroupOrder,
+			LargestGroupID:  0,
+			LargestObjectID: 0,
+		}); err != nil {
+			return err
+		}
+	} else {
+		if err := s.queueControlMessage(&wire.SubscribeOkMessage{
+			SubscribeID:     sub.ID,
+			Expires:         sub.Expires,
+			GroupOrder:      sub.GroupOrder,
+			ContentExists:   sub.ContentExists,
+			LargestGroupID:  0,
+			LargestObjectID: 0,
+			Parameters:      map[uint64]wire.Parameter{},
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (s *session) rejectSubscription(sub *subscription, errorCode uint64, reason string) error {
-	return s.queueControlMessage(&wire.SubscribeErrorMessage{
-		SubscribeID:  sub.ID,
-		ErrorCode:    errorCode,
-		ReasonPhrase: reason,
-		TrackAlias:   sub.TrackAlias,
-	})
+func (s *session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
+	sub, err := s.incomingSubscriptions.reject(id)
+	if err != nil {
+		return err
+	}
+	if sub.isFetch {
+		return s.queueControlMessage(&wire.FetchErrorMessage{
+			SubscribeID:  sub.ID,
+			ErrorCode:    errorCode,
+			ReasonPhrase: reason,
+		})
+	} else {
+		return s.queueControlMessage(&wire.SubscribeErrorMessage{
+			SubscribeID:  sub.ID,
+			ErrorCode:    errorCode,
+			ReasonPhrase: reason,
+			TrackAlias:   sub.TrackAlias,
+		})
+	}
 }
 
 func (s *session) acceptAnnouncement(namespace []string) error {
@@ -478,7 +501,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		}
 		return err
 	}
-	req := &Message{
+	m := &Message{
 		Method:        MethodSubscribe,
 		Namespace:     sub.Namespace,
 		Track:         sub.Trackname,
@@ -486,7 +509,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	s.callbacks.onSubscription(req, sub)
+	s.callbacks.onMessage(m)
 	return nil
 }
 
@@ -499,15 +522,15 @@ func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		s.callbacks.onProtocolViolation(err)
 		return err
 	}
-	rt := newRemoteTrack(msg.SubscribeID, s)
-	subscription, err := s.outgoingSubscriptions.confirmAndGet(msg.SubscribeID, rt)
+	fetch, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
 	if err != nil {
 		return err
 	}
+	fetch.remoteTrack = newRemoteTrack(msg.SubscribeID, s)
 	select {
-	case subscription.response <- subscriptionResponse{
+	case fetch.response <- subscriptionResponse{
 		err:   nil,
-		track: subscription.remoteTrack,
+		track: fetch.remoteTrack,
 	}:
 	default:
 		s.logger.Info("dropping unhandled SubscribeOk response")
@@ -606,6 +629,8 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 	return nil
 }
 
+// TODO: Maybe don't immediately close the track and give app a chance to react
+// first?
 func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	sub, ok := s.incomingSubscriptions.delete(msg.SubscribeID)
 	if !ok {
@@ -737,6 +762,20 @@ func (s *session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
 }
 
 func (s *session) onFetch(msg *wire.FetchMessage) error {
+	f := &subscription{
+		ID:        msg.SubscribeID,
+		Namespace: msg.TrackNamspace,
+		Trackname: string(msg.TrackName),
+	}
+	if err := s.incomingSubscriptions.addPending(f); err != nil {
+		return err
+	}
+	m := &Message{
+		Method:    MethodFetch,
+		Namespace: f.Namespace,
+		Track:     f.Trackname,
+	}
+	s.callbacks.onMessage(m)
 	return nil
 }
 
@@ -745,10 +784,46 @@ func (s *session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *session) onFetchOk(msg *wire.FetchOkMessage) error {
+	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
+		err := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe ID",
+		}
+		s.callbacks.onProtocolViolation(err)
+		return err
+	}
+	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
+	if err != nil {
+		return err
+	}
+	subscription.remoteTrack = newRemoteTrack(msg.SubscribeID, s)
+	select {
+	case subscription.response <- subscriptionResponse{
+		err:   nil,
+		track: subscription.remoteTrack,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeOk response")
+	}
 	return nil
 }
 
 func (s *session) onFetchError(msg *wire.FetchErrorMessage) error {
+	f, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
+	if err != nil {
+		return err
+	}
+	select {
+	case f.response <- subscriptionResponse{
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
+		track: nil,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeError response")
+	}
 	return nil
 }
 

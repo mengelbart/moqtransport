@@ -309,6 +309,29 @@ func (t *Transport) Subscribe(
 		ContentExists: false,
 		response:      make(chan subscriptionResponse, 1),
 	}
+	return t.subscribe(ctx, ps)
+}
+
+func (t *Transport) Fetch(
+	ctx context.Context,
+	id uint64,
+	namespace []string,
+	name string,
+) (*RemoteTrack, error) {
+	f := &subscription{
+		ID:        id,
+		Namespace: namespace,
+		Trackname: name,
+		isFetch:   true,
+		response:  make(chan subscriptionResponse),
+	}
+	return t.subscribe(ctx, f)
+}
+
+func (t *Transport) subscribe(
+	ctx context.Context,
+	ps *subscription,
+) (*RemoteTrack, error) {
 	if err := t.session.subscribe(ps); err != nil {
 		return nil, err
 	}
@@ -353,12 +376,12 @@ func (t *Transport) rejectAnnouncementSubscription(as announcementSubscription, 
 	return t.session.rejectAnnouncementSubscription(as, c, r)
 }
 
-func (t *Transport) acceptSubscription(sub *subscription) error {
-	return t.session.acceptSubscription(sub)
+func (t *Transport) acceptSubscription(id uint64, lt *LocalTrack) error {
+	return t.session.acceptSubscription(id, lt)
 }
 
-func (t *Transport) rejectSubscription(sub *subscription, code uint64, reason string) error {
-	return t.session.rejectSubscription(sub, code, reason)
+func (t *Transport) rejectSubscription(id uint64, code uint64, reason string) error {
+	return t.session.rejectSubscription(id, code, reason)
 }
 
 func compileMessage(msg wire.ControlMessage) []byte {

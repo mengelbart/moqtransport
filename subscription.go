@@ -30,5 +30,7 @@ type subscription struct {
 	remoteTrack *RemoteTrack
 	localTrack  *LocalTrack
 
+	isFetch bool
+
 	response chan subscriptionResponse
 }

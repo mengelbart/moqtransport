@@ -53,3 +53,15 @@ func (mr *MockReceiveStreamMockRecorder) Read(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockReceiveStream)(nil).Read), p)
 }
+
+// Stop mocks base method.
+func (m *MockReceiveStream) Stop(arg0 uint32) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Stop", arg0)
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockReceiveStreamMockRecorder) Stop(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockReceiveStream)(nil).Stop), arg0)
+}

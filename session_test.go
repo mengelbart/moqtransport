@@ -254,7 +254,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onSubscription(
+		mcb.EXPECT().onMessage(
 			&Message{
 				Method:        MethodSubscribe,
 				Namespace:     []string{},
@@ -263,15 +263,8 @@ func TestSession(t *testing.T) {
 				ErrorCode:     0,
 				ReasonPhrase:  "",
 			},
-			&subscription{
-				ID:            0,
-				TrackAlias:    0,
-				Namespace:     []string{},
-				Trackname:     "",
-				Authorization: "",
-			},
-		).Do(func(req *Message, sub *subscription) {
-			assert.NoError(t, s.acceptSubscription(sub))
+		).Do(func(m *Message) {
+			assert.NoError(t, s.acceptSubscription(m.SubscribeID, nil))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
@@ -305,7 +298,7 @@ func TestSession(t *testing.T) {
 		s, err := newSession(mcb, true, true)
 		assert.NoError(t, err)
 		s.setupDone = true
-		mcb.EXPECT().onSubscription(
+		mcb.EXPECT().onMessage(
 			&Message{
 				Method:        MethodSubscribe,
 				Namespace:     []string{},
@@ -314,15 +307,8 @@ func TestSession(t *testing.T) {
 				ErrorCode:     0,
 				ReasonPhrase:  "",
 			},
-			&subscription{
-				ID:            0,
-				TrackAlias:    0,
-				Namespace:     []string{},
-				Trackname:     "",
-				Authorization: "",
-			},
-		).DoAndReturn(func(req *Message, sub *subscription) {
-			assert.NoError(t, s.rejectSubscription(sub, SubscribeErrorTrackDoesNotExist, "track not found"))
+		).DoAndReturn(func(m *Message) {
+			assert.NoError(t, s.rejectSubscription(m.SubscribeID, SubscribeErrorTrackDoesNotExist, "track not found"))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
 			SubscribeID:  0,
