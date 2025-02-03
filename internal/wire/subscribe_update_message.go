@@ -9,7 +9,6 @@ type SubscribeUpdateMessage struct {
 	StartGroup         uint64
 	StartObject        uint64
 	EndGroup           uint64
-	EndObject          uint64
 	SubscriberPriority uint8
 	Parameters         Parameters
 }
@@ -23,7 +22,6 @@ func (m *SubscribeUpdateMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.StartGroup)
 	buf = quicvarint.Append(buf, m.StartObject)
 	buf = quicvarint.Append(buf, m.EndGroup)
-	buf = quicvarint.Append(buf, m.EndObject)
 	buf = append(buf, m.SubscriberPriority)
 	return m.Parameters.append(buf)
 }
@@ -50,12 +48,6 @@ func (m *SubscribeUpdateMessage) parse(data []byte) (err error) {
 	data = data[n:]
 
 	m.EndGroup, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.EndObject, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

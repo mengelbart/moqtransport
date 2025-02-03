@@ -10,9 +10,13 @@ import (
 const (
 	objectTypeDatagram       uint64 = 0x01
 	objectTypeDatagramStatus uint64 = 0x02
+)
 
-	objectTypeSubgroupHeader uint64 = 0x04
-	objectTypeFetchHeader    uint64 = 0x05
+type StreamType int
+
+const (
+	StreamTypeSubgroup StreamType = 0x04
+	StreamTypeFetch    StreamType = 0x05
 )
 
 type ObjectStatus int
