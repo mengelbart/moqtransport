@@ -7,6 +7,14 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+const (
+	objectTypeDatagram       uint64 = 0x01
+	objectTypeDatagramStatus uint64 = 0x02
+
+	objectTypeSubgroupHeader uint64 = 0x04
+	objectTypeFetchHeader    uint64 = 0x05
+)
+
 type ObjectStatus int
 
 const (
@@ -28,16 +36,22 @@ type ObjectMessage struct {
 }
 
 func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
+	buf = quicvarint.Append(buf, objectTypeDatagram)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
-	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
-	if len(m.ObjectPayload) == 0 {
-		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
-	} else {
-		buf = append(buf, m.ObjectPayload...)
-	}
+	buf = append(buf, m.ObjectPayload...)
+	return buf
+}
+
+func (m *ObjectMessage) AppendDatagramStatus(buf []byte) []byte {
+	buf = quicvarint.Append(buf, objectTypeDatagramStatus)
+	buf = quicvarint.Append(buf, m.TrackAlias)
+	buf = quicvarint.Append(buf, m.GroupID)
+	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = append(buf, m.PublisherPriority)
+	buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
 	return buf
 }
 
@@ -67,7 +81,13 @@ func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
 }
 
 func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
-	var n int
+	typ, n, err := quicvarint.Parse(data)
+	parsed += n
+	if err != nil {
+		return
+	}
+	data = data[n:]
+
 	m.TrackAlias, n, err = quicvarint.Parse(data)
 	parsed += n
 	if err != nil {
@@ -96,14 +116,7 @@ func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
 	parsed += 1
 	data = data[1:]
 
-	length, n, err := quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	if length == 0 {
+	if typ == objectTypeDatagramStatus {
 		var status uint64
 		status, n, err = quicvarint.Parse(data)
 		parsed += n
