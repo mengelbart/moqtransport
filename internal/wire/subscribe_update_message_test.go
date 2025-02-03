@@ -20,13 +20,12 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				StartGroup:         0,
 				StartObject:        0,
 				EndGroup:           0,
-				EndObject:          0,
 				SubscriberPriority: 0,
 				Parameters:         map[uint64]Parameter{},
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -35,12 +34,11 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,
-				EndObject:          5,
-				SubscriberPriority: 6,
+				SubscriberPriority: 5,
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{},
-			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 'A'},
 		},
 		{
 			sum: SubscribeUpdateMessage{
@@ -48,12 +46,11 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,
-				EndObject:          5,
-				SubscriberPriority: 6,
+				SubscriberPriority: 5,
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 'A'},
 		},
 	}
 	for i, tc := range cases {
@@ -87,21 +84,19 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 				StartGroup:         1,
 				StartObject:        2,
 				EndGroup:           0,
-				EndObject:          0,
 				SubscriberPriority: 0,
 				Parameters:         nil,
 			},
 			err: io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x01, 0x02, 0x01, 'P'},
+			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x01, 'P'},
 			expect: &SubscribeUpdateMessage{
 				SubscribeID:        1,
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,
-				EndObject:          5,
-				SubscriberPriority: 6,
+				SubscriberPriority: 5,
 				Parameters: Parameters{
 					AuthorizationParameterKey: StringParameter{
 						Type:  AuthorizationParameterKey,
