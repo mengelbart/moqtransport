@@ -11,15 +11,12 @@ type unsubscriber interface {
 }
 
 type ErrSubscribeDone struct {
-	Status        uint64
-	Reason        string
-	ContentExists bool
-	FinalGroup    uint64
-	FinalObject   uint64
+	Status uint64
+	Reason string
 }
 
 func (e ErrSubscribeDone) Error() string {
-	return fmt.Sprintf("subscribe done: status=%v, reason='%v', contentExists=%v, finalGroup=%v, finalObject=%v", e.Status, e.Reason, e.ContentExists, e.FinalGroup, e.FinalObject)
+	return fmt.Sprintf("subscribe done: status=%v, reason='%v'", e.Status, e.Reason)
 }
 
 type RemoteTrack struct {
@@ -57,13 +54,10 @@ func (t *RemoteTrack) Unsubscribe() error {
 	return t.unsubscriber.unsubscribe(t.subscribeID)
 }
 
-func (t *RemoteTrack) done(status uint64, reason string, contentExists bool, finalGroup, finalObject uint64) {
+func (t *RemoteTrack) done(status uint64, reason string) {
 	t.doneCtxCancel(&ErrSubscribeDone{
-		Status:        status,
-		Reason:        reason,
-		ContentExists: contentExists,
-		FinalGroup:    finalGroup,
-		FinalObject:   finalObject,
+		Status: status,
+		Reason: reason,
 	})
 }
 
