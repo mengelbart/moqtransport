@@ -68,10 +68,6 @@ var (
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate subscribe ID",
 	}
-	errTooManySubscribes = ProtocolError{
-		code:    ErrorTooManySubscribes,
-		message: "too many subscribes",
-	}
 	errMaxSubscribeIDDecreased = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "max subscribe ID decreased",
@@ -80,7 +76,10 @@ var (
 		code:    SubscribeErrorUnknownID,
 		message: "unknown subscribe ID",
 	}
-
+	errorTooManySubscribes = ProtocolError{
+		code:    ErrorTooManySubscribes,
+		message: "too many subscribes",
+	}
 	errDuplicateAnnouncementNamespace = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate announcement namespace",

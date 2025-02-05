@@ -4,6 +4,14 @@ import (
 	"sync"
 )
 
+type errMaxSusbcribeIDViolation struct {
+	maxSubscribeID uint64
+}
+
+func (e errMaxSusbcribeIDViolation) Error() string {
+	return "too many subscribes"
+}
+
 type subscriptionMap struct {
 	lock                    sync.Mutex
 	maxSubscribeID          uint64
@@ -42,7 +50,9 @@ func (m *subscriptionMap) addPending(s *subscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if s.ID >= m.maxSubscribeID {
-		return errTooManySubscribes
+		return errMaxSusbcribeIDViolation{
+			maxSubscribeID: m.maxSubscribeID,
+		}
 	}
 	if _, ok := m.pendingSubscriptions[s.ID]; ok {
 		return errDuplicateSubscribeID
