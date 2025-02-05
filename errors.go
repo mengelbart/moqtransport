@@ -76,10 +76,6 @@ var (
 		code:    SubscribeErrorUnknownID,
 		message: "unknown subscribe ID",
 	}
-	errorTooManySubscribes = ProtocolError{
-		code:    ErrorTooManySubscribes,
-		message: "too many subscribes",
-	}
 	errDuplicateAnnouncementNamespace = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate announcement namespace",
