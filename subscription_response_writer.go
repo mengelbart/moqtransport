@@ -8,7 +8,7 @@ type subscriptionResponseWriter struct {
 	id         uint64
 	trackAlias uint64
 	transport  *Transport
-	localTrack *LocalTrack
+	localTrack *localTrack
 }
 
 func (w *subscriptionResponseWriter) Accept() error {

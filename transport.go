@@ -376,7 +376,7 @@ func (t *Transport) rejectAnnouncementSubscription(as announcementSubscription, 
 	return t.session.rejectAnnouncementSubscription(as, c, r)
 }
 
-func (t *Transport) acceptSubscription(id uint64, lt *LocalTrack) error {
+func (t *Transport) acceptSubscription(id uint64, lt *localTrack) error {
 	return t.session.acceptSubscription(id, lt)
 }
 

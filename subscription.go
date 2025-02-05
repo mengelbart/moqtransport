@@ -28,7 +28,7 @@ type subscription struct {
 	ContentExists bool
 
 	remoteTrack *RemoteTrack
-	localTrack  *LocalTrack
+	localTrack  *localTrack
 
 	isFetch bool
 
