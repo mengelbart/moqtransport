@@ -14,7 +14,3 @@ func init() {
 }
 
 var defaultLogger *slog.Logger
-
-func SetLogHandler(handler slog.Handler) {
-	defaultLogger = slog.New(handler)
-}
