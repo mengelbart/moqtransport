@@ -31,6 +31,7 @@ const (
 	messageTypeFetchCancel             controlMessageType = 0x17
 	messageTypeFetchOk                 controlMessageType = 0x18
 	messageTypeFetchError              controlMessageType = 0x19
+	messageTypeSubscribesBlocked       controlMessageType = 0x1a
 	messageTypeClientSetup             controlMessageType = 0x40
 	messageTypeServerSetup             controlMessageType = 0x41
 )

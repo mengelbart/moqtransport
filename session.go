@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync/atomic"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
@@ -28,6 +29,8 @@ type session struct {
 	remoteRole Role
 
 	callbacks sessionCallbacks
+
+	highestSubscribesBlocked atomic.Uint64
 
 	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
 	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
@@ -137,6 +140,15 @@ func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 func (s *session) subscribe(sub *subscription) error {
 	if err := s.outgoingSubscriptions.addPending(sub); err != nil {
+		var tooManySubscribes errMaxSusbcribeIDViolation
+		if errors.As(err, &tooManySubscribes) {
+			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
+			if previous < tooManySubscribes.maxSubscribeID {
+				err = errors.Join(err, s.queueControlMessage(&wire.SubscribesBlocked{
+					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
+				}))
+			}
+		}
 		return err
 	}
 	sm := &wire.SubscribeMessage{
@@ -495,10 +507,6 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		Authorization: auth,
 	}
 	if err := s.incomingSubscriptions.addPending(sub); err != nil {
-		pv := &ProtocolError{}
-		if errors.As(err, pv) {
-			s.callbacks.onProtocolViolation(*pv)
-		}
 		return err
 	}
 	m := &Message{
