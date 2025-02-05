@@ -2,17 +2,18 @@ package moqtransport
 
 import "io"
 
+// Common Message types. Handlers can react to any of these messages.
 const (
-	MethodSubscribe            = "SUBSCRIBE"
-	MethodFetch                = "FETCH"
-	MethodAnnounce             = "ANNOUNCE"
-	MethodAnnounceCancel       = "ANNOUNCE_CANCEL"
-	MethodUnannounce           = "UNANNOUNCE"
-	MethodTrackStatusRequest   = "TRACK_STATUS_REQUEST"
-	MethodTrackStatus          = "TRACK_STATUS"
-	MethodGoAway               = "GO_AWAY"
-	MethodSubscribeAnnounces   = "SUBSCRIBE_ANNOUNCES"
-	MethodUnsubscribeAnnounces = "UNSUBSCRIBE_ANNOUNCES"
+	MessageSubscribe            = "SUBSCRIBE"
+	MessageFetch                = "FETCH"
+	MessageAnnounce             = "ANNOUNCE"
+	MessageAnnounceCancel       = "ANNOUNCE_CANCEL"
+	MessageUnannounce           = "UNANNOUNCE"
+	MessageTrackStatusRequest   = "TRACK_STATUS_REQUEST"
+	MessageTrackStatus          = "TRACK_STATUS"
+	MessageGoAway               = "GO_AWAY"
+	MessageSubscribeAnnounces   = "SUBSCRIBE_ANNOUNCES"
+	MessageUnsubscribeAnnounces = "UNSUBSCRIBE_ANNOUNCES"
 )
 
 type Message struct {

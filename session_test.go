@@ -256,7 +256,7 @@ func TestSession(t *testing.T) {
 		s.setupDone = true
 		mcb.EXPECT().onMessage(
 			&Message{
-				Method:        MethodSubscribe,
+				Method:        MessageSubscribe,
 				Namespace:     []string{},
 				Track:         "",
 				Authorization: "",
@@ -300,7 +300,7 @@ func TestSession(t *testing.T) {
 		s.setupDone = true
 		mcb.EXPECT().onMessage(
 			&Message{
-				Method:        MethodSubscribe,
+				Method:        MessageSubscribe,
 				Namespace:     []string{},
 				Track:         "",
 				Authorization: "",
@@ -358,7 +358,7 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onMessage(&Message{
-			Method:    MethodAnnounce,
+			Method:    MessageAnnounce,
 			Namespace: []string{"namespace"},
 		}).DoAndReturn(func(req *Message) {
 			assert.NoError(t, s.acceptAnnouncement(req.Namespace))

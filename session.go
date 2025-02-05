@@ -519,7 +519,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		return err
 	}
 	m := &Message{
-		Method:        MethodSubscribe,
+		Method:        MessageSubscribe,
 		Namespace:     sub.Namespace,
 		Track:         sub.Trackname,
 		Authorization: sub.Authorization,
@@ -593,7 +593,7 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 		return err
 	}
 	message := &Message{
-		Method:    MethodAnnounce,
+		Method:    MessageAnnounce,
 		Namespace: a.Namespace,
 	}
 	s.callbacks.onMessage(message)
@@ -639,7 +639,7 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 		return errUnknownAnnouncement
 	}
 	req := &Message{
-		Method:    MethodUnannounce,
+		Method:    MessageUnannounce,
 		Namespace: msg.TrackNamespace,
 	}
 	s.callbacks.onMessage(req)
@@ -671,7 +671,7 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 
 func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 	s.callbacks.onMessage(&Message{
-		Method:       MethodAnnounceCancel,
+		Method:       MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
 		ReasonPhrase: msg.ReasonPhrase,
@@ -683,7 +683,7 @@ func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 // sure we send one here, in case it is not done by the callback.
 func (s *session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
 	s.callbacks.onMessage(&Message{
-		Method:    MethodTrackStatusRequest,
+		Method:    MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
 		Track:     msg.TrackName,
 	})
@@ -692,7 +692,7 @@ func (s *session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) erro
 
 func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 	s.callbacks.onMessage(&Message{
-		Method:        MethodTrackStatus,
+		Method:        MessageTrackStatus,
 		Namespace:     msg.TrackNamespace,
 		Track:         msg.TrackName,
 		Authorization: "",
@@ -707,7 +707,7 @@ func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 
 func (s *session) onGoAway(msg *wire.GoAwayMessage) error {
 	s.callbacks.onMessage(&Message{
-		Method:        MethodGoAway,
+		Method:        MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
 	return nil
@@ -720,7 +720,7 @@ func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 		return err
 	}
 	s.callbacks.onMessage(&Message{
-		Method:    MethodSubscribeAnnounces,
+		Method:    MessageSubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
 	return nil
@@ -768,7 +768,7 @@ func (s *session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 
 func (s *session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
 	s.callbacks.onMessage(&Message{
-		Method:    MethodUnsubscribeAnnounces,
+		Method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
 	return nil
@@ -788,7 +788,7 @@ func (s *session) onFetch(msg *wire.FetchMessage) error {
 		return err
 	}
 	m := &Message{
-		Method:    MethodFetch,
+		Method:    MessageFetch,
 		Namespace: f.Namespace,
 		Track:     f.Trackname,
 	}
