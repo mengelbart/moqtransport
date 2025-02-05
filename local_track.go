@@ -9,7 +9,7 @@ import (
 
 var ErrUnsubscribed = errors.New("subscriber unsubscribed")
 
-type LocalTrack struct {
+type localTrack struct {
 	conn           Connection
 	subscribeID    uint64
 	trackAlias     uint64
@@ -18,9 +18,9 @@ type LocalTrack struct {
 	unsubscribe    context.CancelFunc
 }
 
-func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *LocalTrack {
+func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *localTrack {
 	ctx, unsubscribe := context.WithCancel(context.Background())
-	publisher := &LocalTrack{
+	publisher := &localTrack{
 		conn:           conn,
 		subscribeID:    subscribeID,
 		trackAlias:     trackAlias,
@@ -31,7 +31,7 @@ func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *LocalTrack 
 	return publisher
 }
 
-func (p *LocalTrack) SendDatagram(o Object) error {
+func (p *localTrack) SendDatagram(o Object) error {
 	select {
 	case <-p.unsubscribeCtx.Done():
 		return ErrUnsubscribed
@@ -51,7 +51,7 @@ func (p *LocalTrack) SendDatagram(o Object) error {
 	return p.conn.SendDatagram(buf)
 }
 
-func (p *LocalTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
+func (p *localTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
 	select {
 	case <-p.unsubscribeCtx.Done():
 		return nil, ErrUnsubscribed
@@ -64,7 +64,7 @@ func (p *LocalTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, er
 	return newSubgroup(p.unsubscribeCtx, stream, p.subscribeID, p.trackAlias, groupID, priority)
 }
 
-func (s *LocalTrack) Close() error {
+func (s *localTrack) Close() error {
 	s.unsubscribe()
 	return nil
 }

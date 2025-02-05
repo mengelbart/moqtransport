@@ -221,7 +221,7 @@ func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 	return nil
 }
 
-func (s *session) acceptSubscription(id uint64, lt *LocalTrack) error {
+func (s *session) acceptSubscription(id uint64, lt *localTrack) error {
 	sub, err := s.incomingSubscriptions.confirm(id)
 	if err != nil {
 		return err
