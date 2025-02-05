@@ -19,15 +19,19 @@ type unsubscriber interface {
 	unsubscribe(id uint64) error
 }
 
+// ErrSubscribeDone is returned when reading from a RemoteTrack when the
+// subscription has ended.
 type ErrSubscribeDone struct {
 	Status uint64
 	Reason string
 }
 
+// Error implements error
 func (e ErrSubscribeDone) Error() string {
 	return fmt.Sprintf("subscribe done: status=%v, reason='%v'", e.Status, e.Reason)
 }
 
+// RemoteTrack is a track provided by the remote peer.
 type RemoteTrack struct {
 	logger       *slog.Logger
 	subscribeID  uint64
@@ -56,6 +60,7 @@ func newRemoteTrack(id uint64, u unsubscriber) *RemoteTrack {
 	return t
 }
 
+// ReadObject returns the next object received from the peer.
 func (t *RemoteTrack) ReadObject(ctx context.Context) (*Object, error) {
 	select {
 	case <-ctx.Done():
@@ -65,6 +70,7 @@ func (t *RemoteTrack) ReadObject(ctx context.Context) (*Object, error) {
 	}
 }
 
+// Close implements io.Closer. Calling close unsubscribes from the subscription.
 func (t *RemoteTrack) Close() error {
 	return t.unsubscriber.unsubscribe(t.subscribeID)
 }

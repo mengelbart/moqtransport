@@ -5,18 +5,32 @@ import (
 	"io"
 )
 
+// A Stream is the interface implemented by bidirectional streams.
 type Stream interface {
 	ReceiveStream
 	SendStream
 }
 
+// A Stream is the interface implemented by the receiving end of unidirectional
+// streams.
 type ReceiveStream interface {
+	// Read reads from the stream.
 	io.Reader
+
+	// Stop stops reading from the stream and sends a signal to the sender to
+	// stop sending on the stream.
 	Stop(uint32)
 }
 
+// A Stream is the interface implemented by the sending end of unidirectional
+// streams.
 type SendStream interface {
+	// Write writes to the stream.
+	// Close closes the stream and guarantees retransmissions until all data has
+	// been received by the receiver or the stream is reset.
 	io.WriteCloser
+
+	// Reset closes the stream and stops retransmitting outstanding data.
 	Reset(uint32)
 }
 

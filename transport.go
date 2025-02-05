@@ -19,20 +19,26 @@ type transportConfig struct {
 	sessionOptions []sessionOption
 }
 
+// A TransportOption sets a configuration parameter of a Transport.
 type TransportOption func(*transportConfig)
 
+// OnRequest sets the handler which should be called on incoming MoQ messages.
 func OnRequest(h Handler) TransportOption {
 	return func(t *transportConfig) {
 		t.callbacks.handler = h
 	}
 }
 
+// Path sets the path parameter of a MoQ transport session when using QUIC. To
+// set the path of a session using WebTransport, it has to be set in the HTTP
+// server/client when opening the connection.
 func Path(p string) TransportOption {
 	return func(tc *transportConfig) {
 		tc.sessionOptions = append(tc.sessionOptions, pathParameterOption(p))
 	}
 }
 
+// A Transport is an endpoint of a MoQ Transport session.
 type Transport struct {
 	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
@@ -251,10 +257,14 @@ func (t *Transport) readDatagrams() {
 
 // Local API
 
+// Path returns the path of the MoQ session which was exchanged during the
+// handshake when using QUIC.
 func (t *Transport) Path() string {
 	return t.session.path
 }
 
+// SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
+// It blocks until a response from the peer is received or ctx is cancelled.
 func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
 	as := &announcementSubscription{
 		namespace: prefix,
@@ -275,6 +285,8 @@ func (t *Transport) UnsubscribeAnnouncements() {
 	// TODO
 }
 
+// Subscribe subscribes to track in namespace using id as the subscribe ID. It
+// blocks until a response from the peer was received or ctx is cancelled.
 func (t *Transport) Subscribe(
 	ctx context.Context,
 	id, alias uint64,
@@ -296,16 +308,18 @@ func (t *Transport) Subscribe(
 	return t.subscribe(ctx, ps)
 }
 
+// Fetch fetches track in namespace from the peer using id as the subscribe ID.
+// It blocks until a response from the peer was received or ctx is cancelled.
 func (t *Transport) Fetch(
 	ctx context.Context,
 	id uint64,
 	namespace []string,
-	name string,
+	track string,
 ) (*RemoteTrack, error) {
 	f := &subscription{
 		ID:        id,
 		Namespace: namespace,
-		Trackname: name,
+		Trackname: track,
 		isFetch:   true,
 		response:  make(chan subscriptionResponse),
 	}
@@ -327,6 +341,9 @@ func (t *Transport) subscribe(
 	}
 }
 
+// Announce announces namespace to the peer. It blocks until a response from the
+// peer was received or ctx is cancelled and returns an error if the
+// announcement was rejected.
 func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	a := &announcement{
 		Namespace:  namespace,
