@@ -53,7 +53,7 @@ func (mr *MockSessionCallbacksMockRecorder) onMessage(arg0 any) *gomock.Call {
 }
 
 // onProtocolViolation mocks base method.
-func (m *MockSessionCallbacks) onProtocolViolation(arg0 ProtocolError) {
+func (m *MockSessionCallbacks) onProtocolViolation(arg0 protocolError) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "onProtocolViolation", arg0)
 }

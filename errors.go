@@ -67,37 +67,37 @@ const (
 	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown = 0x04
 )
 
-type ProtocolError struct {
+type protocolError struct {
 	code    uint64
 	message string
 }
 
-func (e ProtocolError) Error() string {
+func (e protocolError) Error() string {
 	return e.message
 }
 
-func (e ProtocolError) Code() uint64 {
+func (e protocolError) Code() uint64 {
 	return e.code
 }
 
 var (
-	errDuplicateSubscribeID = ProtocolError{
+	errDuplicateSubscribeID = protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate subscribe ID",
 	}
-	errMaxSubscribeIDDecreased = ProtocolError{
+	errMaxSubscribeIDDecreased = protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "max subscribe ID decreased",
 	}
-	errUnknownSubscribeID = ProtocolError{
+	errUnknownSubscribeID = protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unknown subscribe ID",
 	}
-	errDuplicateAnnouncementNamespace = ProtocolError{
+	errDuplicateAnnouncementNamespace = protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate announcement namespace",
 	}
-	errUnknownAnnouncement = ProtocolError{
+	errUnknownAnnouncement = protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unknown announcement",
 	}
