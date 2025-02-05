@@ -143,6 +143,10 @@ func (s *session) subscribe(sub *subscription) error {
 		var tooManySubscribes errMaxSusbcribeIDViolation
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
+			err = ProtocolError{
+				code:    ErrorTooManySubscribes,
+				message: fmt.Sprintf("too many subscribes, max_subscrib_id: %v", tooManySubscribes.maxSubscribeID),
+			}
 			if previous < tooManySubscribes.maxSubscribeID {
 				err = errors.Join(err, s.queueControlMessage(&wire.SubscribesBlocked{
 					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
@@ -379,6 +383,11 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 
 		case *wire.FetchErrorMessage:
 			return s.onFetchError(m)
+
+		case *wire.SubscribesBlocked:
+			s.logger.Info("received subscribes blocked message", "max_subscribe_id", m.MaximumSubscribeID)
+			return nil
+
 		}
 
 		return ProtocolError{
