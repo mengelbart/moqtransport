@@ -94,11 +94,11 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 			w.Reject(0, "date doesn't take announcements")
 		case moqtransport.MethodSubscribe:
 			if !h.publish {
-				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
+				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
 				return
 			}
 			if !tupleEuqal(r.Namespace, h.namespace) || (r.Track != h.trackname) {
-				w.Reject(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
+				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
 				return
 			}
 			err := w.Accept()

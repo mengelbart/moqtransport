@@ -144,7 +144,7 @@ func (s *session) subscribe(sub *subscription) error {
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
 			err = ProtocolError{
-				code:    ErrorTooManySubscribes,
+				code:    ErrorCodeTooManySubscribes,
 				message: fmt.Sprintf("too many subscribes, max_subscrib_id: %v", tooManySubscribes.maxSubscribeID),
 			}
 			if previous < tooManySubscribes.maxSubscribeID {
