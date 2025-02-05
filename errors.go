@@ -1,7 +1,6 @@
 package moqtransport
 
-import "fmt"
-
+// Generic error codes
 const (
 	ErrorCodeNoError                 = 0x00
 	ErrorCodeInternal                = 0x01
@@ -18,6 +17,7 @@ const (
 	ErrorCodeUnsupportedVersion = 0xff01
 )
 
+// Announcement error codes
 const (
 	ErrorCodeAnnouncementInternalError = 0x00
 	ErrorCodeAnnouncementUnauthorized  = 0x01
@@ -26,6 +26,7 @@ const (
 	ErrorCodeAnnouncementUninterested  = 0x04
 )
 
+// Subscribe error codes
 const (
 	ErrorCodeSubscribeInternal          = 0x00
 	ErrorCodeSubscribeUnauthorized      = 0x01
@@ -36,6 +37,7 @@ const (
 	ErrorCodeSubscribeRetryTrackAlias   = 0x06
 )
 
+// Fetch error codes
 const (
 	ErrorCodeFetchInternalError     = 0x00
 	ErrorCodeFetchUnauthorized      = 0x01
@@ -45,6 +47,7 @@ const (
 	ErrorCodeFetchInvalidRange      = 0x05
 )
 
+// Subscribe done error codes
 const (
 	ErrorCodeSubscribeDoneInternalError     = 0x00
 	ErrorCodeSubscribeDoneUnauthorized      = 0x01
@@ -55,6 +58,7 @@ const (
 	ErrorCodeSubscribeDoneTooFarBehind      = 0x06
 )
 
+// Subscribe Announces error codes
 const (
 	ErrorCodeSubscribeAnnouncesInternalError          = 0x00
 	ErrorCodeSubscribeAnnouncesUnauthorized           = 0x01
@@ -62,15 +66,6 @@ const (
 	ErrorCodeSubscribeAnnouncesNotSupported           = 0x03
 	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown = 0x04
 )
-
-type ApplicationError struct {
-	code   uint64
-	mesage string
-}
-
-func (e ApplicationError) Error() string {
-	return fmt.Sprintf("MoQ Application Error %v: %v", e.code, e.mesage)
-}
 
 type ProtocolError struct {
 	code    uint64

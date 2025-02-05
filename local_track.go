@@ -7,6 +7,8 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
+// ErrUnsubscribed is returned from a write operation on a track when the peer
+// unsubscribed from the track.
 var ErrUnsubscribed = errors.New("subscriber unsubscribed")
 
 type localTrack struct {
