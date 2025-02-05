@@ -271,6 +271,10 @@ func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string)
 	}
 }
 
+func (t *Transport) UnsubscribeAnnouncements() {
+	// TODO
+}
+
 func (t *Transport) Subscribe(
 	ctx context.Context,
 	id, alias uint64,
@@ -338,6 +342,22 @@ func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	case res := <-a.response:
 		return res.err
 	}
+}
+
+func (t *Transport) AnnounceCancel() {
+	// TODO
+}
+
+func (t *Transport) Unannounce() {
+	// TODO
+}
+
+func (t *Transport) RequestTrackStatus() {
+	// TODO
+}
+
+func (t *Transport) GoAway() {
+	// TODO
 }
 
 func (t *Transport) acceptAnnouncement(ns []string) error {
