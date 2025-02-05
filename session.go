@@ -12,7 +12,7 @@ import (
 
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
-	onProtocolViolation(ProtocolError)
+	onProtocolViolation(protocolError)
 	onMessage(*Message)
 }
 
@@ -143,7 +143,7 @@ func (s *session) subscribe(sub *subscription) error {
 		var tooManySubscribes errMaxSusbcribeIDViolation
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
-			err = ProtocolError{
+			err = protocolError{
 				code:    ErrorCodeTooManySubscribes,
 				message: fmt.Sprintf("too many subscribes, max_subscrib_id: %v", tooManySubscribes.maxSubscribeID),
 			}
@@ -390,7 +390,7 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 
 		}
 
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unexpected message type",
 		}
@@ -402,7 +402,7 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 	case *wire.ServerSetupMessage:
 		return s.serverSetup(m)
 	}
-	return ProtocolError{
+	return protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unexpected message type before setup",
 	}
@@ -410,7 +410,7 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 
 func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 	if !s.isServer {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "client received client setup message",
 		}
@@ -423,7 +423,7 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 		}
 	}
 	if selectedVersion == -1 {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeUnsupportedVersion,
 			message: "incompatible versions",
 		}
@@ -470,14 +470,14 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 
 func (s *session) serverSetup(m *wire.ServerSetupMessage) (err error) {
 	if s.isServer {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "server received server setup message",
 		}
 	}
 
 	if !slices.Contains(wire.SupportedVersions, m.SelectedVersion) {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeUnsupportedVersion,
 			message: "incompatible versions",
 		}
@@ -532,7 +532,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 
 func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
-		err := ProtocolError{
+		err := protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}
@@ -562,7 +562,7 @@ func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	}
 	select {
 	case sub.response <- subscriptionResponse{
-		err: ProtocolError{
+		err: protocolError{
 			code:    msg.ErrorCode,
 			message: msg.ReasonPhrase,
 		},
@@ -576,7 +576,7 @@ func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 
 func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 	if len(msg.TrackNamespace) > 32 {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "namespace tuple with more than 32 items",
 		}
@@ -586,7 +586,7 @@ func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
 		parameters: msg.Parameters,
 	}
 	if err := s.incomingAnnouncements.add(a); err != nil {
-		pv := &ProtocolError{}
+		pv := &protocolError{}
 		if errors.As(err, pv) {
 			s.callbacks.onProtocolViolation(*pv)
 		}
@@ -622,7 +622,7 @@ func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 	}
 	select {
 	case announcement.response <- announcementResponse{
-		err: ProtocolError{
+		err: protocolError{
 			code:    msg.ErrorCode,
 			message: msg.ReasonPhrase,
 		},
@@ -729,7 +729,7 @@ func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
 	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
 	if !ok {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe_announces prefix",
 		}
@@ -747,14 +747,14 @@ func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 func (s *session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
 	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
 	if !ok {
-		return ProtocolError{
+		return protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe_announces prefix",
 		}
 	}
 	select {
 	case as.response <- announcementSubscriptionResponse{
-		err: ProtocolError{
+		err: protocolError{
 			code:    msg.ErrorCode,
 			message: msg.ReasonPhrase,
 		},
@@ -802,7 +802,7 @@ func (s *session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 
 func (s *session) onFetchOk(msg *wire.FetchOkMessage) error {
 	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
-		err := ProtocolError{
+		err := protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}
@@ -832,7 +832,7 @@ func (s *session) onFetchError(msg *wire.FetchErrorMessage) error {
 	}
 	select {
 	case f.response <- subscriptionResponse{
-		err: ProtocolError{
+		err: protocolError{
 			code:    msg.ErrorCode,
 			message: msg.ReasonPhrase,
 		},
@@ -849,14 +849,14 @@ func (s *session) onFetchError(msg *wire.FetchErrorMessage) error {
 func validateRoleParameter(setupParameters wire.Parameters) (Role, error) {
 	remoteRoleParam, ok := setupParameters[wire.RoleParameterKey]
 	if !ok {
-		return 0, ProtocolError{
+		return 0, protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "missing role parameter",
 		}
 	}
 	remoteRoleParamValue, ok := remoteRoleParam.(wire.VarintParameter)
 	if !ok {
-		return 0, ProtocolError{
+		return 0, protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "invalid role parameter type",
 		}
@@ -865,7 +865,7 @@ func validateRoleParameter(setupParameters wire.Parameters) (Role, error) {
 	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
 		return wire.Role(remoteRoleParamValue.Value), nil
 	}
-	return 0, ProtocolError{
+	return 0, protocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: fmt.Sprintf("invalid role parameter value: %v", remoteRoleParamValue.Value),
 	}
@@ -877,20 +877,20 @@ func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool)
 		if !protocolIsQUIC {
 			return "", nil
 		}
-		return "", ProtocolError{
+		return "", protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "missing path parameter",
 		}
 	}
 	if !protocolIsQUIC {
-		return "", ProtocolError{
+		return "", protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "path parameter is not allowed on non-QUIC connections",
 		}
 	}
 	pathParamValue, ok := pathParam.(wire.StringParameter)
 	if !ok {
-		return "", ProtocolError{
+		return "", protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "invalid path parameter type",
 		}
@@ -905,7 +905,7 @@ func validateMaxSubscribeIDParameter(setupParameters wire.Parameters) (uint64, e
 	}
 	maxSubscribeIDParamValue, ok := maxSubscribeIDParam.(wire.VarintParameter)
 	if !ok {
-		return 0, ProtocolError{
+		return 0, protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "invalid max subscribe ID parameter type",
 		}
@@ -920,7 +920,7 @@ func validateAuthParameter(subscribeParameters wire.Parameters) (string, error) 
 	}
 	authParamValue, ok := authParam.(wire.StringParameter)
 	if !ok {
-		return "", ProtocolError{
+		return "", protocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "invalid auth parameter type",
 		}
