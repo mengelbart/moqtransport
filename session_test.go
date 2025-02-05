@@ -308,11 +308,11 @@ func TestSession(t *testing.T) {
 				ReasonPhrase:  "",
 			},
 		).DoAndReturn(func(m *Message) {
-			assert.NoError(t, s.rejectSubscription(m.SubscribeID, SubscribeErrorTrackDoesNotExist, "track not found"))
+			assert.NoError(t, s.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 		})
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
 			SubscribeID:  0,
-			ErrorCode:    SubscribeErrorTrackDoesNotExist,
+			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
 			ReasonPhrase: "track not found",
 			TrackAlias:   0,
 		})

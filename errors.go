@@ -9,36 +9,58 @@ const (
 	ErrorCodeProtocolViolation       = 0x03
 	ErrorCodeDuplicateTrackAlias     = 0x04
 	ErrorCodeParameterLengthMismatch = 0x05
-	ErrorTooManySubscribes           = 0x06
+	ErrorCodeTooManySubscribes       = 0x06
 	ErrorCodeGoAwayTimeout           = 0x10
+	ErrorCodeControlMessageTimeout   = 0x11
+	ErrorCodeDataStreamTimeout       = 0x12
 
 	// Errors not included in current draft
 	ErrorCodeUnsupportedVersion = 0xff01
 )
 
 const (
-	SubscribeErrorInternal          = 0x00
-	SubscribeErrorInvalidRange      = 0x01
-	SubscribeErrorRetryTrackAlias   = 0x02
-	SubscribeErrorTrackDoesNotExist = 0x03
-	SubscribeErrorUnauthorized      = 0x04
-	SubscribeErrorTimeout           = 0x05
-	SubscribeErrorUnhandled         = 0x06
-	SubscribeErrorUnknownID         = 0x07
+	ErrorCodeAnnouncementInternalError = 0x00
+	ErrorCodeAnnouncementUnauthorized  = 0x01
+	ErrorCodeAnnouncementTimeout       = 0x02
+	ErrorCodeAnnouncementNotSupported  = 0x03
+	ErrorCodeAnnouncementUninterested  = 0x04
 )
 
 const (
-	AnnouncementRejected  = 0x01
-	AnnouncementUnhandled = 0x02
+	ErrorCodeSubscribeInternal          = 0x00
+	ErrorCodeSubscribeUnauthorized      = 0x01
+	ErrorCodeSubscribeTimeout           = 0x02
+	ErrorCodeSubscribeNotSupported      = 0x03
+	ErrorCodeSubscribeTrackDoesNotExist = 0x04
+	ErrorCodeSubscribeInvalidRange      = 0x05
+	ErrorCodeSubscribeRetryTrackAlias   = 0x06
 )
 
 const (
-	SubscribeDoneUnsubscribed  = 0x00
-	SubscribeDoneInternalError = 0x01
-	SubscribeDoneUnauthorized  = 0x02
-	SubscribeDoneTrackEnded    = 0x03
-	SubscribeDoneGoingAway     = 0x04
-	SubscribeDoneExpired       = 0x05
+	ErrorCodeFetchInternalError     = 0x00
+	ErrorCodeFetchUnauthorized      = 0x01
+	ErrorCodeFetchTimeout           = 0x02
+	ErrorCodeFetchNotSupported      = 0x03
+	ErrorCodeFetchTrackDoesNotExist = 0x04
+	ErrorCodeFetchInvalidRange      = 0x05
+)
+
+const (
+	ErrorCodeSubscribeDoneInternalError     = 0x00
+	ErrorCodeSubscribeDoneUnauthorized      = 0x01
+	ErrorCodeSubscribeDoneTrackEnded        = 0x02
+	ErrorCodeSubscribeDoneSubscriptionEnded = 0x03
+	ErrorCodeSubscribeDoneGoingAway         = 0x04
+	ErrorCodeSubscribeDoneExpired           = 0x05
+	ErrorCodeSubscribeDoneTooFarBehind      = 0x06
+)
+
+const (
+	ErrorCodeSubscribeAnnouncesInternalError          = 0x00
+	ErrorCodeSubscribeAnnouncesUnauthorized           = 0x01
+	ErrorCodeSubscribeAnnouncesTimeout                = 0x02
+	ErrorCodeSubscribeAnnouncesNotSupported           = 0x03
+	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown = 0x04
 )
 
 type ApplicationError struct {
@@ -73,7 +95,7 @@ var (
 		message: "max subscribe ID decreased",
 	}
 	errUnknownSubscribeID = ProtocolError{
-		code:    SubscribeErrorUnknownID,
+		code:    ErrorCodeProtocolViolation,
 		message: "unknown subscribe ID",
 	}
 	errDuplicateAnnouncementNamespace = ProtocolError{
