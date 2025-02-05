@@ -3,7 +3,6 @@ package wire
 import (
 	"fmt"
 	"io"
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,10 +15,8 @@ type mockReader struct {
 
 func (r *mockReader) Read(p []byte) (int, error) {
 	if r.index == len(r.reads) {
-		log.Printf("mock reader EOF")
 		return 0, io.EOF
 	}
-	log.Printf("mock reader reading: %v", r.reads[r.index])
 	n := copy(p, r.reads[r.index])
 	r.index += 1
 	return n, nil
