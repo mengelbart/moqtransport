@@ -205,16 +205,8 @@ func (t *Transport) handleUniStream(stream ReceiveStream) {
 		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
 		return
 	}
-	switch parser.Typ {
-	case wire.StreamTypeFetch:
-	case wire.StreamTypeSubgroup:
-		if err := t.readSubgroupStream(parser); err != nil {
-			stream.Stop(0) // TODO: Set correct error and possibly destroy session?
-			return
-		}
-	default:
+	if err := t.readSubgroupStream(parser); err != nil {
 		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
-		return
 	}
 }
 
@@ -223,23 +215,11 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 	if err != nil {
 		return err
 	}
-
 	subscription, ok := t.session.remoteTrackBySubscribeID(sid)
 	if !ok {
 		return errUnknownSubscribeID
 	}
-
-	for m, err := range parser.Messages() {
-		if err != nil {
-			return err
-		}
-		subscription.push(&Object{
-			GroupID:    m.GroupID,
-			SubGroupID: m.SubgroupID,
-			ObjectID:   m.ObjectID,
-		})
-	}
-	return nil
+	return subscription.readStream(parser)
 }
 
 func (t *Transport) readDatagrams() {
