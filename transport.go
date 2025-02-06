@@ -12,8 +12,6 @@ import (
 )
 
 var (
-	errSetupFailed = errors.New("setup not done after first message exchange")
-
 	// ErrControlMessageQueueOverflow is returned if a control message cannot be
 	// send due to queue overflow.
 	ErrControlMessageQueueOverflow = errors.New("control message overflow, message not queued")
@@ -50,6 +48,7 @@ type transportConfig struct {
 	sessionOptions          []sessionOption
 	newSession              sessionFactory
 	newControlMessageParser controlMessageParserFactory
+	datagramsDisabled       bool
 }
 
 // A TransportOption sets a configuration parameter of a Transport.
@@ -71,6 +70,12 @@ func Path(p string) TransportOption {
 	}
 }
 
+func DisabledDatagrams() TransportOption {
+	return func(tc *transportConfig) {
+		tc.datagramsDisabled = true
+	}
+}
+
 func setSessionFactory(f sessionFactory) TransportOption {
 	return func(tc *transportConfig) {
 		tc.newSession = f
@@ -85,9 +90,12 @@ func setControlMessageParserFactory(f controlMessageParserFactory) TransportOpti
 
 // A Transport is an endpoint of a MoQ Transport session.
 type Transport struct {
-	ctx       context.Context
-	cancelCtx context.CancelCauseFunc
-	wg        sync.WaitGroup
+	ctx           context.Context
+	cancelCtx     context.CancelCauseFunc
+	wg            sync.WaitGroup
+	initLock      sync.Mutex
+	handshakeDone chan struct{}
+	destroyOnce   sync.Once
 
 	logger *slog.Logger
 
@@ -131,38 +139,43 @@ func newTransportWithSession(
 	session sessionI,
 	tc *transportConfig,
 ) (*Transport, error) {
-	var ctrlStream Stream
-	var err error
-	if conn.Perspective() == PerspectiveServer {
-		ctrlStream, err = conn.AcceptStream(context.Background())
-		if err != nil {
-			return nil, err
-		}
-	}
-	dir := "server"
-	if conn.Perspective() == PerspectiveClient {
-		dir = "client"
-		ctrlStream, err = conn.OpenStreamSync(context.Background())
-		if err != nil {
-			return nil, err
-		}
-	}
 	ctx, cancelCtx := context.WithCancelCause(context.Background())
 	t := &Transport{
 		ctx:              ctx,
 		cancelCtx:        cancelCtx,
-		logger:           defaultLogger.With("dir", dir),
+		wg:               sync.WaitGroup{},
+		initLock:         sync.Mutex{},
+		handshakeDone:    make(chan struct{}),
+		logger:           defaultLogger.With("perspective", conn.Perspective()),
 		conn:             conn,
-		controlStream:    ctrlStream,
+		controlStream:    nil,
 		ctrlMsgSendQueue: make(chan wire.ControlMessage, 100),
 		session:          session,
 		callbacks:        tc.callbacks,
 	}
 	tc.callbacks.t = t
+	go t.init(tc)
+	return t, nil
+}
 
-	if conn.Perspective() == PerspectiveClient {
-		if err = session.sendClientSetup(); err != nil {
-			return nil, err
+func (t *Transport) init(tc *transportConfig) {
+	var err error
+	if t.conn.Perspective() == PerspectiveServer {
+		t.controlStream, err = t.conn.AcceptStream(t.ctx)
+		if err != nil {
+			t.destroy(err)
+			return
+		}
+	}
+	if t.conn.Perspective() == PerspectiveClient {
+		t.controlStream, err = t.conn.OpenStreamSync(t.ctx)
+		if err != nil {
+			t.destroy(err)
+			return
+		}
+		if err = t.session.sendClientSetup(); err != nil {
+			t.destroy(err)
+			return
 		}
 	}
 
@@ -175,14 +188,19 @@ func newTransportWithSession(
 	parser := tc.newControlMessageParser(t.controlStream)
 	msg, err := parser.Parse()
 	if err != nil {
-		return nil, err
+		t.destroy(err)
+		return
 	}
 	if err = t.recvCtrlMsg(msg); err != nil {
-		return nil, err
+		t.destroy(err)
+		return
 	}
 	if !t.session.getSetupDone() {
-		return nil, errSetupFailed
+		t.destroy(err)
+		t.logger.Info("setup not done after handshake, closing")
+		return
 	}
+	close(t.handshakeDone)
 
 	t.wg.Add(3)
 	go func() {
@@ -195,25 +213,39 @@ func newTransportWithSession(
 	}()
 	go func() {
 		defer t.wg.Done()
-		t.readDatagrams()
+		if !tc.datagramsDisabled {
+			t.readDatagrams()
+		}
 	}()
-
-	return t, nil
 }
 
 func (t *Transport) Close() error {
-	t.destroy(nil)
 	defer t.wg.Wait()
-	return t.controlStream.Close()
+	t.destroy(nil)
+	return nil
 }
 
 // TODO: Propagate error to application so it can close the connection
 func (t *Transport) destroy(err error) {
-	t.cancelCtx(err)
+	t.destroyOnce.Do(func() {
+		t.logger.Info("destroying transport", "error", err)
+		t.cancelCtx(err)
+		var pe ProtocolError
+		var code uint64
+		var reason string
+		if errors.As(err, &pe) {
+			code = pe.code
+			reason = pe.message
+		}
+		err = t.conn.CloseWithError(code, reason)
+		if err != nil {
+			t.logger.Info("error on connection close", "error", err)
+		}
+	})
 }
 
 func (t *Transport) recvCtrlMsg(msg wire.ControlMessage) error {
-	t.logControlMessage(msg, false)
+	t.logger.Info("received message", "type", msg.Type().String(), "msg", msg)
 	return t.session.onControlMessage(msg)
 }
 
@@ -234,7 +266,7 @@ func (t *Transport) sendCtrlMsgs() {
 		case <-t.ctx.Done():
 			return
 		case msg := <-t.ctrlMsgSendQueue:
-			t.logControlMessage(msg, true)
+			t.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
 			_, err := t.controlStream.Write(compileMessage(msg))
 			if err != nil {
 				t.destroy(err)
@@ -325,6 +357,10 @@ func (t *Transport) readDatagrams() {
 // peer was received or ctx is cancelled and returns an error if the
 // announcement was rejected.
 func (t *Transport) Announce(ctx context.Context, namespace []string) error {
+	select {
+	case <-ctx.Done():
+	case <-t.handshakeDone:
+	}
 	a := &announcement{
 		Namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
