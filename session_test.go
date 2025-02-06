@@ -196,7 +196,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		err = s.subscribe(&subscription{
 			ID:            0,
 			TrackAlias:    0,
@@ -217,7 +217,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		s.outgoingSubscriptions.maxSubscribeID = 1
 		mcb.EXPECT().queueControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        0,
@@ -253,7 +253,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		mcb.EXPECT().onMessage(
 			&Message{
 				Method:        MessageSubscribe,
@@ -297,7 +297,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		mcb.EXPECT().onMessage(
 			&Message{
 				Method:        MessageSubscribe,
@@ -338,7 +338,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		mcb.EXPECT().queueControlMessage(&wire.AnnounceMessage{
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
@@ -346,7 +346,7 @@ func TestSession(t *testing.T) {
 		err = s.announce(&announcement{
 			Namespace:  []string{"namespace"},
 			parameters: map[uint64]wire.Parameter{},
-			response:   make(chan announcementResponse),
+			response:   make(chan error),
 		})
 		assert.NoError(t, err)
 	})
@@ -356,7 +356,7 @@ func TestSession(t *testing.T) {
 		mcb := NewMockSessionCallbacks(ctrl)
 		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
-		s.setupDone = true
+		s.setupDone.Store(true)
 		mcb.EXPECT().onMessage(&Message{
 			Method:    MessageAnnounce,
 			Namespace: []string{"namespace"},

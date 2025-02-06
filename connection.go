@@ -14,14 +14,36 @@ const (
 	ProtocolWebTransport
 )
 
+func (p Protocol) String() string {
+	switch p {
+	case ProtocolQUIC:
+		return "quic"
+	case ProtocolWebTransport:
+		return "webtransport"
+	default:
+		return "invalid protocol"
+	}
+}
+
 // Perspective indicates whether the connection is a client or a server
 type Perspective int
 
 // The perspectives
 const (
-	PerspectiveServer = iota
+	PerspectiveServer Perspective = iota
 	PerspectiveClient
 )
+
+func (p Perspective) String() string {
+	switch p {
+	case PerspectiveServer:
+		return "server"
+	case PerspectiveClient:
+		return "client"
+	default:
+		return "invalid perspective"
+	}
+}
 
 // A Stream is the interface implemented by bidirectional streams.
 type Stream interface {

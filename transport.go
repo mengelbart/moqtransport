@@ -3,7 +3,9 @@ package moqtransport
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"sync"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -17,9 +19,37 @@ var (
 	ErrControlMessageQueueOverflow = errors.New("control message overflow, message not queued")
 )
 
+type sessionI interface {
+	getPath() string
+	getSetupDone() bool
+	onControlMessage(wire.ControlMessage) error
+	remoteTrackBySubscribeID(uint64) (*RemoteTrack, bool)
+	remoteTrackByTrackAlias(uint64) (*RemoteTrack, bool)
+	announce(*announcement) error
+	subscribeAnnounces(*announcementSubscription) error
+	subscribe(*subscription) error
+	acceptAnnouncement([]string) error
+	rejectAnnouncement([]string, uint64, string) error
+	acceptAnnouncementSubscription(announcementSubscription) error
+	rejectAnnouncementSubscription(announcementSubscription, uint64, string) error
+	acceptSubscription(uint64, *localTrack) error
+	rejectSubscription(uint64, uint64, string) error
+	sendClientSetup() error
+}
+
+type sessionFactory func(sessionCallbacks, Perspective, Protocol, ...sessionOption) (sessionI, error)
+
+type controlMessageParserI interface {
+	Parse() (wire.ControlMessage, error)
+}
+
+type controlMessageParserFactory func(io.Reader) controlMessageParserI
+
 type transportConfig struct {
-	callbacks      *callbacks
-	sessionOptions []sessionOption
+	callbacks               *callbacks
+	sessionOptions          []sessionOption
+	newSession              sessionFactory
+	newControlMessageParser controlMessageParserFactory
 }
 
 // A TransportOption sets a configuration parameter of a Transport.
@@ -41,10 +71,23 @@ func Path(p string) TransportOption {
 	}
 }
 
+func setSessionFactory(f sessionFactory) TransportOption {
+	return func(tc *transportConfig) {
+		tc.newSession = f
+	}
+}
+
+func setControlMessageParserFactory(f controlMessageParserFactory) TransportOption {
+	return func(tc *transportConfig) {
+		tc.newControlMessageParser = f
+	}
+}
+
 // A Transport is an endpoint of a MoQ Transport session.
 type Transport struct {
 	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
+	wg        sync.WaitGroup
 
 	logger *slog.Logger
 
@@ -53,7 +96,7 @@ type Transport struct {
 
 	ctrlMsgSendQueue chan wire.ControlMessage
 
-	session *session
+	session sessionI
 
 	callbacks *callbacks
 }
@@ -64,12 +107,19 @@ func NewTransport(
 ) (*Transport, error) {
 	cb := &callbacks{}
 	tc := &transportConfig{
-		callbacks: cb,
+		callbacks:      cb,
+		sessionOptions: []sessionOption{},
+		newSession: func(sc sessionCallbacks, p1 Perspective, p2 Protocol, so ...sessionOption) (sessionI, error) {
+			return newSession(sc, p1, p2, so...)
+		},
+		newControlMessageParser: func(r io.Reader) controlMessageParserI {
+			return wire.NewControlMessageParser(r)
+		},
 	}
 	for _, opt := range opts {
 		opt(tc)
 	}
-	session, err := newSession(cb, conn.Perspective(), conn.Protocol())
+	session, err := tc.newSession(cb, conn.Perspective(), conn.Protocol(), tc.sessionOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +128,7 @@ func NewTransport(
 
 func newTransportWithSession(
 	conn Connection,
-	session *session,
+	session sessionI,
 	tc *transportConfig,
 ) (*Transport, error) {
 	var ctrlStream Stream
@@ -110,14 +160,19 @@ func newTransportWithSession(
 	}
 	tc.callbacks.t = t
 
-	if conn.Perspective() == PerspectiveServer {
+	if conn.Perspective() == PerspectiveClient {
 		if err = session.sendClientSetup(); err != nil {
 			return nil, err
 		}
 	}
-	go t.sendCtrlMsgs()
 
-	parser := wire.NewControlMessageParser(t.controlStream)
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
+		t.sendCtrlMsgs()
+	}()
+
+	parser := tc.newControlMessageParser(t.controlStream)
 	msg, err := parser.Parse()
 	if err != nil {
 		return nil, err
@@ -125,15 +180,31 @@ func newTransportWithSession(
 	if err = t.recvCtrlMsg(msg); err != nil {
 		return nil, err
 	}
-	if !t.session.setupDone {
+	if !t.session.getSetupDone() {
 		return nil, errSetupFailed
 	}
 
-	go t.readControlStream(parser)
-	go t.readStreams()
-	go t.readDatagrams()
+	t.wg.Add(3)
+	go func() {
+		defer t.wg.Done()
+		t.readControlStream(parser)
+	}()
+	go func() {
+		defer t.wg.Done()
+		t.readStreams()
+	}()
+	go func() {
+		defer t.wg.Done()
+		t.readDatagrams()
+	}()
 
 	return t, nil
+}
+
+func (t *Transport) Close() error {
+	t.destroy(nil)
+	defer t.wg.Wait()
+	return t.controlStream.Close()
 }
 
 // TODO: Propagate error to application so it can close the connection
@@ -158,16 +229,22 @@ func (t *Transport) queueCtrlMessage(msg wire.ControlMessage) error {
 }
 
 func (t *Transport) sendCtrlMsgs() {
-	for msg := range t.ctrlMsgSendQueue {
-		t.logControlMessage(msg, true)
-		_, err := t.controlStream.Write(compileMessage(msg))
-		if err != nil {
-			t.destroy(err)
+	for {
+		select {
+		case <-t.ctx.Done():
+			return
+		case msg := <-t.ctrlMsgSendQueue:
+			t.logControlMessage(msg, true)
+			_, err := t.controlStream.Write(compileMessage(msg))
+			if err != nil {
+				t.destroy(err)
+				return
+			}
 		}
 	}
 }
 
-func (t *Transport) readControlStream(parser *wire.ControlMessageParser) {
+func (t *Transport) readControlStream(parser controlMessageParserI) {
 	for {
 		msg, err := parser.Parse()
 		if err != nil {
@@ -208,11 +285,11 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 	if err != nil {
 		return err
 	}
-	subscription, ok := t.session.remoteTrackBySubscribeID(sid)
+	rt, ok := t.session.remoteTrackBySubscribeID(sid)
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return subscription.readStream(parser)
+	return rt.readStream(parser)
 }
 
 func (t *Transport) readDatagrams() {
@@ -251,7 +328,7 @@ func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	a := &announcement{
 		Namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
-		response:   make(chan announcementResponse, 1),
+		response:   make(chan error, 1),
 	}
 	if err := t.session.announce(a); err != nil {
 		return err
@@ -260,7 +337,7 @@ func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case res := <-a.response:
-		return res.err
+		return res
 	}
 }
 
@@ -293,7 +370,7 @@ func (t *Transport) GoAway() {
 // Path returns the path of the MoQ session which was exchanged during the
 // handshake when using QUIC.
 func (t *Transport) Path() string {
-	return t.session.path
+	return t.session.getPath()
 }
 
 func (t *Transport) RequestTrackStatus() {

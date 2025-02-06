@@ -158,6 +158,34 @@ func (mr *MockConnectionMockRecorder) OpenUniStreamSync(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OpenUniStreamSync", reflect.TypeOf((*MockConnection)(nil).OpenUniStreamSync), arg0)
 }
 
+// Perspective mocks base method.
+func (m *MockConnection) Perspective() Perspective {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Perspective")
+	ret0, _ := ret[0].(Perspective)
+	return ret0
+}
+
+// Perspective indicates an expected call of Perspective.
+func (mr *MockConnectionMockRecorder) Perspective() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Perspective", reflect.TypeOf((*MockConnection)(nil).Perspective))
+}
+
+// Protocol mocks base method.
+func (m *MockConnection) Protocol() Protocol {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Protocol")
+	ret0, _ := ret[0].(Protocol)
+	return ret0
+}
+
+// Protocol indicates an expected call of Protocol.
+func (mr *MockConnectionMockRecorder) Protocol() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Protocol", reflect.TypeOf((*MockConnection)(nil).Protocol))
+}
+
 // ReceiveDatagram mocks base method.
 func (m *MockConnection) ReceiveDatagram(arg0 context.Context) ([]byte, error) {
 	m.ctrl.T.Helper()
