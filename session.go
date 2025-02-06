@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"sync"
 	"sync/atomic"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -22,9 +23,11 @@ type session struct {
 	perspective Perspective
 	protocol    Protocol
 	version     wire.Version
-	setupDone   bool
+	setupDone   atomic.Bool
 
-	path       string
+	pathLock sync.Mutex
+	path     string
+
 	localRole  Role
 	remoteRole Role
 
@@ -46,6 +49,8 @@ type sessionOption func(*session) error
 
 func pathParameterOption(path string) sessionOption {
 	return func(s *session) error {
+		s.pathLock.Lock()
+		defer s.pathLock.Unlock()
 		s.path = path
 		return nil
 	}
@@ -71,11 +76,14 @@ func newSession(callbacks sessionCallbacks, perspective Perspective, proto Proto
 		perspective:                              perspective,
 		protocol:                                 proto,
 		version:                                  0,
-		setupDone:                                false,
+		setupDone:                                atomic.Bool{},
+		pathLock:                                 sync.Mutex{},
 		path:                                     "",
 		localRole:                                RolePubSub,
 		remoteRole:                               0,
 		callbacks:                                callbacks,
+		highestSubscribesBlocked:                 atomic.Uint64{},
+		pendingIncomingAnnouncementSubscriptions: &announcementSubscriptionMap{},
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		outgoingSubscriptions:                    newSubscriptionMap(0),
 		incomingSubscriptions:                    newSubscriptionMap(100),
@@ -90,6 +98,16 @@ func newSession(callbacks sessionCallbacks, perspective Perspective, proto Proto
 	return s, nil
 }
 
+func (s *session) getSetupDone() bool {
+	return s.setupDone.Load()
+}
+
+func (s *session) getPath() string {
+	s.pathLock.Lock()
+	defer s.pathLock.Unlock()
+	return s.path
+}
+
 func (s *session) sendClientSetup() error {
 	params := map[uint64]wire.Parameter{
 		wire.RoleParameterKey: wire.VarintParameter{
@@ -102,9 +120,12 @@ func (s *session) sendClientSetup() error {
 		},
 	}
 	if s.protocol == ProtocolQUIC {
+		s.pathLock.Lock()
+		path := s.path
+		s.pathLock.Unlock()
 		params[wire.PathParameterKey] = wire.StringParameter{
 			Type:  wire.PathParameterKey,
-			Value: s.path,
+			Value: path,
 		}
 	}
 	if err := s.queueControlMessage(&wire.ClientSetupMessage{
@@ -334,7 +355,7 @@ func (s *session) rejectAnnouncementSubscription(as announcementSubscription, co
 // Remote API for handling incoming control messages
 
 func (s *session) onControlMessage(msg wire.ControlMessage) error {
-	if s.setupDone {
+	if s.setupDone.Load() {
 		switch m := msg.(type) {
 
 		case *wire.SubscribeUpdateMessage:
@@ -456,10 +477,13 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 		return err
 	}
 
-	s.path, err = validatePathParameter(m.SetupParameters, s.protocol == ProtocolQUIC)
+	path, err := validatePathParameter(m.SetupParameters, s.protocol == ProtocolQUIC)
 	if err != nil {
 		return err
 	}
+	s.pathLock.Lock()
+	s.path = path
+	s.pathLock.Unlock()
 
 	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
 	if err != nil {
@@ -486,7 +510,7 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 	}); err != nil {
 		return err
 	}
-	s.setupDone = true
+	s.setupDone.Store(true)
 	return nil
 }
 
@@ -517,7 +541,7 @@ func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 		return err
 	}
 
-	s.setupDone = true
+	s.setupDone.Store(true)
 	return nil
 }
 
@@ -629,9 +653,7 @@ func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 		return errUnknownAnnouncement
 	}
 	select {
-	case announcement.response <- announcementResponse{
-		err: nil,
-	}:
+	case announcement.response <- nil:
 	default:
 		s.logger.Info("dopping unhandled AnnouncemeOk response")
 	}
@@ -644,11 +666,9 @@ func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 		return errUnknownAnnouncement
 	}
 	select {
-	case announcement.response <- announcementResponse{
-		err: ProtocolError{
-			code:    msg.ErrorCode,
-			message: msg.ReasonPhrase,
-		},
+	case announcement.response <- ProtocolError{
+		code:    msg.ErrorCode,
+		message: msg.ReasonPhrase,
 	}:
 	default:
 		s.logger.Info("dropping unhandled AnnounceError response")
