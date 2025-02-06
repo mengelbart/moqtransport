@@ -49,3 +49,8 @@ func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
 	buf = o.AppendSubgroup(buf)
 	return s.stream.Write(buf)
 }
+
+// Close closes the subgroup.
+func (s *Subgroup) Close() error {
+	return s.stream.Close()
+}
