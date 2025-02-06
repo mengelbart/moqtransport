@@ -10,8 +10,11 @@ import (
 )
 
 var (
-	errSetupFailed                 = errors.New("setup not done after first message exchange")
-	errControlMessageQueueOverflow = errors.New("control message if full, message not queued")
+	errSetupFailed = errors.New("setup not done after first message exchange")
+
+	// ErrControlMessageQueueOverflow is returned if a control message cannot be
+	// send due to queue overflow.
+	ErrControlMessageQueueOverflow = errors.New("control message overflow, message not queued")
 )
 
 type transportConfig struct {
@@ -150,6 +153,7 @@ func newTransportWithSession(
 	return t, nil
 }
 
+// TODO: Propagate error to application so it can close the connection
 func (t *Transport) destroy(err error) {
 	t.cancelCtx(err)
 }
@@ -166,7 +170,7 @@ func (t *Transport) queueCtrlMessage(msg wire.ControlMessage) error {
 	case t.ctrlMsgSendQueue <- msg:
 		return nil
 	default:
-		return errControlMessageQueueOverflow
+		return ErrControlMessageQueueOverflow
 	}
 }
 
@@ -257,57 +261,6 @@ func (t *Transport) readDatagrams() {
 
 // Local API
 
-// Path returns the path of the MoQ session which was exchanged during the
-// handshake when using QUIC.
-func (t *Transport) Path() string {
-	return t.session.path
-}
-
-// SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
-// It blocks until a response from the peer is received or ctx is cancelled.
-func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
-	as := &announcementSubscription{
-		namespace: prefix,
-		response:  make(chan announcementSubscriptionResponse, 1),
-	}
-	if err := t.session.subscribeAnnounces(as); err != nil {
-		return err
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case resp := <-as.response:
-		return resp.err
-	}
-}
-
-func (t *Transport) UnsubscribeAnnouncements() {
-	// TODO
-}
-
-// Subscribe subscribes to track in namespace using id as the subscribe ID. It
-// blocks until a response from the peer was received or ctx is cancelled.
-func (t *Transport) Subscribe(
-	ctx context.Context,
-	id, alias uint64,
-	namespace []string,
-	name string,
-	auth string,
-) (*RemoteTrack, error) {
-	ps := &subscription{
-		ID:            id,
-		TrackAlias:    alias,
-		Namespace:     namespace,
-		Trackname:     name,
-		Authorization: auth,
-		Expires:       0,
-		GroupOrder:    0,
-		ContentExists: false,
-		response:      make(chan subscriptionResponse, 1),
-	}
-	return t.subscribe(ctx, ps)
-}
-
 // Announce announces namespace to the peer. It blocks until a response from the
 // peer was received or ctx is cancelled and returns an error if the
 // announcement was rejected.
@@ -350,15 +303,66 @@ func (t *Transport) Fetch(
 	return t.subscribe(ctx, f)
 }
 
-func (t *Transport) Unannounce() {
+func (t *Transport) GoAway() {
 	// TODO
+}
+
+// Path returns the path of the MoQ session which was exchanged during the
+// handshake when using QUIC.
+func (t *Transport) Path() string {
+	return t.session.path
 }
 
 func (t *Transport) RequestTrackStatus() {
 	// TODO
 }
 
-func (t *Transport) GoAway() {
+// Subscribe subscribes to track in namespace using id as the subscribe ID. It
+// blocks until a response from the peer was received or ctx is cancelled.
+func (t *Transport) Subscribe(
+	ctx context.Context,
+	id, alias uint64,
+	namespace []string,
+	name string,
+	auth string,
+) (*RemoteTrack, error) {
+	ps := &subscription{
+		ID:            id,
+		TrackAlias:    alias,
+		Namespace:     namespace,
+		Trackname:     name,
+		Authorization: auth,
+		Expires:       0,
+		GroupOrder:    0,
+		ContentExists: false,
+		response:      make(chan subscriptionResponse, 1),
+	}
+	return t.subscribe(ctx, ps)
+}
+
+// SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
+// It blocks until a response from the peer is received or ctx is cancelled.
+func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
+	as := &announcementSubscription{
+		namespace: prefix,
+		response:  make(chan announcementSubscriptionResponse, 1),
+	}
+	if err := t.session.subscribeAnnounces(as); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case resp := <-as.response:
+		return resp.err
+	}
+}
+
+func (t *Transport) Unannounce() {
+	// TODO
+}
+
+func (t *Transport) UnsubscribeAnnouncements() {
 	// TODO
 }
 
