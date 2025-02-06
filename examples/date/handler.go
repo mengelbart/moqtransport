@@ -70,7 +70,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		h.handle(webtransportmoq.New(session))
+		h.handle(webtransportmoq.NewServer(session))
 	})
 	for {
 		conn, err := listener.Accept(ctx)
@@ -81,7 +81,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			go wt.ServeQUICConn(conn)
 		}
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "moq-00" {
-			go h.handle(quicmoq.New(conn))
+			go h.handle(quicmoq.NewServer(conn))
 		}
 	}
 }
@@ -118,8 +118,6 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 func (h *moqHandler) handle(conn moqtransport.Connection) {
 	ms, err := moqtransport.NewTransport(
 		conn,
-		h.server,
-		h.quic,
 		moqtransport.OnRequest(h.getHandler()),
 	)
 	if err != nil {
@@ -199,7 +197,7 @@ func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error)
 	if err != nil {
 		return nil, err
 	}
-	return quicmoq.New(conn), nil
+	return quicmoq.NewClient(conn), nil
 }
 
 func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection, error) {
@@ -212,7 +210,7 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 	if err != nil {
 		return nil, err
 	}
-	return webtransportmoq.New(session), nil
+	return webtransportmoq.NewClient(session), nil
 }
 
 func tupleEuqal(a, b []string) bool {

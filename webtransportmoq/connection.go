@@ -8,11 +8,20 @@ import (
 )
 
 type webTransportConn struct {
-	session *webtransport.Session
+	session     *webtransport.Session
+	perspective moqtransport.Perspective
 }
 
-func New(session *webtransport.Session) moqtransport.Connection {
-	return &webTransportConn{session}
+func NewServer(conn *webtransport.Session) moqtransport.Connection {
+	return New(conn, moqtransport.PerspectiveServer)
+}
+
+func NewClient(conn *webtransport.Session) moqtransport.Connection {
+	return New(conn, moqtransport.PerspectiveClient)
+}
+
+func New(session *webtransport.Session, perspective moqtransport.Perspective) moqtransport.Connection {
+	return &webTransportConn{session, perspective}
 }
 
 func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
@@ -104,4 +113,12 @@ func (c *webTransportConn) CloseWithError(e uint64, msg string) error {
 
 func (c *webTransportConn) Context() context.Context {
 	return c.session.Context()
+}
+
+func (c *webTransportConn) Protocol() moqtransport.Protocol {
+	return moqtransport.ProtocolWebTransport
+}
+
+func (c *webTransportConn) Perspective() moqtransport.Perspective {
+	return c.perspective
 }

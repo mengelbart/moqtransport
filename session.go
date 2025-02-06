@@ -19,10 +19,10 @@ type sessionCallbacks interface {
 type session struct {
 	logger *slog.Logger
 
-	isServer       bool
-	protocolIsQUIC bool
-	version        wire.Version
-	setupDone      bool
+	perspective Perspective
+	protocol    Protocol
+	version     wire.Version
+	setupDone   bool
 
 	path       string
 	localRole  Role
@@ -65,11 +65,11 @@ func maxSubscribeIDOption(maxID uint64) sessionOption {
 	}
 }
 
-func newSession(callbacks sessionCallbacks, isServer, isQUIC bool, options ...sessionOption) (*session, error) {
+func newSession(callbacks sessionCallbacks, perspective Perspective, proto Protocol, options ...sessionOption) (*session, error) {
 	s := &session{
 		logger:                                   defaultLogger,
-		isServer:                                 isServer,
-		protocolIsQUIC:                           isQUIC,
+		perspective:                              perspective,
+		protocol:                                 proto,
 		version:                                  0,
 		setupDone:                                false,
 		path:                                     "",
@@ -101,7 +101,7 @@ func (s *session) sendClientSetup() error {
 			Value: s.incomingSubscriptions.getMaxSubscribeID(),
 		},
 	}
-	if s.protocolIsQUIC {
+	if s.protocol == ProtocolQUIC {
 		params[wire.PathParameterKey] = wire.StringParameter{
 			Type:  wire.PathParameterKey,
 			Value: s.path,
@@ -420,9 +420,9 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 
 	switch m := msg.(type) {
 	case *wire.ClientSetupMessage:
-		return s.clientSetup(m)
+		return s.onClientSetup(m)
 	case *wire.ServerSetupMessage:
-		return s.serverSetup(m)
+		return s.onServerSetup(m)
 	}
 	return ProtocolError{
 		code:    ErrorCodeProtocolViolation,
@@ -430,8 +430,8 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 	}
 }
 
-func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
-	if !s.isServer {
+func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
+	if s.perspective != PerspectiveServer {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "client received client setup message",
@@ -456,7 +456,7 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 		return err
 	}
 
-	s.path, err = validatePathParameter(m.SetupParameters, s.protocolIsQUIC)
+	s.path, err = validatePathParameter(m.SetupParameters, s.protocol == ProtocolQUIC)
 	if err != nil {
 		return err
 	}
@@ -490,8 +490,8 @@ func (s *session) clientSetup(m *wire.ClientSetupMessage) (err error) {
 	return nil
 }
 
-func (s *session) serverSetup(m *wire.ServerSetupMessage) (err error) {
-	if s.isServer {
+func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
+	if s.perspective != PerspectiveClient {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "server received server setup message",
