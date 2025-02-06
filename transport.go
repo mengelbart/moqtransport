@@ -308,39 +308,6 @@ func (t *Transport) Subscribe(
 	return t.subscribe(ctx, ps)
 }
 
-// Fetch fetches track in namespace from the peer using id as the subscribe ID.
-// It blocks until a response from the peer was received or ctx is cancelled.
-func (t *Transport) Fetch(
-	ctx context.Context,
-	id uint64,
-	namespace []string,
-	track string,
-) (*RemoteTrack, error) {
-	f := &subscription{
-		ID:        id,
-		Namespace: namespace,
-		Trackname: track,
-		isFetch:   true,
-		response:  make(chan subscriptionResponse),
-	}
-	return t.subscribe(ctx, f)
-}
-
-func (t *Transport) subscribe(
-	ctx context.Context,
-	ps *subscription,
-) (*RemoteTrack, error) {
-	if err := t.session.subscribe(ps); err != nil {
-		return nil, err
-	}
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case res := <-ps.response:
-		return res.track, res.err
-	}
-}
-
 // Announce announces namespace to the peer. It blocks until a response from the
 // peer was received or ctx is cancelled and returns an error if the
 // announcement was rejected.
@@ -365,6 +332,24 @@ func (t *Transport) AnnounceCancel() {
 	// TODO
 }
 
+// Fetch fetches track in namespace from the peer using id as the subscribe ID.
+// It blocks until a response from the peer was received or ctx is cancelled.
+func (t *Transport) Fetch(
+	ctx context.Context,
+	id uint64,
+	namespace []string,
+	track string,
+) (*RemoteTrack, error) {
+	f := &subscription{
+		ID:        id,
+		Namespace: namespace,
+		Trackname: track,
+		isFetch:   true,
+		response:  make(chan subscriptionResponse, 1),
+	}
+	return t.subscribe(ctx, f)
+}
+
 func (t *Transport) Unannounce() {
 	// TODO
 }
@@ -375,6 +360,21 @@ func (t *Transport) RequestTrackStatus() {
 
 func (t *Transport) GoAway() {
 	// TODO
+}
+
+func (t *Transport) subscribe(
+	ctx context.Context,
+	ps *subscription,
+) (*RemoteTrack, error) {
+	if err := t.session.subscribe(ps); err != nil {
+		return nil, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ps.response:
+		return res.track, res.err
+	}
 }
 
 func (t *Transport) acceptAnnouncement(ns []string) error {

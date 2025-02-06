@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -9,7 +10,7 @@ type errMaxSusbcribeIDViolation struct {
 }
 
 func (e errMaxSusbcribeIDViolation) Error() string {
-	return "too many subscribes"
+	return fmt.Sprintf("too many subscribes, max_subscribe_id=%v", e.maxSubscribeID)
 }
 
 type subscriptionMap struct {

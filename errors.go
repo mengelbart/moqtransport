@@ -67,6 +67,7 @@ const (
 	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown = 0x04
 )
 
+// protocolError is an error send to the peer
 type protocolError struct {
 	code    uint64
 	message string
