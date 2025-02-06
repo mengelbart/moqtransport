@@ -143,10 +143,6 @@ func (s *session) subscribe(sub *subscription) error {
 		var tooManySubscribes errMaxSusbcribeIDViolation
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
-			err = protocolError{
-				code:    ErrorCodeTooManySubscribes,
-				message: fmt.Sprintf("too many subscribes, max_subscrib_id: %v", tooManySubscribes.maxSubscribeID),
-			}
 			if previous < tooManySubscribes.maxSubscribeID {
 				err = errors.Join(err, s.queueControlMessage(&wire.SubscribesBlocked{
 					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
@@ -155,27 +151,44 @@ func (s *session) subscribe(sub *subscription) error {
 		}
 		return err
 	}
-	sm := &wire.SubscribeMessage{
-		SubscribeID:        sub.ID,
-		TrackAlias:         sub.TrackAlias,
-		TrackNamespace:     sub.Namespace,
-		TrackName:          []byte(sub.Trackname),
-		SubscriberPriority: 0,
-		GroupOrder:         0,
-		FilterType:         0,
-		StartGroup:         0,
-		StartObject:        0,
-		EndGroup:           0,
-		EndObject:          0,
-		Parameters:         map[uint64]wire.Parameter{},
-	}
-	if len(sub.Authorization) > 0 {
-		sm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
-			Type:  wire.AuthorizationParameterKey,
-			Value: sub.Authorization,
+	var cm wire.ControlMessage
+	if sub.isFetch {
+		cm = &wire.FetchMessage{
+			SubscribeID:        sub.ID,
+			TrackNamspace:      sub.Namespace,
+			TrackName:          []byte(sub.Trackname),
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			EndObject:          0,
+			Parameters:         map[uint64]wire.Parameter{},
+		}
+	} else {
+		params := map[uint64]wire.Parameter{}
+		if len(sub.Authorization) > 0 {
+			params[wire.AuthorizationParameterKey] = &wire.StringParameter{
+				Type:  wire.AuthorizationParameterKey,
+				Value: sub.Authorization,
+			}
+		}
+		cm = &wire.SubscribeMessage{
+			SubscribeID:        sub.ID,
+			TrackAlias:         sub.TrackAlias,
+			TrackNamespace:     sub.Namespace,
+			TrackName:          []byte(sub.Trackname),
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			EndObject:          0,
+			Parameters:         params,
 		}
 	}
-	if err := s.queueControlMessage(sm); err != nil {
+	if err := s.queueControlMessage(cm); err != nil {
 		_, _ = s.outgoingSubscriptions.reject(sub.ID)
 		return err
 	}
