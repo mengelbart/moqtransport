@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -73,6 +74,8 @@ type SendStream interface {
 	// Reset closes the stream and stops retransmitting outstanding data.
 	Reset(uint32)
 }
+
+var ErrDatagramSupportDisabled = errors.New("datagram support disabled")
 
 // Connection is the interface of a QUIC/WebTransport connection. New Transports
 // expect an implementation of this interface as the underlying connection.
