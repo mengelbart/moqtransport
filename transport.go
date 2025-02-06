@@ -58,25 +58,8 @@ type Transport struct {
 	callbacks *callbacks
 }
 
-func NewWebTransportClientTransport(conn Connection, opts ...TransportOption) (*Transport, error) {
-	return NewTransport(conn, false, false, opts...)
-}
-
-func NewQUICClientTransport(conn Connection, opts ...TransportOption) (*Transport, error) {
-	return NewTransport(conn, false, true, opts...)
-}
-
-func NewWebTransportServerTransport(conn Connection, opts ...TransportOption) (*Transport, error) {
-	return NewTransport(conn, true, false, opts...)
-}
-
-func NewQUICServerTransport(conn Connection, opts ...TransportOption) (*Transport, error) {
-	return NewTransport(conn, true, true, opts...)
-}
-
 func NewTransport(
 	conn Connection,
-	isServer, isQUIC bool,
 	opts ...TransportOption,
 ) (*Transport, error) {
 	cb := &callbacks{}
@@ -86,7 +69,7 @@ func NewTransport(
 	for _, opt := range opts {
 		opt(tc)
 	}
-	session, err := newSession(cb, isServer, isQUIC)
+	session, err := newSession(cb, conn.Perspective(), conn.Protocol())
 	if err != nil {
 		return nil, err
 	}
@@ -100,14 +83,14 @@ func newTransportWithSession(
 ) (*Transport, error) {
 	var ctrlStream Stream
 	var err error
-	if session.isServer {
+	if conn.Perspective() == PerspectiveServer {
 		ctrlStream, err = conn.AcceptStream(context.Background())
 		if err != nil {
 			return nil, err
 		}
 	}
 	dir := "server"
-	if !session.isServer {
+	if conn.Perspective() == PerspectiveClient {
 		dir = "client"
 		ctrlStream, err = conn.OpenStreamSync(context.Background())
 		if err != nil {
@@ -127,7 +110,7 @@ func newTransportWithSession(
 	}
 	tc.callbacks.t = t
 
-	if !session.isServer {
+	if conn.Perspective() == PerspectiveServer {
 		if err = session.sendClientSetup(); err != nil {
 			return nil, err
 		}

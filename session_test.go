@@ -31,8 +31,8 @@ func TestSession(t *testing.T) {
 		})
 		s, err := newSession(
 			mcb,
-			false,
-			true,
+			PerspectiveClient,
+			ProtocolQUIC,
 			roleParameterOption(RolePubSub),
 			pathParameterOption("/path"),
 			maxSubscribeIDOption(100),
@@ -61,8 +61,8 @@ func TestSession(t *testing.T) {
 		})
 		s, err := newSession(
 			mcb,
-			false,
-			false,
+			PerspectiveClient,
+			ProtocolWebTransport,
 			roleParameterOption(RolePubSub),
 			maxSubscribeIDOption(100),
 		)
@@ -75,7 +75,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_server_setup_quic", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveServer, ProtocolQUIC)
 		assert.NoError(t, err)
 		mcb.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
@@ -109,7 +109,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_server_setup_wt", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, false)
+		s, err := newSession(mcb, PerspectiveServer, ProtocolWebTransport)
 		assert.NoError(t, err)
 		mcb.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
@@ -143,7 +143,7 @@ func TestSession(t *testing.T) {
 	t.Run("rejects_quic_client_without_path", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveServer, ProtocolQUIC)
 		assert.NoError(t, err)
 		err = s.onControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -160,7 +160,7 @@ func TestSession(t *testing.T) {
 	t.Run("rejects_quic_client_without_role", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveServer, ProtocolQUIC)
 		assert.NoError(t, err)
 		err = s.onControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -177,7 +177,7 @@ func TestSession(t *testing.T) {
 	t.Run("rejects_wt_client_without_role", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, false)
+		s, err := newSession(mcb, PerspectiveServer, ProtocolWebTransport)
 		assert.NoError(t, err)
 		err = s.onControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
@@ -194,7 +194,7 @@ func TestSession(t *testing.T) {
 	t.Run("rejects_subscribe_on_max_subscribe_id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		err = s.subscribe(&subscription{
@@ -215,7 +215,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		s.outgoingSubscriptions.maxSubscribeID = 1
@@ -251,7 +251,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_subscribe_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onMessage(
@@ -295,7 +295,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_subscribe_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onMessage(
@@ -336,7 +336,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_announce", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().queueControlMessage(&wire.AnnounceMessage{
@@ -354,7 +354,7 @@ func TestSession(t *testing.T) {
 	t.Run("sends_announce_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mcb := NewMockSessionCallbacks(ctrl)
-		s, err := newSession(mcb, true, true)
+		s, err := newSession(mcb, PerspectiveClient, ProtocolQUIC)
 		assert.NoError(t, err)
 		s.setupDone = true
 		mcb.EXPECT().onMessage(&Message{

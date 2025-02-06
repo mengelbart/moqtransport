@@ -8,11 +8,20 @@ import (
 )
 
 type connection struct {
-	connection quic.Connection
+	connection  quic.Connection
+	perspective moqtransport.Perspective
 }
 
-func New(conn quic.Connection) moqtransport.Connection {
-	return &connection{conn}
+func NewServer(conn quic.Connection) moqtransport.Connection {
+	return New(conn, moqtransport.PerspectiveServer)
+}
+
+func NewClient(conn quic.Connection) moqtransport.Connection {
+	return New(conn, moqtransport.PerspectiveClient)
+}
+
+func New(conn quic.Connection, perspective moqtransport.Perspective) moqtransport.Connection {
+	return &connection{conn, perspective}
 }
 
 func (c *connection) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
@@ -104,4 +113,12 @@ func (c *connection) CloseWithError(e uint64, msg string) error {
 
 func (c *connection) Context() context.Context {
 	return c.connection.Context()
+}
+
+func (c *connection) Protocol() moqtransport.Protocol {
+	return moqtransport.ProtocolQUIC
+}
+
+func (c *connection) Perspective() moqtransport.Perspective {
+	return c.perspective
 }

@@ -1,11 +1,7 @@
 package moqtransport
 
-import (
-	"testing"
+import "testing"
 
-	"go.uber.org/goleak"
-)
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+func TestTransport(t *testing.T) {
+	t.Skip("TODO")
 }

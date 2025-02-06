@@ -5,6 +5,24 @@ import (
 	"io"
 )
 
+// Protocol is a transport protocol supported by MoQ.
+type Protocol int
+
+// The supported protocols
+const (
+	ProtocolQUIC Protocol = iota
+	ProtocolWebTransport
+)
+
+// Perspective indicates whether the connection is a client or a server
+type Perspective int
+
+// The perspectives
+const (
+	PerspectiveServer = iota
+	PerspectiveClient
+)
+
 // A Stream is the interface implemented by bidirectional streams.
 type Stream interface {
 	ReceiveStream
@@ -75,4 +93,10 @@ type Connection interface {
 	// Context returns a context that will be cancelled when the connection is
 	// closed.
 	Context() context.Context
+
+	// Protocol returns the underlying Protocol of the connection.
+	Protocol() Protocol
+
+	// Perspective returns the perspective of the connection.
+	Perspective() Perspective
 }
