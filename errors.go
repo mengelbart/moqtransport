@@ -67,38 +67,38 @@ const (
 	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown = 0x04
 )
 
-// protocolError is an error send to the peer
-type protocolError struct {
+// ProtocolError is a MoQ protocol error
+type ProtocolError struct {
 	code    uint64
 	message string
 }
 
-func (e protocolError) Error() string {
+func (e ProtocolError) Error() string {
 	return e.message
 }
 
-func (e protocolError) Code() uint64 {
+func (e ProtocolError) Code() uint64 {
 	return e.code
 }
 
 var (
-	errDuplicateSubscribeID = protocolError{
+	errDuplicateSubscribeID = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate subscribe ID",
 	}
-	errMaxSubscribeIDDecreased = protocolError{
+	errMaxSubscribeIDDecreased = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "max subscribe ID decreased",
 	}
-	errUnknownSubscribeID = protocolError{
+	errUnknownSubscribeID = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unknown subscribe ID",
 	}
-	errDuplicateAnnouncementNamespace = protocolError{
+	errDuplicateAnnouncementNamespace = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate announcement namespace",
 	}
-	errUnknownAnnouncement = protocolError{
+	errUnknownAnnouncement = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unknown announcement",
 	}

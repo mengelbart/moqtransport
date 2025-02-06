@@ -13,7 +13,7 @@ func (c *callbacks) queueControlMessage(msg wire.ControlMessage) error {
 }
 
 // onProtocolViolation implements sessionCallbacks.
-func (c *callbacks) onProtocolViolation(err protocolError) {
+func (c *callbacks) onProtocolViolation(err ProtocolError) {
 	c.t.destroy(err)
 }
 

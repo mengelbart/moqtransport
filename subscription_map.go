@@ -70,7 +70,7 @@ func (m *subscriptionMap) confirm(id uint64) (*subscription, error) {
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[id]
 	if !ok {
-		return nil, protocolError{
+		return nil, ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}
@@ -94,7 +94,7 @@ func (m *subscriptionMap) reject(id uint64) (*subscription, error) {
 	defer m.lock.Unlock()
 	sub, ok := m.pendingSubscriptions[id]
 	if !ok {
-		return nil, protocolError{
+		return nil, ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown subscribe ID",
 		}
