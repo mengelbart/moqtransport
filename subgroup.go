@@ -1,21 +1,18 @@
 package moqtransport
 
 import (
-	"context"
-
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type Subgroup struct {
 	stream SendStream
-	ctx    context.Context
 }
 
-func newSubgroup(ctx context.Context, stream SendStream, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
+func newSubgroup(stream SendStream, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
 	shgm := &wire.StreamHeaderSubgroupMessage{
 		TrackAlias:        trackAlias,
 		GroupID:           groupID,
-		SubgroupID:        groupID,
+		SubgroupID:        subgroupID,
 		PublisherPriority: publisherPriority,
 	}
 	buf := make([]byte, 0, 40)
@@ -26,16 +23,10 @@ func newSubgroup(ctx context.Context, stream SendStream, trackAlias, groupID, su
 	}
 	return &Subgroup{
 		stream: stream,
-		ctx:    ctx,
 	}, nil
 }
 
 func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
-	select {
-	case <-s.ctx.Done():
-		return 0, ErrUnsubscribed
-	default:
-	}
 	var buf []byte
 	if len(payload) > 0 {
 		buf = make([]byte, 0, 16+len(payload))

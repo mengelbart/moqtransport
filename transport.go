@@ -70,6 +70,12 @@ func Path(p string) TransportOption {
 	}
 }
 
+func MaxSubscribeID(id uint64) TransportOption {
+	return func(tc *transportConfig) {
+		tc.sessionOptions = append(tc.sessionOptions, maxSubscribeIDOption(id))
+	}
+}
+
 func DisabledDatagrams() TransportOption {
 	return func(tc *transportConfig) {
 		tc.datagramsDisabled = true
@@ -353,13 +359,21 @@ func (t *Transport) readDatagrams() {
 
 // Local API
 
+func (t *Transport) waitForHandshakeDone(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.handshakeDone:
+		return nil
+	}
+}
+
 // Announce announces namespace to the peer. It blocks until a response from the
 // peer was received or ctx is cancelled and returns an error if the
 // announcement was rejected.
 func (t *Transport) Announce(ctx context.Context, namespace []string) error {
-	select {
-	case <-ctx.Done():
-	case <-t.handshakeDone:
+	if err := t.waitForHandshakeDone(ctx); err != nil {
+		return err
 	}
 	a := &announcement{
 		Namespace:  namespace,
@@ -389,6 +403,9 @@ func (t *Transport) Fetch(
 	namespace []string,
 	track string,
 ) (*RemoteTrack, error) {
+	if err := t.waitForHandshakeDone(ctx); err != nil {
+		return nil, err
+	}
 	f := &subscription{
 		ID:        id,
 		Namespace: namespace,
@@ -406,6 +423,9 @@ func (t *Transport) GoAway() {
 // Path returns the path of the MoQ session which was exchanged during the
 // handshake when using QUIC.
 func (t *Transport) Path() string {
+	if err := t.waitForHandshakeDone(t.ctx); err != nil {
+		return ""
+	}
 	return t.session.getPath()
 }
 
@@ -422,6 +442,9 @@ func (t *Transport) Subscribe(
 	name string,
 	auth string,
 ) (*RemoteTrack, error) {
+	if err := t.waitForHandshakeDone(ctx); err != nil {
+		return nil, err
+	}
 	ps := &subscription{
 		ID:            id,
 		TrackAlias:    alias,
@@ -439,6 +462,9 @@ func (t *Transport) Subscribe(
 // SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
 // It blocks until a response from the peer is received or ctx is cancelled.
 func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
+	if err := t.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
 	as := &announcementSubscription{
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
