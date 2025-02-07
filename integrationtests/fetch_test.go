@@ -10,62 +10,63 @@ import (
 )
 
 func TestFetch(t *testing.T) {
-	sConn, cConn, cancel := connect(t)
-	defer cancel()
+	t.Run("success", func(t *testing.T) {
+		sConn, cConn, cancel := connect(t)
+		defer cancel()
 
-	st, err := moqtransport.NewTransport(
-		quicmoq.NewServer(sConn),
-		moqtransport.OnRequest(
-			moqtransport.HandlerFunc(
-				func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-					assert.Equal(t, moqtransport.MessageFetch, m.Method)
-					assert.NotNil(t, w)
-					assert.NoError(t, w.Accept())
-				},
+		st, err := moqtransport.NewTransport(
+			quicmoq.NewServer(sConn),
+			moqtransport.OnRequest(
+				moqtransport.HandlerFunc(
+					func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
+						assert.Equal(t, moqtransport.MessageFetch, m.Method)
+						assert.NotNil(t, w)
+						assert.NoError(t, w.Accept())
+					},
+				),
 			),
-		),
-	)
-	assert.NoError(t, err)
-	defer st.Close()
+		)
+		assert.NoError(t, err)
+		defer st.Close()
 
-	ct, err := moqtransport.NewTransport(
-		quicmoq.NewClient(cConn),
-	)
-	assert.NoError(t, err)
-	defer ct.Close()
+		ct, err := moqtransport.NewTransport(
+			quicmoq.NewClient(cConn),
+		)
+		assert.NoError(t, err)
+		defer ct.Close()
 
-	rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
-	assert.NoError(t, err)
-	assert.NotNil(t, rt)
-}
+		rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
+		assert.NoError(t, err)
+		assert.NotNil(t, rt)
+	})
+	t.Run("auth_error", func(t *testing.T) {
+		sConn, cConn, cancel := connect(t)
+		defer cancel()
 
-func TestFetchAuthError(t *testing.T) {
-	sConn, cConn, cancel := connect(t)
-	defer cancel()
-
-	st, err := moqtransport.NewTransport(
-		quicmoq.NewServer(sConn),
-		moqtransport.OnRequest(
-			moqtransport.HandlerFunc(
-				func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-					assert.Equal(t, moqtransport.MessageFetch, m.Method)
-					assert.NotNil(t, w)
-					assert.NoError(t, w.Reject(moqtransport.ErrorCodeFetchUnauthorized, "unauthorized"))
-				},
+		st, err := moqtransport.NewTransport(
+			quicmoq.NewServer(sConn),
+			moqtransport.OnRequest(
+				moqtransport.HandlerFunc(
+					func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
+						assert.Equal(t, moqtransport.MessageFetch, m.Method)
+						assert.NotNil(t, w)
+						assert.NoError(t, w.Reject(moqtransport.ErrorCodeFetchUnauthorized, "unauthorized"))
+					},
+				),
 			),
-		),
-	)
-	assert.NoError(t, err)
-	defer st.Close()
+		)
+		assert.NoError(t, err)
+		defer st.Close()
 
-	ct, err := moqtransport.NewTransport(
-		quicmoq.NewClient(cConn),
-	)
-	assert.NoError(t, err)
-	defer ct.Close()
+		ct, err := moqtransport.NewTransport(
+			quicmoq.NewClient(cConn),
+		)
+		assert.NoError(t, err)
+		defer ct.Close()
 
-	rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
-	assert.Error(t, err)
-	assert.ErrorContains(t, err, "unauthorized")
-	assert.Nil(t, rt)
+		rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "unauthorized")
+		assert.Nil(t, rt)
+	})
 }

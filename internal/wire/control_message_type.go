@@ -70,6 +70,26 @@ func (mt controlMessageType) String() string {
 		return "ClientSetupMessage"
 	case messageTypeServerSetup:
 		return "ServerSetupMessage"
+	case messageTypeFetch:
+		return "FetchMessage"
+	case messageTypeFetchCancel:
+		return "FetchCancelMessage"
+	case messageTypeFetchError:
+		return "FetchErrorMessage"
+	case messageTypeFetchOk:
+		return "FetchOkMessage"
+	case messageTypeMaxSubscribeID:
+		return "MaxSubscribeIDMessage"
+	case messageTypeSubscribeAnnounces:
+		return "SubscribeAnnouncesMessage"
+	case messageTypeSubscribeAnnouncesError:
+		return "SubscribeAnnouncesErrorMessage"
+	case messageTypeSubscribeAnnouncesOk:
+		return "SubscribeAnnouncesOkMessage"
+	case messageTypeSubscribesBlocked:
+		return "SubscribesBlockedMessage"
+	case messageTypeUnsubscribeAnnounces:
+		return "UnsubscribeAnnouncesMessage"
 	}
 	return "unknown message type"
 }

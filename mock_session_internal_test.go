@@ -55,7 +55,7 @@ func (mr *MockSessionIMockRecorder) acceptAnnouncement(arg0 any) *gomock.Call {
 }
 
 // acceptAnnouncementSubscription mocks base method.
-func (m *MockSessionI) acceptAnnouncementSubscription(arg0 announcementSubscription) error {
+func (m *MockSessionI) acceptAnnouncementSubscription(arg0 []string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "acceptAnnouncementSubscription", arg0)
 	ret0, _ := ret[0].(error)
@@ -153,7 +153,7 @@ func (mr *MockSessionIMockRecorder) rejectAnnouncement(arg0, arg1, arg2 any) *go
 }
 
 // rejectAnnouncementSubscription mocks base method.
-func (m *MockSessionI) rejectAnnouncementSubscription(arg0 announcementSubscription, arg1 uint64, arg2 string) error {
+func (m *MockSessionI) rejectAnnouncementSubscription(arg0 []string, arg1 uint64, arg2 string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "rejectAnnouncementSubscription", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)

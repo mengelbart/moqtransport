@@ -28,8 +28,8 @@ type sessionI interface {
 	subscribe(*subscription) error
 	acceptAnnouncement([]string) error
 	rejectAnnouncement([]string, uint64, string) error
-	acceptAnnouncementSubscription(announcementSubscription) error
-	rejectAnnouncementSubscription(announcementSubscription, uint64, string) error
+	acceptAnnouncementSubscription([]string) error
+	rejectAnnouncementSubscription([]string, uint64, string) error
 	acceptSubscription(uint64, *localTrack) error
 	rejectSubscription(uint64, uint64, string) error
 	sendClientSetup() error
@@ -511,11 +511,11 @@ func (t *Transport) rejectAnnouncement(ns []string, c uint64, r string) error {
 	return t.session.rejectAnnouncement(ns, c, r)
 }
 
-func (t *Transport) acceptAnnouncementSubscription(as announcementSubscription) error {
+func (t *Transport) acceptAnnouncementSubscription(as []string) error {
 	return t.session.acceptAnnouncementSubscription(as)
 }
 
-func (t *Transport) rejectAnnouncementSubscription(as announcementSubscription, c uint64, r string) error {
+func (t *Transport) rejectAnnouncementSubscription(as []string, c uint64, r string) error {
 	return t.session.rejectAnnouncementSubscription(as, c, r)
 }
 
