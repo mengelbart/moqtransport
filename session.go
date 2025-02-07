@@ -83,7 +83,7 @@ func newSession(callbacks sessionCallbacks, perspective Perspective, proto Proto
 		remoteRole:                               0,
 		callbacks:                                callbacks,
 		highestSubscribesBlocked:                 atomic.Uint64{},
-		pendingIncomingAnnouncementSubscriptions: &announcementSubscriptionMap{},
+		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		outgoingSubscriptions:                    newSubscriptionMap(0),
 		incomingSubscriptions:                    newSubscriptionMap(100),
@@ -254,7 +254,7 @@ func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 		return err
 	}
 	sam := &wire.SubscribeAnnouncesMessage{
-		TrackNamespacePrefix: []string{},
+		TrackNamespacePrefix: as.namespace,
 		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.queueControlMessage(sam); err != nil {
@@ -337,15 +337,15 @@ func (s *session) rejectAnnouncement(namespace []string, errorCode uint64, reaso
 	})
 }
 
-func (s *session) acceptAnnouncementSubscription(as announcementSubscription) error {
+func (s *session) acceptAnnouncementSubscription(prefix []string) error {
 	return s.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
-		TrackNamespacePrefix: as.namespace,
+		TrackNamespacePrefix: prefix,
 	})
 }
 
-func (s *session) rejectAnnouncementSubscription(as announcementSubscription, code uint64, reason string) error {
+func (s *session) rejectAnnouncementSubscription(prefix []string, code uint64, reason string) error {
 	return s.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
-		TrackNamespacePrefix: as.namespace,
+		TrackNamespacePrefix: prefix,
 		ErrorCode:            code,
 		ReasonPhrase:         reason,
 	})

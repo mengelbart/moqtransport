@@ -38,10 +38,7 @@ func (c *callbacks) onMessage(m *Message) {
 			}, m)
 		case MessageSubscribeAnnounces:
 			c.handler.Handle(&announcementSubscriptionResponseWriter{
-				subscription: announcementSubscription{
-					namespace: m.Namespace,
-					response:  make(chan announcementSubscriptionResponse),
-				},
+				prefix:    m.Namespace,
 				transport: c.t,
 			}, m)
 		default:
