@@ -152,18 +152,20 @@ func (s *session) queueControlMessage(msg wire.ControlMessage) error {
 
 func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findBySubscribeID(id)
-	if ok && sub.remoteTrack != nil {
-		return sub.remoteTrack, true
+	rt := sub.getRemoteTrack()
+	if !ok || rt == nil {
+		return nil, false
 	}
-	return nil, false
+	return rt, true
 }
 
 func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findByTrackAlias(alias)
-	if ok && sub.remoteTrack != nil {
-		return sub.remoteTrack, true
+	rt := sub.getRemoteTrack()
+	if !ok || rt == nil {
+		return nil, false
 	}
-	return nil, false
+	return rt, true
 }
 
 // Local API to trigger outgoing control messages
@@ -265,7 +267,7 @@ func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 }
 
 func (s *session) acceptSubscription(id uint64, lt *localTrack) error {
-	sub, err := s.incomingSubscriptions.confirm(id)
+	sub, err := s.incomingSubscriptions.confirm(id, nil)
 	if err != nil {
 		return err
 	}
@@ -592,15 +594,16 @@ func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		s.callbacks.onProtocolViolation(err)
 		return err
 	}
-	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
+	rt := newRemoteTrack(msg.SubscribeID, s)
+	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
 	if err != nil {
 		return err
 	}
-	sub.remoteTrack = newRemoteTrack(msg.SubscribeID, s)
+	sub.setRemoteTrack(rt)
 	select {
 	case sub.response <- subscriptionResponse{
 		err:   nil,
-		track: sub.remoteTrack,
+		track: rt,
 	}:
 	default:
 		// TODO: Unsubscribe?
@@ -706,7 +709,8 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 		// TODO: Protocol violation?
 		return errUnknownSubscribeID
 	}
-	sub.remoteTrack.done(msg.StatusCode, msg.ReasonPhrase)
+	rt := sub.getRemoteTrack()
+	rt.done(msg.StatusCode, msg.ReasonPhrase)
 	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
 	// after timeout to wait for late coming objects?
 	return nil
@@ -852,15 +856,15 @@ func (s *session) onFetchOk(msg *wire.FetchOkMessage) error {
 		s.callbacks.onProtocolViolation(err)
 		return err
 	}
-	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
+	rt := newRemoteTrack(msg.SubscribeID, s)
+	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
 	if err != nil {
 		return err
 	}
-	subscription.remoteTrack = newRemoteTrack(msg.SubscribeID, s)
 	select {
 	case subscription.response <- subscriptionResponse{
 		err:   nil,
-		track: subscription.remoteTrack,
+		track: rt,
 	}:
 	default:
 		s.logger.Info("dropping unhandled SubscribeOk response")

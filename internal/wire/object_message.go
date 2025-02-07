@@ -12,7 +12,7 @@ const (
 	objectTypeDatagramStatus uint64 = 0x02
 )
 
-type StreamType int
+type StreamType uint64
 
 const (
 	StreamTypeSubgroup StreamType = 0x04

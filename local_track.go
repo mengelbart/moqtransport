@@ -50,12 +50,12 @@ func (p *localTrack) SendDatagram(o Object) error {
 	return p.conn.SendDatagram(buf)
 }
 
-func (p *localTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
+func (p *localTrack) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
-	return newSubgroup(stream, p.subscribeID, p.trackAlias, groupID, priority)
+	return newSubgroup(stream, p.trackAlias, groupID, subgroupID, priority)
 }
 
 func (s *localTrack) Close() error {

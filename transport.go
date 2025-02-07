@@ -303,27 +303,36 @@ func (t *Transport) readStreams() {
 			t.destroy(err)
 			return
 		}
+		t.logger.Info("got new uni stream")
 		go t.handleUniStream(stream)
 	}
 }
 
 func (t *Transport) handleUniStream(stream ReceiveStream) {
+	t.logger.Info("handling new uni stream")
 	parser, err := wire.NewObjectStreamParser(stream)
 	if err != nil {
 		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
+		t.destroy(ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "invalid stream type",
+		})
 		return
 	}
+	t.logger.Info("parsed object stream header")
 	if err := t.readSubgroupStream(parser); err != nil {
 		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
 	}
 }
 
 func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
-	sid, err := parser.SubscribeID()
+	t.logger.Info("reading subgroup")
+	sid, err := parser.TrackAlias()
 	if err != nil {
+		t.logger.Info("failed to parse subscribe ID", "error", err)
 		return err
 	}
-	rt, ok := t.session.remoteTrackBySubscribeID(sid)
+	rt, ok := t.session.remoteTrackByTrackAlias(sid)
 	if !ok {
 		return errUnknownSubscribeID
 	}

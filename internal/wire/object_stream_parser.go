@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -63,6 +64,7 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		if err := shsm.parse(br); err != nil {
 			return nil, err
 		}
+		log.Printf("got stream header subgroup message: %v", shsm)
 		return &ObjectStreamParser{
 			reader:            br,
 			Typ:               StreamType(st),
