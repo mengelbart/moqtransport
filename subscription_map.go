@@ -65,7 +65,7 @@ func (m *subscriptionMap) addPending(s *subscription) error {
 	return nil
 }
 
-func (m *subscriptionMap) confirm(id uint64) (*subscription, error) {
+func (m *subscriptionMap) confirm(id uint64, rt *RemoteTrack) (*subscription, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[id]
@@ -76,6 +76,7 @@ func (m *subscriptionMap) confirm(id uint64) (*subscription, error) {
 		}
 	}
 	s := m.pendingSubscriptions[id]
+	s.setRemoteTrack(rt)
 	delete(m.pendingSubscriptions, id)
 	m.subscriptions[id] = s
 	m.trackAliasToSusbcribeID[s.TrackAlias] = id

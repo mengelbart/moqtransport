@@ -12,6 +12,7 @@ type StreamHeaderSubgroupMessage struct {
 }
 
 func (m *StreamHeaderSubgroupMessage) Append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(StreamHeaderSubgroupMessageType))
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.SubgroupID)

@@ -1,6 +1,9 @@
 package moqtransport
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 const (
 	SubscribeStatusUnsubscribed      = 0x00
@@ -27,10 +30,24 @@ type subscription struct {
 	GroupOrder    uint8
 	ContentExists bool
 
+	lock sync.Mutex
+
 	remoteTrack *RemoteTrack
 	localTrack  *localTrack
 
 	isFetch bool
 
 	response chan subscriptionResponse
+}
+
+func (s *subscription) getRemoteTrack() *RemoteTrack {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.remoteTrack
+}
+
+func (s *subscription) setRemoteTrack(rt *RemoteTrack) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.remoteTrack = rt
 }

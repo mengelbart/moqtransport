@@ -66,7 +66,7 @@ type Publisher interface {
 	SendDatagram(Object) error
 
 	// OpenSubgroup opens and returns a new subgroup.
-	OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error)
+	OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error)
 
 	// Close closes the track and sends SUBSCRIBE_DONE.
 	io.Closer

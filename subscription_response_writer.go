@@ -40,13 +40,13 @@ func (w *subscriptionResponseWriter) SendDatagram(o Object) error {
 	return w.localTrack.SendDatagram(o)
 }
 
-func (w *subscriptionResponseWriter) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
+func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.localTrack == nil {
 		return nil, errSubscriptionNotAccepted
 	}
-	return w.localTrack.OpenSubgroup(groupID, priority)
+	return w.localTrack.OpenSubgroup(groupID, subgroupID, priority)
 }
 
 func (w *subscriptionResponseWriter) Close() error {

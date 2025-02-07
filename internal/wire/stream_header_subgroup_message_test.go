@@ -24,7 +24,7 @@ func TestStreamHeaderSubgroupMessageAppend(t *testing.T) {
 				PublisherPriority: 0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x00, 0x00, 0x00, 0x00},
+			expect: []byte{byte(StreamTypeSubgroup), 0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			shgm: StreamHeaderSubgroupMessage{
@@ -34,7 +34,7 @@ func TestStreamHeaderSubgroupMessageAppend(t *testing.T) {
 				PublisherPriority: 4,
 			},
 			buf:    []byte{},
-			expect: []byte{0x01, 0x02, 0x03, 0x04},
+			expect: []byte{byte(StreamTypeSubgroup), 0x01, 0x02, 0x03, 0x04},
 		},
 		{
 			shgm: StreamHeaderSubgroupMessage{
@@ -44,7 +44,7 @@ func TestStreamHeaderSubgroupMessageAppend(t *testing.T) {
 				PublisherPriority: 4,
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04},
+			expect: []byte{0x0a, 0x0b, byte(StreamTypeSubgroup), 0x01, 0x02, 0x03, 0x04},
 		},
 	}
 	for i, tc := range cases {
