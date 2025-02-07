@@ -1,44 +1,41 @@
 package moqtransport
 
 import (
-	"context"
-	"errors"
-
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-// ErrUnsubscribed is returned from a write operation on a track when the peer
-// unsubscribed from the track.
-var ErrUnsubscribed = errors.New("subscriber unsubscribed")
-
 type localTrack struct {
-	conn           Connection
-	subscribeID    uint64
-	trackAlias     uint64
-	subgroups      map[uint64]*Subgroup
-	unsubscribeCtx context.Context
-	unsubscribe    context.CancelFunc
+	conn        Connection
+	subscribeID uint64
+	trackAlias  uint64
+	fetchStream SendStream
+	subgroups   map[uint64]*Subgroup
 }
 
 func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *localTrack {
-	ctx, unsubscribe := context.WithCancel(context.Background())
 	publisher := &localTrack{
-		conn:           conn,
-		subscribeID:    subscribeID,
-		trackAlias:     trackAlias,
-		subgroups:      map[uint64]*Subgroup{},
-		unsubscribeCtx: ctx,
-		unsubscribe:    unsubscribe,
+		conn:        conn,
+		subscribeID: subscribeID,
+		trackAlias:  trackAlias,
+		fetchStream: nil,
+		subgroups:   map[uint64]*Subgroup{},
 	}
 	return publisher
 }
 
-func (p *localTrack) SendDatagram(o Object) error {
-	select {
-	case <-p.unsubscribeCtx.Done():
-		return ErrUnsubscribed
-	default:
+func (p *localTrack) OpenFetchStream() (*FetchStream, error) {
+	stream, err := p.conn.OpenUniStream()
+	if err != nil {
+		return nil, err
 	}
+	fs, err := newFetchStream(stream, p.subscribeID)
+	if err != nil {
+		return nil, err
+	}
+	return fs, nil
+}
+
+func (p *localTrack) SendDatagram(o Object) error {
 	om := &wire.ObjectMessage{
 		TrackAlias:        0,
 		GroupID:           o.GroupID,
@@ -54,19 +51,13 @@ func (p *localTrack) SendDatagram(o Object) error {
 }
 
 func (p *localTrack) OpenSubgroup(groupID uint64, priority uint8) (*Subgroup, error) {
-	select {
-	case <-p.unsubscribeCtx.Done():
-		return nil, ErrUnsubscribed
-	default:
-	}
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
-	return newSubgroup(p.unsubscribeCtx, stream, p.subscribeID, p.trackAlias, groupID, priority)
+	return newSubgroup(stream, p.subscribeID, p.trackAlias, groupID, priority)
 }
 
 func (s *localTrack) Close() error {
-	s.unsubscribe()
 	return nil
 }

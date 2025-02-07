@@ -26,6 +26,11 @@ func (c *callbacks) onMessage(m *Message) {
 				trackAlias: m.TrackAlias,
 				transport:  c.t,
 			}, m)
+		case MessageFetch:
+			c.handler.Handle(&fetchResponseWriter{
+				id:        m.SubscribeID,
+				transport: c.t,
+			}, m)
 		case MessageAnnounce:
 			c.handler.Handle(&announcementResponseWriter{
 				namespace: m.Namespace,

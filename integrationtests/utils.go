@@ -17,13 +17,17 @@ import (
 func connect(t *testing.T) (server, client quic.Connection, cancel func()) {
 	tlsConfig, err := generateTLSConfig()
 	assert.NoError(t, err)
-	listener, err := quic.ListenAddr("localhost:4242", tlsConfig, nil)
+	listener, err := quic.ListenAddr("localhost:4242", tlsConfig, &quic.Config{
+		EnableDatagrams: true,
+	})
 	assert.NoError(t, err)
 
 	clientConn, err := quic.DialAddr(context.Background(), "localhost:4242", &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"moq-00"},
-	}, nil)
+	}, &quic.Config{
+		EnableDatagrams: true,
+	})
 	assert.NoError(t, err)
 
 	serverConn, err := listener.Accept(context.Background())
