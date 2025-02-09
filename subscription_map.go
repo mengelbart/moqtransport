@@ -72,7 +72,7 @@ func (m *subscriptionMap) confirm(id uint64, rt *RemoteTrack) (*subscription, er
 	if !ok {
 		return nil, ProtocolError{
 			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe ID",
+			message: fmt.Sprintf("unknown subscribe ID: %v", id),
 		}
 	}
 	s := m.pendingSubscriptions[id]
