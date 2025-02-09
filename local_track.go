@@ -1,7 +1,15 @@
 package moqtransport
 
 import (
+	"context"
+	"errors"
+
 	"github.com/mengelbart/moqtransport/internal/wire"
+)
+
+var (
+	ErrUnsusbcribed     = errors.New("track closed, peer unsubscribed")
+	ErrSubscriptionDone = errors.New("track closed, subscription done")
 )
 
 type localTrack struct {
@@ -10,20 +18,28 @@ type localTrack struct {
 	trackAlias  uint64
 	fetchStream SendStream
 	subgroups   map[uint64]*Subgroup
+	ctx         context.Context
+	cancelCtx   context.CancelCauseFunc
 }
 
 func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *localTrack {
+	ctx, cancel := context.WithCancelCause(context.Background())
 	publisher := &localTrack{
 		conn:        conn,
 		subscribeID: subscribeID,
 		trackAlias:  trackAlias,
 		fetchStream: nil,
 		subgroups:   map[uint64]*Subgroup{},
+		ctx:         ctx,
+		cancelCtx:   cancel,
 	}
 	return publisher
 }
 
 func (p *localTrack) OpenFetchStream() (*FetchStream, error) {
+	if err := p.closed(); err != nil {
+		return nil, err
+	}
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -36,6 +52,9 @@ func (p *localTrack) OpenFetchStream() (*FetchStream, error) {
 }
 
 func (p *localTrack) SendDatagram(o Object) error {
+	if err := p.closed(); err != nil {
+		return err
+	}
 	om := &wire.ObjectMessage{
 		TrackAlias:        0,
 		GroupID:           o.GroupID,
@@ -51,6 +70,9 @@ func (p *localTrack) SendDatagram(o Object) error {
 }
 
 func (p *localTrack) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
+	if err := p.closed(); err != nil {
+		return nil, err
+	}
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -60,4 +82,17 @@ func (p *localTrack) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*
 
 func (s *localTrack) Close() error {
 	return nil
+}
+
+func (s *localTrack) unsubscribe() {
+	s.cancelCtx(ErrUnsusbcribed)
+}
+
+func (s *localTrack) closed() error {
+	select {
+	case <-s.ctx.Done():
+		return context.Cause(s.ctx)
+	default:
+		return nil
+	}
 }

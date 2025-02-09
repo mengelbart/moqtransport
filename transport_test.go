@@ -100,9 +100,8 @@ func TestTransportAnnounce(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		ms := NewMockSessionI(ctrl)
 		transport := &Transport{
-			ctx: nil,
-			cancelCtx: func(cause error) {
-			},
+			ctx:              nil,
+			cancelCtx:        nil,
 			wg:               sync.WaitGroup{},
 			logger:           &slog.Logger{},
 			conn:             nil,

@@ -575,9 +575,15 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 	}
 	m := &Message{
 		Method:        MessageSubscribe,
+		SubscribeID:   sub.ID,
+		TrackAlias:    sub.TrackAlias,
 		Namespace:     sub.Namespace,
 		Track:         sub.Trackname,
 		Authorization: sub.Authorization,
+		Status:        0,
+		LastGroupID:   0,
+		LastObjectID:  0,
+		NewSessionURI: "",
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
@@ -697,10 +703,10 @@ func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
 func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	sub, ok := s.incomingSubscriptions.delete(msg.SubscribeID)
 	if !ok {
-		s.callbacks.onProtocolViolation(errUnknownSubscribeID)
 		return errUnknownSubscribeID
 	}
-	return sub.localTrack.Close()
+	sub.localTrack.unsubscribe()
+	return nil
 }
 
 func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {

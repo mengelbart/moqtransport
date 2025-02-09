@@ -1,8 +1,6 @@
 package moqtransport
 
 import (
-	"log"
-
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
@@ -17,7 +15,6 @@ func newSubgroup(stream SendStream, trackAlias, groupID, subgroupID uint64, publ
 		SubgroupID:        subgroupID,
 		PublisherPriority: publisherPriority,
 	}
-	log.Printf("sending stream header subgroup message: %v", shgm)
 	buf := make([]byte, 0, 40)
 	buf = shgm.Append(buf)
 	_, err := stream.Write(buf)

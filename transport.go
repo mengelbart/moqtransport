@@ -258,7 +258,7 @@ func (t *Transport) recvCtrlMsg(msg wire.ControlMessage) error {
 func (t *Transport) queueCtrlMessage(msg wire.ControlMessage) error {
 	select {
 	case <-t.ctx.Done():
-		return t.ctx.Err()
+		return context.Cause(t.ctx)
 	case t.ctrlMsgSendQueue <- msg:
 		return nil
 	default:
