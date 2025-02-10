@@ -10,6 +10,8 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/mengelbart/moqtransport"
+	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 )
@@ -37,6 +39,43 @@ func connect(t *testing.T) (server, client quic.Connection, cancel func()) {
 		listener.Close()
 		assert.NoError(t, clientConn.CloseWithError(0, ""))
 		assert.NoError(t, serverConn.CloseWithError(0, ""))
+	}
+}
+
+func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Handler) (
+	serverTransport *moqtransport.Transport,
+	serverSession *moqtransport.Session,
+	clientTransport *moqtransport.Transport,
+	clientSession *moqtransport.Session,
+	cancel func(),
+) {
+	str := &moqtransport.Transport{
+		Conn:                  quicmoq.NewServer(sConn),
+		InitialMaxSubscribeID: 100,
+		DatagramsDisabled:     false,
+		Role:                  moqtransport.RolePubSub,
+		Handler:               handler,
+	}
+	st, err := str.NewSession(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, st)
+	defer str.Close()
+
+	ctr := &moqtransport.Transport{
+		Conn:                  quicmoq.NewClient(cConn),
+		InitialMaxSubscribeID: 100,
+		DatagramsDisabled:     false,
+		Role:                  moqtransport.RolePubSub,
+		Handler:               nil,
+	}
+	ct, err := ctr.NewSession(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, ct)
+	defer ctr.Close()
+
+	return str, st, ctr, ct, func() {
+		assert.NoError(t, str.Close())
+		assert.NoError(t, ctr.Close())
 	}
 }
 
