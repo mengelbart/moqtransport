@@ -25,14 +25,14 @@ func TestAnnounce(t *testing.T) {
 					},
 				),
 			),
-			moqtransport.DisabledDatagrams(),
+			moqtransport.DisableDatagrams(),
 		)
 		assert.NoError(t, err)
 		defer st.Close()
 
 		ct, err := moqtransport.NewTransport(
 			quicmoq.NewClient(cConn),
-			moqtransport.DisabledDatagrams(),
+			moqtransport.DisableDatagrams(),
 		)
 		assert.NoError(t, err)
 		defer ct.Close()
@@ -55,14 +55,14 @@ func TestAnnounce(t *testing.T) {
 					},
 				),
 			),
-			moqtransport.DisabledDatagrams(),
+			moqtransport.DisableDatagrams(),
 		)
 		assert.NoError(t, err)
 		defer st.Close()
 
 		ct, err := moqtransport.NewTransport(
 			quicmoq.NewClient(cConn),
-			moqtransport.DisabledDatagrams(),
+			moqtransport.DisableDatagrams(),
 		)
 		assert.NoError(t, err)
 		defer ct.Close()

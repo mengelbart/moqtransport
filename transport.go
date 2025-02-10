@@ -77,7 +77,7 @@ func MaxSubscribeID(id uint64) TransportOption {
 	}
 }
 
-func DisabledDatagrams() TransportOption {
+func DisableDatagrams() TransportOption {
 	return func(tc *transportConfig) {
 		tc.datagramsDisabled = true
 	}
