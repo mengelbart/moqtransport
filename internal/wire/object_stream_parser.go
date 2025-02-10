@@ -3,6 +3,7 @@ package wire
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"log"
@@ -50,6 +51,7 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		if err := fhm.parse(br); err != nil {
 			return nil, err
 		}
+		log.Printf("got fetch header message: %v", fhm)
 		return &ObjectStreamParser{
 			reader:            br,
 			Typ:               StreamType(st),
@@ -75,7 +77,7 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		}, nil
 
 	default:
-		return nil, errInvalidStreamType
+		return nil, fmt.Errorf("%w: %v", errInvalidStreamType, st)
 	}
 }
 

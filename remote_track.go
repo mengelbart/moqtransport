@@ -11,8 +11,6 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-var errUnknownStreamType = errors.New("received unknown stream type")
-
 var errTooManyFetchStreams = errors.New("got too many fetch streams for remote track")
 
 type unsubscriber interface {
@@ -77,23 +75,19 @@ func (t *RemoteTrack) Close() error {
 	return t.unsubscriber.unsubscribe(t.subscribeID)
 }
 
-func (t *RemoteTrack) readStream(parser *wire.ObjectStreamParser) error {
-	switch parser.Typ {
-	case wire.StreamTypeFetch:
-		if t.fetchCount.Add(1) > 1 {
-			return errTooManyFetchStreams
-		}
-
-	case wire.StreamTypeSubgroup:
-		t.subGroupCount.Add(1)
-
-	default:
-		return errUnknownStreamType
+func (t *RemoteTrack) readFetchStream(parser *wire.ObjectStreamParser) error {
+	if t.fetchCount.Add(1) > 1 {
+		return errTooManyFetchStreams
 	}
-	return t.readSubgroupStream(parser)
+	return t.readStream(parser)
 }
 
 func (t *RemoteTrack) readSubgroupStream(parser *wire.ObjectStreamParser) error {
+	t.subGroupCount.Add(1)
+	return t.readStream(parser)
+}
+
+func (t *RemoteTrack) readStream(parser *wire.ObjectStreamParser) error {
 	for m, err := range parser.Messages() {
 		if err != nil {
 			if err == io.EOF {

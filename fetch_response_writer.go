@@ -36,11 +36,11 @@ func (f *fetchResponseWriter) Reject(code uint64, reason string) error {
 	return f.transport.rejectSubscription(f.id, code, reason)
 }
 
-func (f *fetchResponseWriter) OpenFetchStream() (*FetchStream, error) {
+func (f *fetchResponseWriter) FetchStream() (*FetchStream, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	if f.localTrack == nil {
 		return nil, errFetchNotAccepted
 	}
-	return f.localTrack.OpenFetchStream()
+	return f.localTrack.getFetchStream()
 }

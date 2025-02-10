@@ -57,8 +57,8 @@ type ResponseWriter interface {
 	Reject(code uint64, reason string) error
 }
 
-// Publisher is the interface implemented by ResponseWriters of Subscribe and
-// Fetch messages.
+// Publisher is the interface implemented by ResponseWriters of Subscribe
+// messages.
 type Publisher interface {
 	// SendDatagram sends an object in a datagram.
 	SendDatagram(Object) error
@@ -69,6 +69,13 @@ type Publisher interface {
 	// CloseWithError closes the track and sends SUBSCRIBE_DONE with code and
 	// reason.
 	CloseWithError(code uint64, reason string) error
+}
+
+// FetchPublisher is the interface implemented by ResponseWriters of Fetch
+// messages.
+type FetchPublisher interface {
+	// OpenFetchStream opens and returns a new fetch stream.
+	FetchStream() (*FetchStream, error)
 }
 
 // A Handler responds to MoQ messages.

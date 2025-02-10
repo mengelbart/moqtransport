@@ -41,7 +41,7 @@ func (w *subscriptionResponseWriter) SendDatagram(o Object) error {
 	if w.localTrack == nil {
 		return errSubscriptionNotAccepted
 	}
-	return w.localTrack.SendDatagram(o)
+	return w.localTrack.sendDatagram(o)
 }
 
 func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
@@ -50,7 +50,7 @@ func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, pr
 	if w.localTrack == nil {
 		return nil, errSubscriptionNotAccepted
 	}
-	return w.localTrack.OpenSubgroup(groupID, subgroupID, priority)
+	return w.localTrack.openSubgroup(groupID, subgroupID, priority)
 }
 
 func (w *subscriptionResponseWriter) CloseWithError(code uint64, reason string) error {

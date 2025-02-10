@@ -36,5 +36,13 @@ func (f *FetchStream) WriteObject(
 		ObjectPayload:     payload,
 	}
 	buf = fo.AppendFetch(buf)
-	return f.stream.Write(buf)
+	_, err := f.stream.Write(buf)
+	if err != nil {
+		return 0, err
+	}
+	return len(payload), nil
+}
+
+func (f *FetchStream) Close() error {
+	return f.stream.Close()
 }
