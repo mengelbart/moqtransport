@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mengelbart/moqtransport"
-	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,26 +13,15 @@ func TestSubscribeAnnounces(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		st, err := moqtransport.NewTransport(
-			quicmoq.NewServer(sConn),
-			moqtransport.OnRequest(
-				moqtransport.HandlerFunc(
-					func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-						assert.Equal(t, moqtransport.MessageSubscribeAnnounces, m.Method)
-						assert.NotNil(t, w)
-						assert.NoError(t, w.Accept())
-					},
-				),
-			),
-		)
-		assert.NoError(t, err)
-		defer st.Close()
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageSubscribeAnnounces, m.Method)
+			assert.NotNil(t, w)
+			assert.NoError(t, w.Accept())
+		})
+		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		defer cancel()
 
-		ct, err := moqtransport.NewTransport(quicmoq.NewClient(cConn))
-		assert.NoError(t, err)
-		defer ct.Close()
-
-		err = ct.SubscribeAnnouncements(context.Background(), []string{"test_prefix"})
+		err := ct.SubscribeAnnouncements(context.Background(), []string{"test_prefix"})
 		assert.NoError(t, err)
 	})
 }

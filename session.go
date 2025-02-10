@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,150 +10,56 @@ import (
 	"sync/atomic"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var ErrUnknownAnnouncementNamespace = errors.New("unknown announcement namespace")
+var (
+	// ErrControlMessageQueueOverflow is returned if a control message cannot be
+	// send due to queue overflow.
+	ErrControlMessageQueueOverflow = errors.New("control message overflow, message not queued")
 
-type sessionCallbacks interface {
-	queueControlMessage(wire.ControlMessage) error
-	onProtocolViolation(ProtocolError)
-	onMessage(*Message)
+	ErrUnknownAnnouncementNamespace = errors.New("unknown announcement namespace")
+)
+
+type protocolViolationHandler interface {
+	handleProtocolViolation(error)
 }
 
-type session struct {
+type messageHandler interface {
+	handle(*Message)
+}
+
+// A Session is an endpoint of a MoQ Session session.
+type Session struct {
 	logger *slog.Logger
 
-	perspective Perspective
-	protocol    Protocol
+	destroyOnce     sync.Once
+	handshakeDoneCh chan struct{}
+
+	controlMessageSender controlMessageSender
+	pvh                  protocolViolationHandler
+
+	handler messageHandler
+
 	version     wire.Version
-	setupDone   atomic.Bool
-
-	pathLock sync.Mutex
-	path     string
-
-	localRole  Role
-	remoteRole Role
-
-	callbacks sessionCallbacks
-
-	highestSubscribesBlocked atomic.Uint64
-
-	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
-	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
-
-	outgoingSubscriptions *subscriptionMap
-	incomingSubscriptions *subscriptionMap
+	protocol    Protocol
+	perspective Perspective
+	localRole   Role
+	remoteRole  Role
+	path        string
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
+
+	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
+	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
+
+	highestSubscribesBlocked atomic.Uint64
+	outgoingSubscriptions    *subscriptionMap
+	incomingSubscriptions    *subscriptionMap
 }
 
-type sessionOption func(*session) error
-
-func pathParameterOption(path string) sessionOption {
-	return func(s *session) error {
-		s.pathLock.Lock()
-		defer s.pathLock.Unlock()
-		s.path = path
-		return nil
-	}
-}
-
-func roleParameterOption(role Role) sessionOption {
-	return func(s *session) error {
-		s.localRole = role
-		return nil
-	}
-}
-
-func maxSubscribeIDOption(maxID uint64) sessionOption {
-	return func(s *session) error {
-		s.incomingSubscriptions = newSubscriptionMap(maxID)
-		return nil
-	}
-}
-
-func newSession(callbacks sessionCallbacks, perspective Perspective, proto Protocol, options ...sessionOption) (*session, error) {
-	s := &session{
-		logger:                                   defaultLogger,
-		perspective:                              perspective,
-		protocol:                                 proto,
-		version:                                  0,
-		setupDone:                                atomic.Bool{},
-		pathLock:                                 sync.Mutex{},
-		path:                                     "",
-		localRole:                                RolePubSub,
-		remoteRole:                               0,
-		callbacks:                                callbacks,
-		highestSubscribesBlocked:                 atomic.Uint64{},
-		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		outgoingSubscriptions:                    newSubscriptionMap(0),
-		incomingSubscriptions:                    newSubscriptionMap(100),
-		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    newAnnouncementMap(),
-	}
-	for _, opt := range options {
-		if err := opt(s); err != nil {
-			return nil, err
-		}
-	}
-	return s, nil
-}
-
-func (s *session) getSetupDone() bool {
-	return s.setupDone.Load()
-}
-
-func (s *session) getPath() string {
-	s.pathLock.Lock()
-	defer s.pathLock.Unlock()
-	return s.path
-}
-
-func (s *session) sendClientSetup() error {
-	params := map[uint64]wire.Parameter{
-		wire.RoleParameterKey: wire.VarintParameter{
-			Type:  wire.RoleParameterKey,
-			Value: uint64(s.localRole),
-		},
-		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-			Type:  wire.MaxSubscribeIDParameterKey,
-			Value: s.incomingSubscriptions.getMaxSubscribeID(),
-		},
-	}
-	if s.protocol == ProtocolQUIC {
-		s.pathLock.Lock()
-		path := s.path
-		s.pathLock.Unlock()
-		params[wire.PathParameterKey] = wire.StringParameter{
-			Type:  wire.PathParameterKey,
-			Value: path,
-		}
-	}
-	if err := s.queueControlMessage(&wire.ClientSetupMessage{
-		SupportedVersions: wire.SupportedVersions,
-		SetupParameters:   params,
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *session) queueControlMessage(msg wire.ControlMessage) error {
-	if err := s.callbacks.queueControlMessage(msg); err != nil {
-		if err == ErrControlMessageQueueOverflow {
-			s.callbacks.onProtocolViolation(ProtocolError{
-				code:    ErrorCodeInternal,
-				message: "control message queue overflow",
-			})
-		}
-		return err
-	}
-	return nil
-}
-
-func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
+func (s *Session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findBySubscribeID(id)
 	rt := sub.getRemoteTrack()
 	if !ok || rt == nil {
@@ -161,7 +68,7 @@ func (s *session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	return rt, true
 }
 
-func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
+func (s *Session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findByTrackAlias(alias)
 	rt := sub.getRemoteTrack()
 	if !ok || rt == nil {
@@ -170,321 +77,70 @@ func (s *session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	return rt, true
 }
 
-// Local API to trigger outgoing control messages
-
-func (s *session) subscribe(sub *subscription) error {
-	if err := s.outgoingSubscriptions.addPending(sub); err != nil {
-		var tooManySubscribes errMaxSusbcribeIDViolation
-		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
-			if previous < tooManySubscribes.maxSubscribeID {
-				err = errors.Join(err, s.queueControlMessage(&wire.SubscribesBlocked{
-					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
-				}))
-			}
-		}
-		return err
-	}
-	var cm wire.ControlMessage
-	if sub.isFetch {
-		cm = &wire.FetchMessage{
-			SubscribeID:        sub.ID,
-			TrackNamspace:      sub.Namespace,
-			TrackName:          []byte(sub.Trackname),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			EndObject:          0,
-			Parameters:         map[uint64]wire.Parameter{},
-		}
-	} else {
-		params := map[uint64]wire.Parameter{}
-		if len(sub.Authorization) > 0 {
-			params[wire.AuthorizationParameterKey] = &wire.StringParameter{
-				Type:  wire.AuthorizationParameterKey,
-				Value: sub.Authorization,
-			}
-		}
-		cm = &wire.SubscribeMessage{
-			SubscribeID:        sub.ID,
-			TrackAlias:         sub.TrackAlias,
-			TrackNamespace:     sub.Namespace,
-			TrackName:          []byte(sub.Trackname),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			EndObject:          0,
-			Parameters:         params,
-		}
-	}
-	if err := s.queueControlMessage(cm); err != nil {
-		_, _ = s.outgoingSubscriptions.reject(sub.ID)
-		return err
-	}
-	return nil
-}
-
-// used by RemoteTrack
-func (s *session) unsubscribe(id uint64) error {
-	return s.queueControlMessage(&wire.UnsubscribeMessage{
-		SubscribeID: id,
-	})
-}
-
-func (s *session) announce(
-	a *announcement,
-) error {
-	if err := s.outgoingAnnouncements.add(a); err != nil {
-		return err
-	}
-	am := &wire.AnnounceMessage{
-		TrackNamespace: a.Namespace,
-		Parameters:     a.parameters,
-	}
-	if err := s.queueControlMessage(am); err != nil {
-		_, _ = s.outgoingAnnouncements.reject(a.Namespace)
-		return err
-	}
-	return nil
-}
-
-func (s *session) unannounce(namespace []string) error {
-	if ok := s.outgoingAnnouncements.delete(namespace); !ok {
-		return ErrUnknownAnnouncementNamespace
-	}
-	u := &wire.UnannounceMessage{
-		TrackNamespace: namespace,
-	}
-	return s.queueControlMessage(u)
-}
-
-func (s *session) subscribeAnnounces(as *announcementSubscription) error {
-	if err := s.pendingOutgointAnnouncementSubscriptions.add(as); err != nil {
-		return err
-	}
-	sam := &wire.SubscribeAnnouncesMessage{
-		TrackNamespacePrefix: as.namespace,
-		Parameters:           map[uint64]wire.Parameter{},
-	}
-	if err := s.queueControlMessage(sam); err != nil {
-		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(as.namespace)
-		return err
-	}
-	return nil
-}
-
-func (s *session) unsubscribeAnnounces(namespace []string) error {
-	s.pendingOutgointAnnouncementSubscriptions.delete(namespace)
-	uam := &wire.UnsubscribeAnnouncesMessage{
-		TrackNamespacePrefix: namespace,
-	}
-	return s.queueControlMessage(uam)
-}
-
-func (s *session) acceptSubscription(id uint64, lt *localTrack) error {
-	sub, err := s.incomingSubscriptions.confirm(id, nil)
-	if err != nil {
-		return err
-	}
-	sub.localTrack = lt
-	if sub.isFetch {
-		if err := s.queueControlMessage(&wire.FetchOkMessage{
-			SubscribeID:     sub.ID,
-			GroupOrder:      sub.GroupOrder,
-			LargestGroupID:  0,
-			LargestObjectID: 0,
-		}); err != nil {
-			return err
-		}
-	} else {
-		if err := s.queueControlMessage(&wire.SubscribeOkMessage{
-			SubscribeID:     sub.ID,
-			Expires:         sub.Expires,
-			GroupOrder:      sub.GroupOrder,
-			ContentExists:   sub.ContentExists,
-			LargestGroupID:  0,
-			LargestObjectID: 0,
-			Parameters:      map[uint64]wire.Parameter{},
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
-	sub, err := s.incomingSubscriptions.reject(id)
-	if err != nil {
-		return err
-	}
-	if sub.isFetch {
-		return s.queueControlMessage(&wire.FetchErrorMessage{
-			SubscribeID:  sub.ID,
-			ErrorCode:    errorCode,
-			ReasonPhrase: reason,
-		})
-	} else {
-		return s.queueControlMessage(&wire.SubscribeErrorMessage{
-			SubscribeID:  sub.ID,
-			ErrorCode:    errorCode,
-			ReasonPhrase: reason,
-			TrackAlias:   sub.TrackAlias,
-		})
-	}
-}
-
-func (s *session) subscriptionDone(id, code, count uint64, reason string) error {
-	sub, ok := s.incomingSubscriptions.delete(id)
-	if !ok {
-		return errUnknownSubscribeID
-
-	}
-	return s.queueControlMessage(&wire.SubscribeDoneMessage{
-		SubscribeID:  sub.ID,
-		StatusCode:   code,
-		StreamCount:  count,
-		ReasonPhrase: reason,
-	})
-}
-
-func (s *session) acceptAnnouncement(namespace []string) error {
-	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
-		return err
-	}
-	if err := s.queueControlMessage(&wire.AnnounceOkMessage{
-		TrackNamespace: namespace,
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *session) rejectAnnouncement(namespace []string, errorCode uint64, reason string) error {
-
-	return s.queueControlMessage(&wire.AnnounceErrorMessage{
-		TrackNamespace: namespace,
-		ErrorCode:      errorCode,
-		ReasonPhrase:   reason,
-	})
-}
-
-func (s *session) cancelAnnouncement(namespace []string, errorCode uint64, reason string) error {
-	if !s.incomingAnnouncements.delete(namespace) {
-		return ErrUnknownAnnouncementNamespace
-	}
-	acm := &wire.AnnounceCancelMessage{
-		TrackNamespace: namespace,
-		ErrorCode:      errorCode,
-		ReasonPhrase:   reason,
-	}
-	return s.queueControlMessage(acm)
-}
-
-func (s *session) acceptAnnouncementSubscription(prefix []string) error {
-	return s.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
-		TrackNamespacePrefix: prefix,
-	})
-}
-
-func (s *session) rejectAnnouncementSubscription(prefix []string, code uint64, reason string) error {
-	return s.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
-		TrackNamespacePrefix: prefix,
-		ErrorCode:            code,
-		ReasonPhrase:         reason,
-	})
-
-}
-
-// Remote API for handling incoming control messages
-
-func (s *session) onControlMessage(msg wire.ControlMessage) error {
-	if s.setupDone.Load() {
+func (s *Session) receive(msg wire.ControlMessage) error {
+	s.logger.Info("received message", "type", msg.Type().String(), "msg", msg)
+	if s.handshakeDone() {
+		var err error
 		switch m := msg.(type) {
-
-		case *wire.SubscribeUpdateMessage:
-			return s.onSubscribeUpdate(m)
-
-		case *wire.SubscribeMessage:
-			return s.onSubscribe(m)
-
-		case *wire.SubscribeOkMessage:
-			return s.onSubscribeOk(m)
-
-		case *wire.SubscribeErrorMessage:
-			return s.onSubscribeError(m)
-
 		case *wire.AnnounceMessage:
-			return s.onAnnounce(m)
-
-		case *wire.AnnounceOkMessage:
-			return s.onAnnounceOk(m)
-
-		case *wire.AnnounceErrorMessage:
-			return s.onAnnounceError(m)
-
+			err = s.onAnnounce(m)
 		case *wire.UnannounceMessage:
-			return s.onUnannounce(m)
-
-		case *wire.UnsubscribeMessage:
-			return s.onUnsubscribe(m)
-
-		case *wire.SubscribeDoneMessage:
-			return s.onSubscribeDone(m)
-
-		case *wire.AnnounceCancelMessage:
-			return s.onAnnounceCancel(m)
-
-		case *wire.TrackStatusRequestMessage:
-			return s.onTrackStatusRequest(m)
-
-		case *wire.TrackStatusMessage:
-			return s.onTrackStatus(m)
-
-		case *wire.GoAwayMessage:
-			return s.onGoAway(m)
-
-		case *wire.SubscribeAnnouncesMessage:
-			return s.onSubscribeAnnounces(m)
-
-		case *wire.SubscribeAnnouncesOkMessage:
-			return s.onSubscribeAnnouncesOk(m)
-
-		case *wire.SubscribeAnnouncesErrorMessage:
-			return s.onSubscribeAnnouncesError(m)
-
-		case *wire.UnsubscribeAnnouncesMessage:
-			return s.onUnsubscribeAnnounces(m)
-
-		case *wire.MaxSubscribeIDMessage:
-			return s.onMaxSubscribeID(m)
-
-		case *wire.FetchMessage:
-			return s.onFetch(m)
-
-		case *wire.FetchCancelMessage:
-			return s.onFetchCancel(m)
-
+			err = s.onUnannounce(m)
+		case *wire.AnnounceOkMessage:
+			err = s.onAnnounceOk(m)
+		case *wire.AnnounceErrorMessage:
+			err = s.onAnnounceError(m)
+		case *wire.SubscribeOkMessage:
+			err = s.onSubscribeOk(m)
 		case *wire.FetchOkMessage:
-			return s.onFetchOk(m)
-
+			err = s.onFetchOk(m)
+		case *wire.MaxSubscribeIDMessage:
+			err = s.onMaxSubscribeID(m)
+		case *wire.SubscribeDoneMessage:
+			err = s.onSubscribeDone(m)
+		case *wire.FetchMessage:
+			err = s.onFetch(m)
+		case *wire.FetchCancelMessage:
+			err = s.onFetchCancel(m)
 		case *wire.FetchErrorMessage:
-			return s.onFetchError(m)
-
+			err = s.onFetchError(m)
+		case *wire.AnnounceCancelMessage:
+			err = s.onAnnounceCancel(m)
+		case *wire.GoAwayMessage:
+			err = s.onGoAway(m)
+		case *wire.SubscribeAnnouncesErrorMessage:
+			err = s.onSubscribeAnnouncesError(m)
+		case *wire.SubscribeAnnouncesMessage:
+			err = s.onSubscribeAnnounces(m)
+		case *wire.SubscribeAnnouncesOkMessage:
+			err = s.onSubscribeAnnouncesOk(m)
+		case *wire.SubscribeErrorMessage:
+			err = s.onSubscribeError(m)
+		case *wire.SubscribeMessage:
+			err = s.onSubscribe(m)
+		case *wire.SubscribeUpdateMessage:
+			err = s.onSubscribeUpdate(m)
 		case *wire.SubscribesBlocked:
-			s.logger.Info("received subscribes blocked message", "max_subscribe_id", m.MaximumSubscribeID)
-			return nil
-
+			err = s.onSubscribesBlocked(m)
+		case *wire.TrackStatusMessage:
+			err = s.onTrackStatus(m)
+		case *wire.TrackStatusRequestMessage:
+			err = s.onTrackStatusRequest(m)
+		case *wire.UnsubscribeAnnouncesMessage:
+			err = s.onUnsubscribeAnnounces(m)
+		case *wire.UnsubscribeMessage:
+			err = s.onUnsubscribe(m)
+		default:
+			err = ProtocolError{
+				code:    ErrorCodeProtocolViolation,
+				message: "unexpected message type",
+			}
 		}
-
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unexpected message type",
+		if err != nil {
+			s.pvh.handleProtocolViolation(err)
+			return err
 		}
+		return nil
 	}
 
 	switch m := msg.(type) {
@@ -493,13 +149,14 @@ func (s *session) onControlMessage(msg wire.ControlMessage) error {
 	case *wire.ServerSetupMessage:
 		return s.onServerSetup(m)
 	}
+
 	return ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "unexpected message type before setup",
 	}
 }
 
-func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
+func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	if s.perspective != PerspectiveServer {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -519,6 +176,7 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 			message: "incompatible versions",
 		}
 	}
+	var err error
 	s.version = wire.Version(selectedVersion)
 	s.remoteRole, err = validateRoleParameter(m.SetupParameters)
 	if err != nil {
@@ -529,9 +187,7 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 	if err != nil {
 		return err
 	}
-	s.pathLock.Lock()
 	s.path = path
-	s.pathLock.Unlock()
 
 	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
 	if err != nil {
@@ -543,7 +199,7 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 		}
 	}
 
-	if err := s.queueControlMessage(&wire.ServerSetupMessage{
+	if err := s.controlMessageSender.QueueControlMessage(&wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: map[uint64]wire.Parameter{
 			wire.RoleParameterKey: wire.VarintParameter{
@@ -558,11 +214,11 @@ func (s *session) onClientSetup(m *wire.ClientSetupMessage) (err error) {
 	}); err != nil {
 		return err
 	}
-	s.setupDone.Store(true)
+	close(s.handshakeDoneCh)
 	return nil
 }
 
-func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
+func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	if s.perspective != PerspectiveClient {
 		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
@@ -576,6 +232,7 @@ func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 			message: "incompatible versions",
 		}
 	}
+	s.version = m.SelectedVersion
 	s.remoteRole, err = validateRoleParameter(m.SetupParameters)
 	if err != nil {
 		return err
@@ -588,17 +245,323 @@ func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	if err = s.outgoingSubscriptions.updateMaxSubscribeID(remoteMaxSubscribeID); err != nil {
 		return err
 	}
-
-	s.setupDone.Store(true)
+	close(s.handshakeDoneCh)
 	return nil
 }
 
-func (s *session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
+func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
+	a := &announcement{
+		Namespace:  msg.TrackNamespace,
+		parameters: msg.Parameters,
+	}
+	if err := s.incomingAnnouncements.add(a); err != nil {
+		return ProtocolError{
+			code:    ErrorCodeAnnouncementInternalError,
+			message: err.Error(),
+		}
+	}
+	message := &Message{
+		Method:    MessageAnnounce,
+		Namespace: a.Namespace,
+	}
+	s.handler.handle(message)
+	return nil
+}
+
+func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
+	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
+		return errUnknownAnnouncement
+	}
+	req := &Message{
+		Method:    MessageUnannounce,
+		Namespace: msg.TrackNamespace,
+	}
+	s.handler.handle(req)
+	return nil
+}
+
+func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
+	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.TrackNamespace)
+	if err != nil {
+		return errUnknownAnnouncement
+	}
+	select {
+	case announcement.response <- nil:
+	default:
+		s.logger.Info("dopping unhandled AnnouncemeOk response")
+	}
+	return nil
+}
+
+func (s *Session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
+	announcement, ok := s.outgoingAnnouncements.reject(msg.TrackNamespace)
+	if !ok {
+		return errUnknownAnnouncement
+	}
+	select {
+	case announcement.response <- ProtocolError{
+		code:    msg.ErrorCode,
+		message: msg.ReasonPhrase,
+	}:
+	default:
+		s.logger.Info("dropping unhandled AnnounceError response")
+	}
+	return nil
+}
+
+func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
+	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
+		err := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe ID",
+		}
+		return err
+	}
+	rt := newRemoteTrack(msg.SubscribeID, s)
+	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
+	if err != nil {
+		return err
+	}
+	sub.setRemoteTrack(rt)
+	select {
+	case sub.response <- subscriptionResponse{
+		err:   nil,
+		track: rt,
+	}:
+	default:
+		// TODO: Unsubscribe?
+		s.logger.Info("dropping unhandled SubscribeOk response")
+	}
+	return nil
+}
+
+func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
+	sub, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
+	if err != nil {
+		return err
+	}
+	select {
+	case sub.response <- subscriptionResponse{
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
+		track: nil,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeError response")
+	}
+	return nil
+}
+
+func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
+	sub, ok := s.outgoingSubscriptions.findBySubscribeID(msg.SubscribeID)
+	if !ok {
+		// TODO: Protocol violation?
+		return errUnknownSubscribeID
+	}
+	rt := sub.getRemoteTrack()
+	if rt != nil {
+		rt.done(msg.StatusCode, msg.ReasonPhrase)
+	}
+	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
+	// after timeout to wait for late coming objects?
+	return nil
+}
+
+func (s *Session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
+	return s.outgoingSubscriptions.updateMaxSubscribeID(msg.SubscribeID)
+}
+
+func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
+	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
+		err := ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe ID",
+		}
+		return err
+	}
+	rt := newRemoteTrack(msg.SubscribeID, s)
+	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
+	if err != nil {
+		return err
+	}
+	select {
+	case subscription.response <- subscriptionResponse{
+		err:   nil,
+		track: rt,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeOk response")
+	}
+	return nil
+
+}
+
+func (s *Session) onFetchError(msg *wire.FetchErrorMessage) error {
+	f, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
+	if err != nil {
+		return err
+	}
+	select {
+	case f.response <- subscriptionResponse{
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
+		track: nil,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeError response")
+	}
+	return nil
+}
+
+func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
+	if err := s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
+		namespace: msg.TrackNamespacePrefix,
+	}); err != nil {
+		return err
+	}
+	s.handler.handle(&Message{
+		Method:    MessageSubscribeAnnounces,
+		Namespace: msg.TrackNamespacePrefix,
+	})
+	return nil
+}
+
+func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	if !ok {
+		return ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe_announces prefix",
+		}
+	}
+	select {
+	case as.response <- announcementSubscriptionResponse{
+		err: nil,
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeAnnounces response")
+	}
+	return nil
+}
+
+func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	if !ok {
+		return ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown subscribe_announces prefix",
+		}
+	}
+	select {
+	case as.response <- announcementSubscriptionResponse{
+		err: ProtocolError{
+			code:    msg.ErrorCode,
+			message: msg.ReasonPhrase,
+		},
+	}:
+	default:
+		s.logger.Info("dropping unhandled SubscribeAnnounces response")
+	}
+	return nil
+}
+
+func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
+	s.handler.handle(&Message{
+		Method:    MessageUnsubscribeAnnounces,
+		Namespace: msg.TrackNamespacePrefix,
+	})
+	return nil
+}
+
+func (s *Session) onFetch(msg *wire.FetchMessage) error {
+	f := &subscription{
+		ID:        msg.SubscribeID,
+		Namespace: msg.TrackNamspace,
+		Trackname: string(msg.TrackName),
+		isFetch:   true,
+	}
+	if err := s.incomingSubscriptions.addPending(f); err != nil {
+		return err
+	}
+	m := &Message{
+		Method:    MessageFetch,
+		Namespace: f.Namespace,
+		Track:     f.Trackname,
+	}
+	s.handler.handle(m)
+	return nil
+}
+
+func (s *Session) onFetchCancel(_ *wire.FetchCancelMessage) error {
 	// TODO
 	return nil
 }
 
-func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
+// TODO: Maybe don't immediately close the track and give app a chance to react
+// first?
+func (s *Session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
+	sub, ok := s.incomingSubscriptions.delete(msg.SubscribeID)
+	if !ok {
+		return errUnknownSubscribeID
+	}
+	sub.localTrack.unsubscribe()
+	return nil
+}
+
+func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
+	s.handler.handle(&Message{
+		Method:       MessageAnnounceCancel,
+		Namespace:    msg.TrackNamespace,
+		ErrorCode:    msg.ErrorCode,
+		ReasonPhrase: msg.ReasonPhrase,
+	})
+	return nil
+}
+
+// TODO: Does a track status request expect a response? If so, we need to make
+// sure we send one here, in case it is not done by the callback.
+func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
+	s.handler.handle(&Message{
+		Method:    MessageTrackStatusRequest,
+		Namespace: msg.TrackNamespace,
+		Track:     msg.TrackName,
+	})
+	return nil
+}
+
+func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
+	s.handler.handle(&Message{
+		Method:        MessageTrackStatus,
+		Namespace:     msg.TrackNamespace,
+		Track:         msg.TrackName,
+		Authorization: "",
+		Status:        msg.StatusCode,
+		LastGroupID:   msg.LastGroupID,
+		LastObjectID:  msg.LastObjectID,
+		ErrorCode:     0,
+		ReasonPhrase:  "",
+	})
+	return nil
+}
+
+func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
+	s.handler.handle(&Message{
+		Method:        MessageGoAway,
+		NewSessionURI: msg.NewSessionURI,
+	})
+	return nil
+}
+
+func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
+	// TODO
+	return nil
+}
+
+func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	auth, err := validateAuthParameter(msg.Parameters)
 	if err != nil {
 		return err
@@ -609,6 +572,7 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		Namespace:     msg.TrackNamespace,
 		Trackname:     string(msg.TrackName),
 		Authorization: auth,
+		isFetch:       false,
 	}
 	if err := s.incomingSubscriptions.addPending(sub); err != nil {
 		var maxSubscribeIDerr errMaxSusbcribeIDViolation
@@ -634,319 +598,492 @@ func (s *session) onSubscribe(msg *wire.SubscribeMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	s.callbacks.onMessage(m)
+	s.handler.handle(m)
 	return nil
 }
 
-func (s *session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
-	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
-		err := ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe ID",
-		}
-		s.callbacks.onProtocolViolation(err)
-		return err
-	}
-	rt := newRemoteTrack(msg.SubscribeID, s)
-	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
-	if err != nil {
-		return err
-	}
-	sub.setRemoteTrack(rt)
-	select {
-	case sub.response <- subscriptionResponse{
-		err:   nil,
-		track: rt,
-	}:
-	default:
-		// TODO: Unsubscribe?
-		s.logger.Info("dropping unhandled SubscribeOk response")
-	}
+func (s *Session) onSubscribesBlocked(msg *wire.SubscribesBlocked) error {
+	s.logger.Info("received subscribes blocked message", "max_subscribe_id", msg.MaximumSubscribeID)
 	return nil
 }
 
-func (s *session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
-	sub, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
-	if err != nil {
-		return err
-	}
-	select {
-	case sub.response <- subscriptionResponse{
-		err: ProtocolError{
-			code:    msg.ErrorCode,
-			message: msg.ReasonPhrase,
+func (s *Session) unsubscribe(id uint64) error {
+	return s.controlMessageSender.QueueControlMessage(&wire.UnsubscribeMessage{
+		SubscribeID: id,
+	})
+}
+
+func (s *Session) sendClientSetup() error {
+	params := map[uint64]wire.Parameter{
+		wire.RoleParameterKey: wire.VarintParameter{
+			Type:  wire.RoleParameterKey,
+			Value: uint64(s.localRole),
 		},
-		track: nil,
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeError response")
+		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
+			Type:  wire.MaxSubscribeIDParameterKey,
+			Value: s.incomingSubscriptions.getMaxSubscribeID(),
+		},
 	}
-	return nil
-}
-
-func (s *session) onAnnounce(msg *wire.AnnounceMessage) error {
-	a := &announcement{
-		Namespace:  msg.TrackNamespace,
-		parameters: msg.Parameters,
-	}
-	if err := s.incomingAnnouncements.add(a); err != nil {
-		return ProtocolError{
-			code:    ErrorCodeAnnouncementInternalError,
-			message: err.Error(),
+	if s.protocol == ProtocolQUIC {
+		path := s.path
+		params[wire.PathParameterKey] = wire.StringParameter{
+			Type:  wire.PathParameterKey,
+			Value: path,
 		}
 	}
-	message := &Message{
-		Method:    MessageAnnounce,
-		Namespace: a.Namespace,
-	}
-	s.callbacks.onMessage(message)
-	return nil
-}
-
-func (s *session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
-	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.TrackNamespace)
-	if err != nil {
-		return errUnknownAnnouncement
-	}
-	select {
-	case announcement.response <- nil:
-	default:
-		s.logger.Info("dopping unhandled AnnouncemeOk response")
-	}
-	return nil
-}
-
-func (s *session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
-	announcement, ok := s.outgoingAnnouncements.reject(msg.TrackNamespace)
-	if !ok {
-		return errUnknownAnnouncement
-	}
-	select {
-	case announcement.response <- ProtocolError{
-		code:    msg.ErrorCode,
-		message: msg.ReasonPhrase,
-	}:
-	default:
-		s.logger.Info("dropping unhandled AnnounceError response")
-	}
-	return nil
-}
-
-func (s *session) onUnannounce(msg *wire.UnannounceMessage) error {
-	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
-		s.callbacks.onProtocolViolation(errUnknownAnnouncement)
-		return errUnknownAnnouncement
-	}
-	req := &Message{
-		Method:    MessageUnannounce,
-		Namespace: msg.TrackNamespace,
-	}
-	s.callbacks.onMessage(req)
-	return nil
-}
-
-// TODO: Maybe don't immediately close the track and give app a chance to react
-// first?
-func (s *session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
-	sub, ok := s.incomingSubscriptions.delete(msg.SubscribeID)
-	if !ok {
-		return errUnknownSubscribeID
-	}
-	sub.localTrack.unsubscribe()
-	return nil
-}
-
-func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
-	sub, ok := s.outgoingSubscriptions.findBySubscribeID(msg.SubscribeID)
-	if !ok {
-		// TODO: Protocol violation?
-		return errUnknownSubscribeID
-	}
-	rt := sub.getRemoteTrack()
-	if rt != nil {
-		rt.done(msg.StatusCode, msg.ReasonPhrase)
-	}
-	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
-	// after timeout to wait for late coming objects?
-	return nil
-}
-
-func (s *session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	s.callbacks.onMessage(&Message{
-		Method:       MessageAnnounceCancel,
-		Namespace:    msg.TrackNamespace,
-		ErrorCode:    msg.ErrorCode,
-		ReasonPhrase: msg.ReasonPhrase,
-	})
-	return nil
-}
-
-// TODO: Does a track status request expect a response? If so, we need to make
-// sure we send one here, in case it is not done by the callback.
-func (s *session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	s.callbacks.onMessage(&Message{
-		Method:    MessageTrackStatusRequest,
-		Namespace: msg.TrackNamespace,
-		Track:     msg.TrackName,
-	})
-	return nil
-}
-
-func (s *session) onTrackStatus(msg *wire.TrackStatusMessage) error {
-	s.callbacks.onMessage(&Message{
-		Method:        MessageTrackStatus,
-		Namespace:     msg.TrackNamespace,
-		Track:         msg.TrackName,
-		Authorization: "",
-		Status:        msg.StatusCode,
-		LastGroupID:   msg.LastGroupID,
-		LastObjectID:  msg.LastObjectID,
-		ErrorCode:     0,
-		ReasonPhrase:  "",
-	})
-	return nil
-}
-
-func (s *session) onGoAway(msg *wire.GoAwayMessage) error {
-	s.callbacks.onMessage(&Message{
-		Method:        MessageGoAway,
-		NewSessionURI: msg.NewSessionURI,
-	})
-	return nil
-}
-
-func (s *session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
-	if err := s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
-		namespace: msg.TrackNamespacePrefix,
+	if err := s.controlMessageSender.QueueControlMessage(&wire.ClientSetupMessage{
+		SupportedVersions: wire.SupportedVersions,
+		SetupParameters:   params,
 	}); err != nil {
 		return err
 	}
-	s.callbacks.onMessage(&Message{
-		Method:    MessageSubscribeAnnounces,
-		Namespace: msg.TrackNamespacePrefix,
-	})
 	return nil
 }
 
-func (s *session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
-	if !ok {
-		return ProtocolError{
+func (s *Session) handleUniStream(stream ReceiveStream) {
+	s.logger.Info("handling new uni stream")
+	parser, err := wire.NewObjectStreamParser(stream)
+	if err != nil {
+		s.pvh.handleProtocolViolation(ProtocolError{
 			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe_announces prefix",
-		}
+			message: err.Error(),
+		})
+		return
+	}
+	s.logger.Info("parsed object stream header")
+	switch parser.Typ {
+	case wire.StreamTypeFetch:
+		err = s.readFetchStream(parser)
+	case wire.StreamTypeSubgroup:
+		err = s.readSubgroupStream(parser)
+	}
+	if err != nil {
+		s.pvh.handleProtocolViolation(ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "failed to parse object",
+		})
+	}
+}
+
+func (s *Session) readFetchStream(parser *wire.ObjectStreamParser) error {
+	s.logger.Info("reading fetch stream")
+	sid, err := parser.SubscribeID()
+	if err != nil {
+		s.logger.Info("failed to parse subscribe ID", "error", err)
+		return err
+	}
+	rt, ok := s.remoteTrackBySubscribeID(sid)
+	if !ok {
+		return errUnknownSubscribeID
+	}
+	return rt.readFetchStream(parser)
+}
+
+func (s *Session) readSubgroupStream(parser *wire.ObjectStreamParser) error {
+	s.logger.Info("reading subgroup")
+	sid, err := parser.TrackAlias()
+	if err != nil {
+		s.logger.Info("failed to parse subscribe ID", "error", err)
+		return err
+	}
+	rt, ok := s.remoteTrackByTrackAlias(sid)
+	if !ok {
+		return errUnknownSubscribeID
+	}
+	return rt.readSubgroupStream(parser)
+}
+
+func (s *Session) receiveDatagram(dgram []byte) {
+	msg := new(wire.ObjectMessage)
+	_, err := msg.ParseDatagram(dgram)
+	if err != nil {
+		s.logger.Error("failed to parse datagram object", "error", err)
+		s.pvh.handleProtocolViolation(ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "failed to parse datagram object",
+		})
+		return
+	}
+	subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
+	if !ok {
+		s.pvh.handleProtocolViolation(ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "unknown track alias",
+		})
+		return
+	}
+	subscription.push(&Object{
+		GroupID:    msg.GroupID,
+		SubGroupID: msg.SubgroupID,
+		ObjectID:   msg.ObjectID,
+		Payload:    msg.ObjectPayload,
+	})
+}
+
+// Local API
+
+func (s *Session) handshakeDone() bool {
+	select {
+	case <-s.handshakeDoneCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Session) waitForHandshakeDone(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.handshakeDoneCh:
+		return nil
+	}
+}
+
+// Announce announces namespace to the peer. It blocks until a response from the
+// peer was received or ctx is cancelled and returns an error if the
+// announcement was rejected.
+func (s *Session) Announce(ctx context.Context, namespace []string) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+	a := &announcement{
+		Namespace:  namespace,
+		parameters: map[uint64]wire.Parameter{},
+		response:   make(chan error, 1),
+	}
+	if err := s.outgoingAnnouncements.add(a); err != nil {
+		return err
+	}
+	am := &wire.AnnounceMessage{
+		TrackNamespace: a.Namespace,
+		Parameters:     a.parameters,
+	}
+	if err := s.controlMessageSender.QueueControlMessage(am); err != nil {
+		_, _ = s.outgoingAnnouncements.reject(a.Namespace)
+		return err
 	}
 	select {
-	case as.response <- announcementSubscriptionResponse{
-		err: nil,
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeAnnounces response")
+	case <-ctx.Done():
+		return ctx.Err()
+	case res := <-a.response:
+		return res
 	}
-	return nil
 }
 
-func (s *session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
-	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe_announces prefix",
-		}
+func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorCode uint64, reason string) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
 	}
-	select {
-	case as.response <- announcementSubscriptionResponse{
-		err: ProtocolError{
-			code:    msg.ErrorCode,
-			message: msg.ReasonPhrase,
-		},
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeAnnounces response")
+	if !s.incomingAnnouncements.delete(namespace) {
+		return ErrUnknownAnnouncementNamespace
 	}
-	return nil
-
+	acm := &wire.AnnounceCancelMessage{
+		TrackNamespace: namespace,
+		ErrorCode:      errorCode,
+		ReasonPhrase:   reason,
+	}
+	return s.controlMessageSender.QueueControlMessage(acm)
 }
 
-func (s *session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	s.callbacks.onMessage(&Message{
-		Method:    MessageUnsubscribeAnnounces,
-		Namespace: msg.TrackNamespacePrefix,
-	})
-	return nil
-}
-
-func (s *session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
-	return s.outgoingSubscriptions.updateMaxSubscribeID(msg.SubscribeID)
-}
-
-func (s *session) onFetch(msg *wire.FetchMessage) error {
+// Fetch fetches track in namespace from the peer using id as the subscribe ID.
+// It blocks until a response from the peer was received or ctx is cancelled.
+func (s *Session) Fetch(
+	ctx context.Context,
+	id uint64,
+	namespace []string,
+	track string,
+) (*RemoteTrack, error) {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return nil, err
+	}
 	f := &subscription{
-		ID:        msg.SubscribeID,
-		Namespace: msg.TrackNamspace,
-		Trackname: string(msg.TrackName),
+		ID:        id,
+		Namespace: namespace,
+		Trackname: track,
+		isFetch:   true,
+		response:  make(chan subscriptionResponse, 1),
 	}
-	if err := s.incomingSubscriptions.addPending(f); err != nil {
-		return err
-	}
-	m := &Message{
-		Method:    MessageFetch,
-		Namespace: f.Namespace,
-		Track:     f.Trackname,
-	}
-	s.callbacks.onMessage(m)
-	return nil
-}
-
-func (s *session) onFetchCancel(msg *wire.FetchCancelMessage) error {
-	return nil
-}
-
-func (s *session) onFetchOk(msg *wire.FetchOkMessage) error {
-	if !s.outgoingSubscriptions.hasPending(msg.SubscribeID) {
-		err := ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe ID",
+	if err := s.outgoingSubscriptions.addPending(f); err != nil {
+		var tooManySubscribes errMaxSusbcribeIDViolation
+		if errors.As(err, &tooManySubscribes) {
+			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
+			if previous < tooManySubscribes.maxSubscribeID {
+				err = errors.Join(err, s.controlMessageSender.QueueControlMessage(&wire.SubscribesBlocked{
+					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
+				}))
+			}
 		}
-		s.callbacks.onProtocolViolation(err)
+		return nil, err
+	}
+	cm := &wire.FetchMessage{
+		SubscribeID:        f.ID,
+		TrackNamspace:      f.Namespace,
+		TrackName:          []byte(f.Trackname),
+		SubscriberPriority: 0,
+		GroupOrder:         0,
+		StartGroup:         0,
+		StartObject:        0,
+		EndGroup:           0,
+		EndObject:          0,
+		Parameters:         map[uint64]wire.Parameter{},
+	}
+	if err := s.controlMessageSender.QueueControlMessage(cm); err != nil {
+		_, _ = s.outgoingSubscriptions.reject(f.ID)
+		return nil, err
+	}
+	return s.subscribe(ctx, f)
+}
+
+// Path returns the path of the MoQ session which was exchanged during the
+// handshake when using QUIC.
+func (s *Session) Path() string {
+	return s.path
+}
+
+func (s *Session) RequestTrackStatus() {
+	// TODO
+}
+
+// Subscribe subscribes to track in namespace using id as the subscribe ID. It
+// blocks until a response from the peer was received or ctx is cancelled.
+func (s *Session) Subscribe(
+	ctx context.Context,
+	id, alias uint64,
+	namespace []string,
+	name string,
+	auth string,
+) (*RemoteTrack, error) {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return nil, err
+	}
+	ps := &subscription{
+		ID:            id,
+		TrackAlias:    alias,
+		Namespace:     namespace,
+		Trackname:     name,
+		Authorization: auth,
+		Expires:       0,
+		GroupOrder:    0,
+		ContentExists: false,
+		response:      make(chan subscriptionResponse, 1),
+	}
+	if err := s.outgoingSubscriptions.addPending(ps); err != nil {
+		var tooManySubscribes errMaxSusbcribeIDViolation
+		if errors.As(err, &tooManySubscribes) {
+			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
+			if previous < tooManySubscribes.maxSubscribeID {
+				err = errors.Join(err, s.controlMessageSender.QueueControlMessage(&wire.SubscribesBlocked{
+					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
+				}))
+			}
+		}
+		return nil, err
+	}
+	cm := &wire.SubscribeMessage{
+		SubscribeID:        ps.ID,
+		TrackAlias:         ps.TrackAlias,
+		TrackNamespace:     ps.Namespace,
+		TrackName:          []byte(ps.Trackname),
+		SubscriberPriority: 0,
+		GroupOrder:         0,
+		FilterType:         0,
+		StartGroup:         0,
+		StartObject:        0,
+		EndGroup:           0,
+		EndObject:          0,
+		Parameters:         map[uint64]wire.Parameter{},
+	}
+	if len(ps.Authorization) > 0 {
+		cm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
+			Type:  wire.AuthorizationParameterKey,
+			Value: ps.Authorization,
+		}
+	}
+	if err := s.controlMessageSender.QueueControlMessage(cm); err != nil {
+		_, _ = s.outgoingSubscriptions.reject(ps.ID)
+		return nil, err
+	}
+	return s.subscribe(ctx, ps)
+}
+
+// SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
+// It blocks until a response from the peer is received or ctx is cancelled.
+func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return err
 	}
-	rt := newRemoteTrack(msg.SubscribeID, s)
-	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
-	if err != nil {
+	as := &announcementSubscription{
+		namespace: prefix,
+		response:  make(chan announcementSubscriptionResponse, 1),
+	}
+	if err := s.pendingOutgointAnnouncementSubscriptions.add(as); err != nil {
+		return err
+	}
+	sam := &wire.SubscribeAnnouncesMessage{
+		TrackNamespacePrefix: as.namespace,
+		Parameters:           map[uint64]wire.Parameter{},
+	}
+	if err := s.controlMessageSender.QueueControlMessage(sam); err != nil {
+		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(as.namespace)
 		return err
 	}
 	select {
-	case subscription.response <- subscriptionResponse{
-		err:   nil,
-		track: rt,
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeOk response")
+	case <-ctx.Done():
+		return ctx.Err()
+	case resp := <-as.response:
+		return resp.err
+	}
+}
+
+func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []string) error {
+	s.pendingOutgointAnnouncementSubscriptions.delete(namespace)
+	uam := &wire.UnsubscribeAnnouncesMessage{
+		TrackNamespacePrefix: namespace,
+	}
+	return s.controlMessageSender.QueueControlMessage(uam)
+}
+
+// TODO
+func (s *Session) acceptAnnouncementSubscription(as []string) error {
+	return s.controlMessageSender.QueueControlMessage(&wire.SubscribeAnnouncesOkMessage{
+		TrackNamespacePrefix: as,
+	})
+}
+
+// TODO
+func (s *Session) rejectAnnouncementSubscription(as []string, c uint64, r string) error {
+	return s.controlMessageSender.QueueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
+		TrackNamespacePrefix: as,
+		ErrorCode:            c,
+		ReasonPhrase:         r,
+	})
+}
+
+func (s *Session) Unannounce(ctx context.Context, namespace []string) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+	if ok := s.outgoingAnnouncements.delete(namespace); ok {
+		return ErrUnknownAnnouncementNamespace
+	}
+	u := &wire.UnannounceMessage{
+		TrackNamespace: namespace,
+	}
+	return s.controlMessageSender.QueueControlMessage(u)
+}
+
+func (s *Session) subscribe(
+	ctx context.Context,
+	ps *subscription,
+) (*RemoteTrack, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ps.response:
+		return res.track, res.err
+	}
+}
+
+func (s *Session) acceptSubscription(id uint64, lt *localTrack) error {
+	sub, err := s.incomingSubscriptions.confirm(id, nil)
+	if err != nil {
+		return err
+	}
+	sub.localTrack = lt
+	if sub.isFetch {
+		if err := s.controlMessageSender.QueueControlMessage(&wire.FetchOkMessage{
+			SubscribeID:     sub.ID,
+			GroupOrder:      sub.GroupOrder,
+			LargestGroupID:  0,
+			LargestObjectID: 0,
+		}); err != nil {
+			return err
+		}
+	} else {
+		if err := s.controlMessageSender.QueueControlMessage(&wire.SubscribeOkMessage{
+			SubscribeID:     sub.ID,
+			Expires:         sub.Expires,
+			GroupOrder:      sub.GroupOrder,
+			ContentExists:   sub.ContentExists,
+			LargestGroupID:  0,
+			LargestObjectID: 0,
+			Parameters:      map[uint64]wire.Parameter{},
+		}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (s *session) onFetchError(msg *wire.FetchErrorMessage) error {
-	f, err := s.outgoingSubscriptions.reject(msg.SubscribeID)
-	if err != nil {
+func (s *Session) acceptAnnouncement(namespace []string) error {
+	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
 		return err
 	}
-	select {
-	case f.response <- subscriptionResponse{
-		err: ProtocolError{
-			code:    msg.ErrorCode,
-			message: msg.ReasonPhrase,
-		},
-		track: nil,
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeError response")
+	if err := s.controlMessageSender.QueueControlMessage(&wire.AnnounceOkMessage{
+		TrackNamespace: namespace,
+	}); err != nil {
+		return err
 	}
 	return nil
 }
 
-// Helpers
+func (s *Session) rejectAnnouncement(ns []string, c uint64, r string) error {
+	return s.controlMessageSender.QueueControlMessage(&wire.AnnounceErrorMessage{
+		TrackNamespace: ns,
+		ErrorCode:      c,
+		ReasonPhrase:   r,
+	})
+}
+
+func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
+	sub, err := s.incomingSubscriptions.reject(id)
+	if err != nil {
+		return err
+	}
+	if sub.isFetch {
+		return s.controlMessageSender.QueueControlMessage(&wire.FetchErrorMessage{
+			SubscribeID:  sub.ID,
+			ErrorCode:    errorCode,
+			ReasonPhrase: reason,
+		})
+	} else {
+		return s.controlMessageSender.QueueControlMessage(&wire.SubscribeErrorMessage{
+			SubscribeID:  sub.ID,
+			ErrorCode:    errorCode,
+			ReasonPhrase: reason,
+			TrackAlias:   sub.TrackAlias,
+		})
+	}
+}
+
+func (s *Session) subscriptionDone(id, code, count uint64, reason string) error {
+	sub, ok := s.incomingSubscriptions.delete(id)
+	if !ok {
+		return errUnknownSubscribeID
+
+	}
+	return s.controlMessageSender.QueueControlMessage(&wire.SubscribeDoneMessage{
+		SubscribeID:  sub.ID,
+		StatusCode:   code,
+		StreamCount:  count,
+		ReasonPhrase: reason,
+	})
+}
+
+func compileMessage(msg wire.ControlMessage) []byte {
+	buf := make([]byte, 16, 1500)
+	buf = append(buf, msg.Append(buf[16:])...)
+	length := len(buf[16:])
+
+	typeLenBuf := quicvarint.Append(buf[:0], uint64(msg.Type()))
+	typeLenBuf = quicvarint.Append(typeLenBuf, uint64(length))
+
+	n := copy(buf[0:16], typeLenBuf)
+	buf = append(buf[:n], buf[16:]...)
+
+	return buf
+}
 
 func validateRoleParameter(setupParameters wire.Parameters) (Role, error) {
 	remoteRoleParam, ok := setupParameters[wire.RoleParameterKey]

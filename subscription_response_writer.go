@@ -1,63 +1,31 @@
 package moqtransport
 
-import (
-	"errors"
-	"sync"
-)
-
-var errSubscriptionNotAccepted = errors.New("publish before subscription accepted")
-
 type subscriptionResponseWriter struct {
 	id         uint64
 	trackAlias uint64
-	transport  *Transport
-	lock       sync.Mutex
+	session    *Session
 	localTrack *localTrack
 }
 
-func (w *subscriptionResponseWriter) done(code, count uint64, reason string) error {
-	return w.transport.subscriptionDone(w.id, code, count, reason)
-}
-
 func (w *subscriptionResponseWriter) Accept() error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	w.localTrack = newLocalTrack(w.transport.conn, w.id, w.trackAlias, w.done)
-	if err := w.transport.acceptSubscription(w.id, w.localTrack); err != nil {
+	if err := w.session.acceptSubscription(w.id, w.localTrack); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (w *subscriptionResponseWriter) Reject(code uint64, reason string) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	return w.transport.rejectSubscription(w.id, code, reason)
+	return w.session.rejectSubscription(w.id, code, reason)
 }
 
 func (w *subscriptionResponseWriter) SendDatagram(o Object) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.localTrack == nil {
-		return errSubscriptionNotAccepted
-	}
 	return w.localTrack.sendDatagram(o)
 }
 
 func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.localTrack == nil {
-		return nil, errSubscriptionNotAccepted
-	}
 	return w.localTrack.openSubgroup(groupID, subgroupID, priority)
 }
 
 func (w *subscriptionResponseWriter) CloseWithError(code uint64, reason string) error {
-	w.lock.Lock()
-	defer w.lock.Unlock()
-	if w.localTrack == nil {
-		return errSubscriptionNotAccepted
-	}
 	return w.localTrack.close(code, reason)
 }

@@ -1,14 +1,14 @@
 package moqtransport
 
 type announcementSubscriptionResponseWriter struct {
-	prefix    []string
-	transport *Transport
+	prefix  []string
+	session *Session
 }
 
 func (a *announcementSubscriptionResponseWriter) Accept() error {
-	return a.transport.acceptAnnouncementSubscription(a.prefix)
+	return a.session.acceptAnnouncementSubscription(a.prefix)
 }
 
 func (a *announcementSubscriptionResponseWriter) Reject(code uint64, reason string) error {
-	return a.transport.rejectAnnouncementSubscription(a.prefix, code, reason)
+	return a.session.rejectAnnouncementSubscription(a.prefix, code, reason)
 }
