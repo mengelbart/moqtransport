@@ -25,14 +25,17 @@ type sessionI interface {
 	remoteTrackByTrackAlias(uint64) (*RemoteTrack, bool)
 	announce(*announcement) error
 	subscribeAnnounces(*announcementSubscription) error
+	unsubscribeAnnounces([]string) error
 	subscribe(*subscription) error
 	acceptAnnouncement([]string) error
 	rejectAnnouncement([]string, uint64, string) error
+	cancelAnnouncement(namespace []string, errorCode uint64, reason string) error
 	acceptAnnouncementSubscription([]string) error
 	rejectAnnouncementSubscription([]string, uint64, string) error
 	acceptSubscription(uint64, *localTrack) error
 	rejectSubscription(uint64, uint64, string) error
 	subscriptionDone(id, code, count uint64, reason string) error
+	unannounce([]string) error
 	sendClientSetup() error
 }
 
@@ -423,8 +426,8 @@ func (t *Transport) Announce(ctx context.Context, namespace []string) error {
 	}
 }
 
-func (t *Transport) AnnounceCancel() {
-	// TODO
+func (t *Transport) AnnounceCancel(namespace []string, errorCode uint64, reason string) error {
+	return t.session.cancelAnnouncement(namespace, errorCode, reason)
 }
 
 // Fetch fetches track in namespace from the peer using id as the subscribe ID.
@@ -508,12 +511,15 @@ func (t *Transport) SubscribeAnnouncements(ctx context.Context, prefix []string)
 	}
 }
 
-func (t *Transport) Unannounce() {
-	// TODO
+func (t *Transport) Unannounce(ctx context.Context, namespace []string) error {
+	if err := t.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+	return t.session.unannounce(namespace)
 }
 
-func (t *Transport) UnsubscribeAnnouncements() {
-	// TODO
+func (t *Transport) UnsubscribeAnnouncements(ctx context.Context, namespace []string) error {
+	return t.session.unsubscribeAnnounces(namespace)
 }
 
 func (t *Transport) subscribe(
