@@ -195,4 +195,57 @@ func TestSubscribe(t *testing.T) {
 		assert.ErrorContains(t, err, "unsubscribed")
 		assert.Nil(t, p)
 	})
+
+	t.Run("subscribe_done", func(t *testing.T) {
+		sConn, cConn, cancel := connect(t)
+		defer cancel()
+
+		publisherCh := make(chan moqtransport.Publisher, 1)
+
+		st, err := moqtransport.NewTransport(
+			quicmoq.NewServer(sConn),
+			moqtransport.OnRequest(
+				moqtransport.HandlerFunc(
+					func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
+						assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+						assert.NotNil(t, w)
+						assert.NoError(t, w.Accept())
+						publisher, ok := w.(moqtransport.Publisher)
+						assert.True(t, ok)
+						publisherCh <- publisher
+					},
+				),
+			),
+		)
+		assert.NoError(t, err)
+		defer st.Close()
+
+		ct, err := moqtransport.NewTransport(
+			quicmoq.NewClient(cConn),
+		)
+		assert.NoError(t, err)
+		defer ct.Close()
+
+		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		assert.NoError(t, err)
+		assert.NotNil(t, rt)
+
+		var publisher moqtransport.Publisher
+		select {
+		case publisher = <-publisherCh:
+		case <-time.After(time.Second):
+			assert.FailNow(t, "timeout while waiting for publisher")
+		}
+
+		err = publisher.CloseWithError(moqtransport.SubscribeStatusSubscriptionEnded, "done")
+		assert.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		o, err := rt.ReadObject(ctx)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "done")
+		assert.Nil(t, o)
+	})
 }

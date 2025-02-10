@@ -32,6 +32,7 @@ type sessionI interface {
 	rejectAnnouncementSubscription([]string, uint64, string) error
 	acceptSubscription(uint64, *localTrack) error
 	rejectSubscription(uint64, uint64, string) error
+	subscriptionDone(id, code, count uint64, reason string) error
 	sendClientSetup() error
 }
 
@@ -312,7 +313,6 @@ func (t *Transport) handleUniStream(stream ReceiveStream) {
 	t.logger.Info("handling new uni stream")
 	parser, err := wire.NewObjectStreamParser(stream)
 	if err != nil {
-		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
 		t.destroy(ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "invalid stream type",
@@ -321,7 +321,10 @@ func (t *Transport) handleUniStream(stream ReceiveStream) {
 	}
 	t.logger.Info("parsed object stream header")
 	if err := t.readSubgroupStream(parser); err != nil {
-		stream.Stop(0) // TODO: Set correct error and possibly destroy session?
+		t.destroy(ProtocolError{
+			code:    ErrorCodeProtocolViolation,
+			message: "failed to parse object",
+		})
 	}
 }
 
@@ -534,6 +537,10 @@ func (t *Transport) acceptSubscription(id uint64, lt *localTrack) error {
 
 func (t *Transport) rejectSubscription(id uint64, code uint64, reason string) error {
 	return t.session.rejectSubscription(id, code, reason)
+}
+
+func (t *Transport) subscriptionDone(id, code, streamCount uint64, reason string) error {
+	return t.session.subscriptionDone(id, code, streamCount, reason)
 }
 
 func compileMessage(msg wire.ControlMessage) []byte {

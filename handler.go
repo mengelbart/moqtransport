@@ -1,7 +1,5 @@
 package moqtransport
 
-import "io"
-
 // Common Message types. Handlers can react to any of these messages.
 const (
 	MessageSubscribe            = "SUBSCRIBE"
@@ -68,8 +66,9 @@ type Publisher interface {
 	// OpenSubgroup opens and returns a new subgroup.
 	OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error)
 
-	// Close closes the track and sends SUBSCRIBE_DONE.
-	io.Closer
+	// CloseWithError closes the track and sends SUBSCRIBE_DONE with code and
+	// reason.
+	CloseWithError(code uint64, reason string) error
 }
 
 // A Handler responds to MoQ messages.

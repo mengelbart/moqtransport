@@ -12,26 +12,30 @@ var (
 	ErrSubscriptionDone = errors.New("track closed, subscription done")
 )
 
+type subscribeDoneCallback func(code, count uint64, reason string) error
+
 type localTrack struct {
-	conn        Connection
-	subscribeID uint64
-	trackAlias  uint64
-	fetchStream SendStream
-	subgroups   map[uint64]*Subgroup
-	ctx         context.Context
-	cancelCtx   context.CancelCauseFunc
+	conn          Connection
+	subscribeID   uint64
+	trackAlias    uint64
+	subgroupCount uint64
+	fetchStream   SendStream
+	ctx           context.Context
+	cancelCtx     context.CancelCauseFunc
+	subscribeDone subscribeDoneCallback
 }
 
-func newLocalTrack(conn Connection, subscribeID, trackAlias uint64) *localTrack {
+func newLocalTrack(conn Connection, subscribeID, trackAlias uint64, onSubscribeDone subscribeDoneCallback) *localTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	publisher := &localTrack{
-		conn:        conn,
-		subscribeID: subscribeID,
-		trackAlias:  trackAlias,
-		fetchStream: nil,
-		subgroups:   map[uint64]*Subgroup{},
-		ctx:         ctx,
-		cancelCtx:   cancel,
+		conn:          conn,
+		subscribeID:   subscribeID,
+		trackAlias:    trackAlias,
+		subgroupCount: 0,
+		fetchStream:   nil,
+		ctx:           ctx,
+		cancelCtx:     cancel,
+		subscribeDone: onSubscribeDone,
 	}
 	return publisher
 }
@@ -77,11 +81,13 @@ func (p *localTrack) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*
 	if err != nil {
 		return nil, err
 	}
+	p.subgroupCount++
 	return newSubgroup(stream, p.trackAlias, groupID, subgroupID, priority)
 }
 
-func (s *localTrack) Close() error {
-	return nil
+func (s *localTrack) close(code uint64, reason string) error {
+	s.cancelCtx(ErrSubscriptionDone)
+	return s.subscribeDone(code, s.subgroupCount, reason)
 }
 
 func (s *localTrack) unsubscribe() {

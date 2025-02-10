@@ -318,6 +318,20 @@ func (s *session) rejectSubscription(id uint64, errorCode uint64, reason string)
 	}
 }
 
+func (s *session) subscriptionDone(id, code, count uint64, reason string) error {
+	sub, ok := s.incomingSubscriptions.delete(id)
+	if !ok {
+		return errUnknownSubscribeID
+
+	}
+	return s.queueControlMessage(&wire.SubscribeDoneMessage{
+		SubscribeID:  sub.ID,
+		StatusCode:   code,
+		StreamCount:  count,
+		ReasonPhrase: reason,
+	})
+}
+
 func (s *session) acceptAnnouncement(namespace []string) error {
 	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
 		return err
@@ -716,7 +730,9 @@ func (s *session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 		return errUnknownSubscribeID
 	}
 	rt := sub.getRemoteTrack()
-	rt.done(msg.StatusCode, msg.ReasonPhrase)
+	if rt != nil {
+		rt.done(msg.StatusCode, msg.ReasonPhrase)
+	}
 	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
 	// after timeout to wait for late coming objects?
 	return nil
