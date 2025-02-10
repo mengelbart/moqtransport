@@ -15,10 +15,14 @@ type subscriptionResponseWriter struct {
 	localTrack *localTrack
 }
 
+func (w *subscriptionResponseWriter) done(code, count uint64, reason string) error {
+	return w.transport.subscriptionDone(w.id, code, count, reason)
+}
+
 func (w *subscriptionResponseWriter) Accept() error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
-	w.localTrack = newLocalTrack(w.transport.conn, w.id, w.trackAlias)
+	w.localTrack = newLocalTrack(w.transport.conn, w.id, w.trackAlias, w.done)
 	if err := w.transport.acceptSubscription(w.id, w.localTrack); err != nil {
 		return err
 	}
@@ -49,11 +53,11 @@ func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, pr
 	return w.localTrack.OpenSubgroup(groupID, subgroupID, priority)
 }
 
-func (w *subscriptionResponseWriter) Close() error {
+func (w *subscriptionResponseWriter) CloseWithError(code uint64, reason string) error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
 	if w.localTrack == nil {
 		return errSubscriptionNotAccepted
 	}
-	return w.localTrack.Close()
+	return w.localTrack.close(code, reason)
 }

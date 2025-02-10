@@ -64,7 +64,9 @@ func newRemoteTrack(id uint64, u unsubscriber) *RemoteTrack {
 func (t *RemoteTrack) ReadObject(ctx context.Context) (*Object, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, context.Cause(ctx)
+	case <-t.doneCtx.Done():
+		return nil, context.Cause(t.doneCtx)
 	case obj := <-t.buffer:
 		return obj, t.doneCtx.Err()
 	}

@@ -251,3 +251,17 @@ func (mr *MockSessionIMockRecorder) subscribeAnnounces(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "subscribeAnnounces", reflect.TypeOf((*MockSessionI)(nil).subscribeAnnounces), arg0)
 }
+
+// subscriptionDone mocks base method.
+func (m *MockSessionI) subscriptionDone(id, code, count uint64, reason string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "subscriptionDone", id, code, count, reason)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// subscriptionDone indicates an expected call of subscriptionDone.
+func (mr *MockSessionIMockRecorder) subscriptionDone(id, code, count, reason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "subscriptionDone", reflect.TypeOf((*MockSessionI)(nil).subscriptionDone), id, code, count, reason)
+}

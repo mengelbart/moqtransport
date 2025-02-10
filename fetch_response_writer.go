@@ -14,11 +14,15 @@ type fetchResponseWriter struct {
 	localTrack *localTrack
 }
 
+func (f *fetchResponseWriter) done(code, count uint64, reason string) error {
+	return f.transport.subscriptionDone(f.id, code, count, reason)
+}
+
 // Accept implements ResponseWriter.
 func (f *fetchResponseWriter) Accept() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.localTrack = newLocalTrack(f.transport.conn, f.id, 0)
+	f.localTrack = newLocalTrack(f.transport.conn, f.id, 0, f.done)
 	if err := f.transport.acceptSubscription(f.id, f.localTrack); err != nil {
 		return err
 	}
