@@ -11,6 +11,8 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
+var ErrUnknownAnnouncementNamespace = errors.New("unknown announcement namespace")
+
 type sessionCallbacks interface {
 	queueControlMessage(wire.ControlMessage) error
 	onProtocolViolation(ProtocolError)
@@ -251,6 +253,16 @@ func (s *session) announce(
 	return nil
 }
 
+func (s *session) unannounce(namespace []string) error {
+	if ok := s.outgoingAnnouncements.delete(namespace); !ok {
+		return ErrUnknownAnnouncementNamespace
+	}
+	u := &wire.UnannounceMessage{
+		TrackNamespace: namespace,
+	}
+	return s.queueControlMessage(u)
+}
+
 func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 	if err := s.pendingOutgointAnnouncementSubscriptions.add(as); err != nil {
 		return err
@@ -264,6 +276,14 @@ func (s *session) subscribeAnnounces(as *announcementSubscription) error {
 		return err
 	}
 	return nil
+}
+
+func (s *session) unsubscribeAnnounces(namespace []string) error {
+	s.pendingOutgointAnnouncementSubscriptions.delete(namespace)
+	uam := &wire.UnsubscribeAnnouncesMessage{
+		TrackNamespacePrefix: namespace,
+	}
+	return s.queueControlMessage(uam)
 }
 
 func (s *session) acceptSubscription(id uint64, lt *localTrack) error {
@@ -351,6 +371,18 @@ func (s *session) rejectAnnouncement(namespace []string, errorCode uint64, reaso
 		ErrorCode:      errorCode,
 		ReasonPhrase:   reason,
 	})
+}
+
+func (s *session) cancelAnnouncement(namespace []string, errorCode uint64, reason string) error {
+	if !s.incomingAnnouncements.delete(namespace) {
+		return ErrUnknownAnnouncementNamespace
+	}
+	acm := &wire.AnnounceCancelMessage{
+		TrackNamespace: namespace,
+		ErrorCode:      errorCode,
+		ReasonPhrase:   reason,
+	}
+	return s.queueControlMessage(acm)
 }
 
 func (s *session) acceptAnnouncementSubscription(prefix []string) error {
@@ -562,6 +594,7 @@ func (s *session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 }
 
 func (s *session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
+	// TODO
 	return nil
 }
 

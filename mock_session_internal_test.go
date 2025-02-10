@@ -96,6 +96,20 @@ func (mr *MockSessionIMockRecorder) announce(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "announce", reflect.TypeOf((*MockSessionI)(nil).announce), arg0)
 }
 
+// cancelAnnouncement mocks base method.
+func (m *MockSessionI) cancelAnnouncement(namespace []string, errorCode uint64, reason string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "cancelAnnouncement", namespace, errorCode, reason)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// cancelAnnouncement indicates an expected call of cancelAnnouncement.
+func (mr *MockSessionIMockRecorder) cancelAnnouncement(namespace, errorCode, reason any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "cancelAnnouncement", reflect.TypeOf((*MockSessionI)(nil).cancelAnnouncement), namespace, errorCode, reason)
+}
+
 // getPath mocks base method.
 func (m *MockSessionI) getPath() string {
 	m.ctrl.T.Helper()
@@ -264,4 +278,32 @@ func (m *MockSessionI) subscriptionDone(id, code, count uint64, reason string) e
 func (mr *MockSessionIMockRecorder) subscriptionDone(id, code, count, reason any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "subscriptionDone", reflect.TypeOf((*MockSessionI)(nil).subscriptionDone), id, code, count, reason)
+}
+
+// unannounce mocks base method.
+func (m *MockSessionI) unannounce(arg0 []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "unannounce", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// unannounce indicates an expected call of unannounce.
+func (mr *MockSessionIMockRecorder) unannounce(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "unannounce", reflect.TypeOf((*MockSessionI)(nil).unannounce), arg0)
+}
+
+// unsubscribeAnnounces mocks base method.
+func (m *MockSessionI) unsubscribeAnnounces(arg0 []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "unsubscribeAnnounces", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// unsubscribeAnnounces indicates an expected call of unsubscribeAnnounces.
+func (mr *MockSessionIMockRecorder) unsubscribeAnnounces(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "unsubscribeAnnounces", reflect.TypeOf((*MockSessionI)(nil).unsubscribeAnnounces), arg0)
 }
