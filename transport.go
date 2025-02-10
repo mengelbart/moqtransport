@@ -315,17 +315,37 @@ func (t *Transport) handleUniStream(stream ReceiveStream) {
 	if err != nil {
 		t.destroy(ProtocolError{
 			code:    ErrorCodeProtocolViolation,
-			message: "invalid stream type",
+			message: err.Error(),
 		})
 		return
 	}
 	t.logger.Info("parsed object stream header")
-	if err := t.readSubgroupStream(parser); err != nil {
+	switch parser.Typ {
+	case wire.StreamTypeFetch:
+		err = t.readFetchStream(parser)
+	case wire.StreamTypeSubgroup:
+		err = t.readSubgroupStream(parser)
+	}
+	if err != nil {
 		t.destroy(ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "failed to parse object",
 		})
 	}
+}
+
+func (t *Transport) readFetchStream(parser *wire.ObjectStreamParser) error {
+	t.logger.Info("reading fetch stream")
+	sid, err := parser.SubscribeID()
+	if err != nil {
+		t.logger.Info("failed to parse subscribe ID", "error", err)
+		return err
+	}
+	rt, ok := t.session.remoteTrackBySubscribeID(sid)
+	if !ok {
+		return errUnknownSubscribeID
+	}
+	return rt.readFetchStream(parser)
 }
 
 func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
@@ -339,7 +359,7 @@ func (t *Transport) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return rt.readStream(parser)
+	return rt.readSubgroupStream(parser)
 }
 
 func (t *Transport) readDatagrams() {

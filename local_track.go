@@ -3,6 +3,7 @@ package moqtransport
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
@@ -15,47 +16,55 @@ var (
 type subscribeDoneCallback func(code, count uint64, reason string) error
 
 type localTrack struct {
-	conn          Connection
-	subscribeID   uint64
-	trackAlias    uint64
-	subgroupCount uint64
-	fetchStream   SendStream
-	ctx           context.Context
-	cancelCtx     context.CancelCauseFunc
-	subscribeDone subscribeDoneCallback
+	conn            Connection
+	subscribeID     uint64
+	trackAlias      uint64
+	subgroupCount   uint64
+	fetchStreamLock sync.Mutex
+	fetchStream     *FetchStream
+	ctx             context.Context
+	cancelCtx       context.CancelCauseFunc
+	subscribeDone   subscribeDoneCallback
 }
 
 func newLocalTrack(conn Connection, subscribeID, trackAlias uint64, onSubscribeDone subscribeDoneCallback) *localTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	publisher := &localTrack{
-		conn:          conn,
-		subscribeID:   subscribeID,
-		trackAlias:    trackAlias,
-		subgroupCount: 0,
-		fetchStream:   nil,
-		ctx:           ctx,
-		cancelCtx:     cancel,
-		subscribeDone: onSubscribeDone,
+		conn:            conn,
+		subscribeID:     subscribeID,
+		trackAlias:      trackAlias,
+		subgroupCount:   0,
+		fetchStreamLock: sync.Mutex{},
+		fetchStream:     nil,
+		ctx:             ctx,
+		cancelCtx:       cancel,
+		subscribeDone:   onSubscribeDone,
 	}
 	return publisher
 }
 
-func (p *localTrack) OpenFetchStream() (*FetchStream, error) {
+func (p *localTrack) getFetchStream() (*FetchStream, error) {
+	p.fetchStreamLock.Lock()
+	defer p.fetchStreamLock.Unlock()
+
 	if err := p.closed(); err != nil {
 		return nil, err
+	}
+	if p.fetchStream != nil {
+		return p.fetchStream, nil
 	}
 	stream, err := p.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
-	fs, err := newFetchStream(stream, p.subscribeID)
+	p.fetchStream, err = newFetchStream(stream, p.subscribeID)
 	if err != nil {
 		return nil, err
 	}
-	return fs, nil
+	return p.fetchStream, nil
 }
 
-func (p *localTrack) SendDatagram(o Object) error {
+func (p *localTrack) sendDatagram(o Object) error {
 	if err := p.closed(); err != nil {
 		return err
 	}
@@ -73,7 +82,7 @@ func (p *localTrack) SendDatagram(o Object) error {
 	return p.conn.SendDatagram(buf)
 }
 
-func (p *localTrack) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
+func (p *localTrack) openSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
 	if err := p.closed(); err != nil {
 		return nil, err
 	}

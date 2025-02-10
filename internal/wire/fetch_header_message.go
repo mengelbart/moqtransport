@@ -9,6 +9,7 @@ type FetchHeaderMessage struct {
 }
 
 func (m *FetchHeaderMessage) Append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(StreamTypeFetch))
 	return quicvarint.Append(buf, m.SubscribeID)
 }
 

@@ -40,6 +40,7 @@ func TestSubscribe(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
+
 	t.Run("auth_error", func(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
@@ -70,6 +71,7 @@ func TestSubscribe(t *testing.T) {
 		assert.ErrorContains(t, err, "unauthorized")
 		assert.Nil(t, rt)
 	})
+
 	t.Run("receive_objects", func(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
@@ -145,6 +147,7 @@ func TestSubscribe(t *testing.T) {
 			Payload:    []byte("hello again"),
 		}, o)
 	})
+
 	t.Run("unsubscribe", func(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
