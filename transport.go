@@ -448,10 +448,6 @@ func (t *Transport) Fetch(
 	return t.subscribe(ctx, f)
 }
 
-func (t *Transport) GoAway() {
-	// TODO
-}
-
 // Path returns the path of the MoQ session which was exchanged during the
 // handshake when using QUIC.
 func (t *Transport) Path() string {
