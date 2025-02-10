@@ -43,7 +43,7 @@ func (m *FetchOkMessage) parse(data []byte) (err error) {
 		return errInvalidGroupOrder
 	}
 	m.EndOfTrack = data[1]
-	data = data[2:n]
+	data = data[2:]
 
 	m.LargestGroupID, n, err = quicvarint.Parse(data)
 	if err != nil {

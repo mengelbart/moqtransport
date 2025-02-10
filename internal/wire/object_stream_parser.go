@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -51,7 +50,6 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		if err := fhm.parse(br); err != nil {
 			return nil, err
 		}
-		log.Printf("got fetch header message: %v", fhm)
 		return &ObjectStreamParser{
 			reader:            br,
 			Typ:               StreamType(st),
@@ -66,7 +64,6 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		if err := shsm.parse(br); err != nil {
 			return nil, err
 		}
-		log.Printf("got stream header subgroup message: %v", shsm)
 		return &ObjectStreamParser{
 			reader:            br,
 			Typ:               StreamType(st),

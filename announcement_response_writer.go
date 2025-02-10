@@ -2,13 +2,13 @@ package moqtransport
 
 type announcementResponseWriter struct {
 	namespace []string
-	transport *Transport
+	session   *Session
 }
 
 func (a *announcementResponseWriter) Accept() error {
-	return a.transport.acceptAnnouncement(a.namespace)
+	return a.session.acceptAnnouncement(a.namespace)
 }
 
 func (a *announcementResponseWriter) Reject(code uint64, reason string) error {
-	return a.transport.rejectAnnouncement(a.namespace, code, reason)
+	return a.session.rejectAnnouncement(a.namespace, code, reason)
 }

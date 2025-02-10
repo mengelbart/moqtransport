@@ -116,10 +116,14 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 }
 
 func (h *moqHandler) handle(conn moqtransport.Connection) {
-	ms, err := moqtransport.NewTransport(
-		conn,
-		moqtransport.OnRequest(h.getHandler()),
-	)
+	transport := &moqtransport.Transport{
+		Conn:                  conn,
+		InitialMaxSubscribeID: 100,
+		DatagramsDisabled:     false,
+		Role:                  moqtransport.RolePubSub,
+		Handler:               h.getHandler(),
+	}
+	ms, err := transport.NewSession(context.Background())
 	if err != nil {
 		log.Printf("MoQ Session initialization failed: %v", err)
 		conn.CloseWithError(0, "session initialization error")
@@ -140,7 +144,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 	}
 }
 
-func (h *moqHandler) subscribeAndRead(s *moqtransport.Transport, namespace []string, trackname string) error {
+func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []string, trackname string) error {
 	rs, err := s.Subscribe(context.Background(), 0, 0, namespace, trackname, "")
 	if err != nil {
 		return err
