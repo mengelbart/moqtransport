@@ -32,7 +32,6 @@ type SubscribeMessage struct {
 	StartGroup         uint64
 	StartObject        uint64
 	EndGroup           uint64
-	EndObject          uint64
 	Parameters         Parameters
 }
 
@@ -58,7 +57,6 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	}
 	if m.FilterType == FilterTypeAbsoluteRange {
 		buf = quicvarint.Append(buf, m.EndGroup)
-		buf = quicvarint.Append(buf, m.EndObject)
 	}
 	return m.Parameters.append(buf)
 }
@@ -125,12 +123,6 @@ func (m *SubscribeMessage) parse(data []byte) (err error) {
 
 	if m.FilterType == FilterTypeAbsoluteRange {
 		m.EndGroup, n, err = quicvarint.Parse(data)
-		if err != nil {
-			return err
-		}
-		data = data[n:]
-
-		m.EndObject, n, err = quicvarint.Parse(data)
 		if err != nil {
 			return err
 		}
