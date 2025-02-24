@@ -21,10 +21,6 @@ var (
 	ErrUnknownAnnouncementNamespace = errors.New("unknown announcement namespace")
 )
 
-type protocolViolationHandler interface {
-	handleProtocolViolation(error)
-}
-
 type messageHandler interface {
 	handle(*Message)
 }
@@ -37,7 +33,6 @@ type Session struct {
 	handshakeDoneCh chan struct{}
 
 	controlMessageSender controlMessageSender
-	pvh                  protocolViolationHandler
 
 	handler messageHandler
 
@@ -136,11 +131,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 				message: "unexpected message type",
 			}
 		}
-		if err != nil {
-			s.pvh.handleProtocolViolation(err)
-			return err
-		}
-		return nil
+		return err
 	}
 
 	switch m := msg.(type) {
@@ -640,15 +631,11 @@ func (s *Session) sendClientSetup() error {
 	return nil
 }
 
-func (s *Session) handleUniStream(stream ReceiveStream) {
+func (s *Session) handleUniStream(stream ReceiveStream) error {
 	s.logger.Info("handling new uni stream")
 	parser, err := wire.NewObjectStreamParser(stream)
 	if err != nil {
-		s.pvh.handleProtocolViolation(ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: err.Error(),
-		})
-		return
+		return err
 	}
 	s.logger.Info("parsed object stream header")
 	switch parser.Typ {
@@ -658,11 +645,9 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		err = s.readSubgroupStream(parser)
 	}
 	if err != nil {
-		s.pvh.handleProtocolViolation(ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "failed to parse object",
-		})
+		return err
 	}
+	return nil
 }
 
 func (s *Session) readFetchStream(parser *wire.ObjectStreamParser) error {
@@ -693,24 +678,19 @@ func (s *Session) readSubgroupStream(parser *wire.ObjectStreamParser) error {
 	return rt.readSubgroupStream(parser)
 }
 
-func (s *Session) receiveDatagram(dgram []byte) {
+func (s *Session) receiveDatagram(dgram []byte) error {
 	msg := new(wire.ObjectMessage)
 	_, err := msg.ParseDatagram(dgram)
 	if err != nil {
 		s.logger.Error("failed to parse datagram object", "error", err)
-		s.pvh.handleProtocolViolation(ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "failed to parse datagram object",
-		})
-		return
+		return err
 	}
 	subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
 	if !ok {
-		s.pvh.handleProtocolViolation(ProtocolError{
+		return ProtocolError{
 			code:    ErrorCodeProtocolViolation,
 			message: "unknown track alias",
-		})
-		return
+		}
 	}
 	subscription.push(&Object{
 		GroupID:    msg.GroupID,
@@ -718,6 +698,7 @@ func (s *Session) receiveDatagram(dgram []byte) {
 		ObjectID:   msg.ObjectID,
 		Payload:    msg.ObjectPayload,
 	})
+	return nil
 }
 
 // Local API
