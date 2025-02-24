@@ -173,14 +173,23 @@ func (h *moqHandler) setupDateTrack() {
 		case ts := <-ticker.C:
 			log.Printf("TICK: %v", ts)
 			for _, p := range publishers {
-				if err := p.SendDatagram(moqtransport.Object{
-					GroupID:    uint64(groupID),
-					SubGroupID: 0,
-					ObjectID:   0,
-					Payload:    []byte(fmt.Sprintf("%v", ts)),
-				}); err != nil {
-					log.Printf("failed to write time to publisher: %v", err)
+				sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
+				if err != nil {
+					log.Printf("failed to open new subgroup: %v", err)
+					return
 				}
+				if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
+					log.Printf("failed to write time to subgroup: %v", err)
+				}
+				sg.Close()
+				// if err := p.SendDatagram(moqtransport.Object{
+				// 	GroupID:    uint64(groupID),
+				// 	SubGroupID: 0,
+				// 	ObjectID:   0,
+				// 	Payload:    []byte(fmt.Sprintf("%v", ts)),
+				// }); err != nil {
+				// 	log.Printf("failed to write time to publisher: %v", err)
+				// }
 			}
 		case publisher := <-h.publishers:
 			log.Printf("got subscriber")
