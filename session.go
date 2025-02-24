@@ -872,7 +872,6 @@ func (s *Session) Subscribe(
 		StartGroup:         0,
 		StartObject:        0,
 		EndGroup:           0,
-		EndObject:          0,
 		Parameters:         map[uint64]wire.Parameter{},
 	}
 	if len(ps.Authorization) > 0 {

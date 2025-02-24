@@ -253,7 +253,6 @@ func TestSession(t *testing.T) {
 			StartGroup:         0,
 			StartObject:        0,
 			EndGroup:           0,
-			EndObject:          0,
 			Parameters: map[uint64]wire.Parameter{
 				2: &wire.StringParameter{
 					Type:  2,
@@ -320,7 +319,6 @@ func TestSession(t *testing.T) {
 			StartGroup:         0,
 			StartObject:        0,
 			EndGroup:           0,
-			EndObject:          0,
 			Parameters:         map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
@@ -361,7 +359,6 @@ func TestSession(t *testing.T) {
 			StartGroup:         0,
 			StartObject:        0,
 			EndGroup:           0,
-			EndObject:          0,
 			Parameters:         map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
