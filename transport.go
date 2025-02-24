@@ -145,12 +145,15 @@ func (t *Transport) readStreams() {
 	for {
 		stream, err := t.Conn.AcceptUniStream(context.Background())
 		if err != nil {
+			t.logger.Error("failed to accept uni stream", "error", err)
 			t.handleProtocolViolation(err)
 			return
 		}
 		go func() {
 			if err := t.session.handleUniStream(stream); err != nil {
+				t.logger.Error("session failed to handle uni stream", "error", err)
 				t.handleProtocolViolation(err)
+				return
 			}
 		}()
 	}
@@ -160,12 +163,15 @@ func (t *Transport) readDatagrams() {
 	for {
 		dgram, err := t.Conn.ReceiveDatagram(context.Background())
 		if err != nil {
+			t.logger.Error("dgram receive error", "error", err)
 			t.handleProtocolViolation(err)
 			return
 		}
 		go func() {
 			if err := t.session.receiveDatagram(dgram); err != nil {
+				t.logger.Error("session failed to handle dgram", "error", err)
 				t.handleProtocolViolation(err)
+				return
 			}
 		}()
 	}

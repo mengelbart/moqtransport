@@ -45,23 +45,25 @@ func newControlStream(t *Transport) *controlStream {
 }
 
 func (s *controlStream) accept(conn Connection, receiver controlMessageReceiver) {
+	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	stream, err := conn.AcceptStream(s.ctx)
 	if err != nil {
+		s.logger.Error("failed to accept control stream", "error", err)
 		s.close(err)
 		return
 	}
-	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	go s.sendLoop(stream)
 	go s.receiveLoop(newControlMessageParser(stream), receiver)
 }
 
 func (s *controlStream) open(conn Connection, receiver controlMessageReceiver) {
+	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	stream, err := conn.OpenStreamSync(s.ctx)
 	if err != nil {
-		s.transport.handleProtocolViolation(err)
+		s.logger.Error("failed to open control stream", "error", err)
+		s.close(err)
 		return
 	}
-	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	go s.sendLoop(stream)
 	go s.receiveLoop(newControlMessageParser(stream), receiver)
 }
@@ -87,6 +89,7 @@ func (s *controlStream) sendLoop(writer io.Writer) {
 			s.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
 			_, err := writer.Write(compileMessage(msg))
 			if err != nil {
+				s.logger.Error("failed to write control message", "error", err)
 				s.close(err)
 				return
 			}
@@ -98,10 +101,12 @@ func (s *controlStream) receiveLoop(parser controlMessageParser, receiver contro
 	for {
 		msg, err := parser.Parse()
 		if err != nil {
+			s.logger.Error("failed to parse control message", "error", err)
 			s.close(err)
 			return
 		}
 		if err = receiver.receive(msg); err != nil {
+			s.logger.Error("session failed to handle control message", "error", err)
 			s.close(err)
 			return
 		}
