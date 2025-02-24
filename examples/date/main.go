@@ -51,6 +51,9 @@ func main() {
 		}
 		return
 	}
+	//	if err := h.runXClient(context.TODO()); err != nil {
+	//		log.Fatal(err)
+	//	}
 	if err := h.runClient(context.TODO(), *wt); err != nil {
 		log.Fatal(err)
 	}
