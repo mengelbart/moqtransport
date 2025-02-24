@@ -40,7 +40,7 @@ func (m *subscriptionMap) getMaxSubscribeID() uint64 {
 func (m *subscriptionMap) updateMaxSubscribeID(next uint64) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if next <= m.maxSubscribeID {
+	if m.maxSubscribeID > 0 && next <= m.maxSubscribeID {
 		return errMaxSubscribeIDDecreased
 	}
 	m.maxSubscribeID = next
