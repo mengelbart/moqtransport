@@ -53,7 +53,6 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 		Conn:                  quicmoq.NewServer(sConn),
 		InitialMaxSubscribeID: 100,
 		DatagramsDisabled:     false,
-		Role:                  moqtransport.RolePubSub,
 		Handler:               handler,
 	}
 	st, err := str.NewSession(context.Background())
@@ -65,7 +64,6 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 		Conn:                  quicmoq.NewClient(cConn),
 		InitialMaxSubscribeID: 100,
 		DatagramsDisabled:     false,
-		Role:                  moqtransport.RolePubSub,
 		Handler:               nil,
 	}
 	ct, err := ctr.NewSession(context.Background())

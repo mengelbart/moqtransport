@@ -120,7 +120,6 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 		Conn:                  conn,
 		InitialMaxSubscribeID: 100,
 		DatagramsDisabled:     false,
-		Role:                  moqtransport.RolePubSub,
 		Handler:               h.getHandler(),
 	}
 	ms, err := transport.NewSession(context.Background())

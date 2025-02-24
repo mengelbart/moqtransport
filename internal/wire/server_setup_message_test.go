@@ -37,14 +37,16 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{RoleParameterKey: VarintParameter{
-					Type:  RoleParameterKey,
-					Value: uint64(RolePublisher),
-				}},
+				SetupParameters: Parameters{
+					MaxSubscribeIDParameterKey: VarintParameter{
+						Type:  MaxSubscribeIDParameterKey,
+						Value: 2,
+					},
+				},
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x00, 0x01, 0x00, 0x01, 0x01,
+				0x00, 0x01, 0x02, 0x01, 0x02,
 			},
 		},
 		{

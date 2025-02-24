@@ -17,7 +17,6 @@ type Transport struct {
 
 	InitialMaxSubscribeID uint64
 	DatagramsDisabled     bool
-	Role                  Role
 
 	Handler Handler
 
@@ -104,8 +103,6 @@ func (t *Transport) newSession(cs *controlStream) *Session {
 		version:                                  0,
 		protocol:                                 t.Conn.Protocol(),
 		perspective:                              t.Conn.Perspective(),
-		localRole:                                t.Role,
-		remoteRole:                               0,
 		path:                                     "",
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),

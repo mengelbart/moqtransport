@@ -40,8 +40,6 @@ type Session struct {
 	version     wire.Version
 	protocol    Protocol
 	perspective Perspective
-	localRole   Role
-	remoteRole  Role
 	path        string
 
 	outgoingAnnouncements *announcementMap
@@ -170,7 +168,6 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	var err error
 	s.version = wire.Version(selectedVersion)
-	s.remoteRole, err = validateRoleParameter(m.SetupParameters)
 	if err != nil {
 		return err
 	}
@@ -194,10 +191,6 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	if err := s.controlMessageSender.QueueControlMessage(&wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: map[uint64]wire.Parameter{
-			wire.RoleParameterKey: wire.VarintParameter{
-				Type:  wire.RoleParameterKey,
-				Value: uint64(s.localRole),
-			},
 			wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 				Type:  wire.MaxSubscribeIDParameterKey,
 				Value: 100,
@@ -225,7 +218,6 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 		}
 	}
 	s.version = m.SelectedVersion
-	s.remoteRole, err = validateRoleParameter(m.SetupParameters)
 	if err != nil {
 		return err
 	}
@@ -607,10 +599,6 @@ func (s *Session) unsubscribe(id uint64) error {
 
 func (s *Session) sendClientSetup() error {
 	params := map[uint64]wire.Parameter{
-		wire.RoleParameterKey: wire.VarintParameter{
-			Type:  wire.RoleParameterKey,
-			Value: uint64(s.localRole),
-		},
 		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 			Type:  wire.MaxSubscribeIDParameterKey,
 			Value: s.incomingSubscriptions.getMaxSubscribeID(),
@@ -1073,31 +1061,6 @@ func compileMessage(msg wire.ControlMessage) []byte {
 	buf = append(buf[:n], buf[16:]...)
 
 	return buf
-}
-
-func validateRoleParameter(setupParameters wire.Parameters) (Role, error) {
-	remoteRoleParam, ok := setupParameters[wire.RoleParameterKey]
-	if !ok {
-		return 0, ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "missing role parameter",
-		}
-	}
-	remoteRoleParamValue, ok := remoteRoleParam.(wire.VarintParameter)
-	if !ok {
-		return 0, ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "invalid role parameter type",
-		}
-	}
-	switch wire.Role(remoteRoleParamValue.Value) {
-	case wire.RolePublisher, wire.RoleSubscriber, wire.RolePubSub:
-		return wire.Role(remoteRoleParamValue.Value), nil
-	}
-	return 0, ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: fmt.Sprintf("invalid role parameter value: %v", remoteRoleParamValue.Value),
-	}
 }
 
 func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool) (string, error) {
