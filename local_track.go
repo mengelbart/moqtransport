@@ -69,15 +69,16 @@ func (p *localTrack) sendDatagram(o Object) error {
 		return err
 	}
 	om := &wire.ObjectMessage{
-		TrackAlias:        0,
-		GroupID:           o.GroupID,
-		SubgroupID:        o.SubGroupID,
-		ObjectID:          o.ObjectID,
-		PublisherPriority: 0,
-		ObjectStatus:      0,
-		ObjectPayload:     o.Payload,
+		TrackAlias:             0,
+		GroupID:                o.GroupID,
+		SubgroupID:             o.SubGroupID,
+		ObjectID:               o.ObjectID,
+		PublisherPriority:      0,
+		ObjectHeaderExtensions: []wire.ObjectHeaderExtension{},
+		ObjectStatus:           0,
+		ObjectPayload:          o.Payload,
 	}
-	buf := make([]byte, 0, 48+len(o.Payload))
+	var buf []byte
 	buf = om.AppendDatagram(buf)
 	return p.conn.SendDatagram(buf)
 }

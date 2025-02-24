@@ -30,13 +30,14 @@ const (
 )
 
 type ObjectMessage struct {
-	TrackAlias        uint64
-	GroupID           uint64
-	SubgroupID        uint64
-	ObjectID          uint64
-	PublisherPriority uint8
-	ObjectStatus      ObjectStatus
-	ObjectPayload     []byte
+	TrackAlias             uint64
+	GroupID                uint64
+	SubgroupID             uint64
+	ObjectID               uint64
+	PublisherPriority      uint8
+	ObjectHeaderExtensions ObjectHeaderExtensions
+	ObjectStatus           ObjectStatus
+	ObjectPayload          []byte
 }
 
 func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
@@ -45,6 +46,7 @@ func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
+	buf = m.ObjectHeaderExtensions.append(buf)
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
@@ -61,6 +63,7 @@ func (m *ObjectMessage) AppendDatagramStatus(buf []byte) []byte {
 
 func (m *ObjectMessage) AppendSubgroup(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.ObjectID)
+	buf = m.ObjectHeaderExtensions.append(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -75,6 +78,7 @@ func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.SubgroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
+	buf = m.ObjectHeaderExtensions.append(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -131,6 +135,16 @@ func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
 		return
 	}
 
+	if m.ObjectHeaderExtensions == nil {
+		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	}
+	n, err = m.ObjectHeaderExtensions.parse(data)
+	parsed += n
+	if err != nil {
+		return parsed, err
+	}
+	data = data[n:]
+
 	m.ObjectPayload = make([]byte, len(data))
 	n = copy(m.ObjectPayload, data)
 	parsed += n
@@ -143,11 +157,18 @@ func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
 	if err != nil {
 		return
 	}
+
+	if m.ObjectHeaderExtensions == nil {
+		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	}
+	if err = m.ObjectHeaderExtensions.parseReader(br); err != nil {
+		return err
+	}
+
 	length, err := quicvarint.Read(br)
 	if err != nil {
 		return
 	}
-
 	if length == 0 {
 		var status uint64
 		status, err = quicvarint.Read(br)
@@ -180,6 +201,13 @@ func (m *ObjectMessage) readFetch(r io.Reader) (err error) {
 	if err != nil {
 		return
 	}
+	if m.ObjectHeaderExtensions == nil {
+		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	}
+	if err = m.ObjectHeaderExtensions.parseReader(br); err != nil {
+		return err
+	}
+
 	length, err := quicvarint.Read(br)
 	if err != nil {
 		return
