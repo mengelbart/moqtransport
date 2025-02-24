@@ -40,9 +40,9 @@ type Parameter interface {
 
 type Parameters map[uint64]Parameter
 
-func (p Parameters) append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(len(p)))
-	for _, p := range p {
+func (pp Parameters) append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, uint64(len(pp)))
+	for _, p := range pp {
 		buf = p.append(buf)
 	}
 	return buf
