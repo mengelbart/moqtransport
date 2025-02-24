@@ -20,13 +20,15 @@ type Transport struct {
 	Role                  Role
 
 	Handler Handler
+
+	closeOnce sync.Once
 }
 
 func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
 	t.logger = defaultLogger.With("perspective", t.Conn.Perspective())
 	t.logger.Info("NewSession")
 
-	controlStream := newControlStream()
+	controlStream := newControlStream(t)
 	t.session = t.newSession(controlStream)
 
 	switch t.Conn.Perspective() {
@@ -92,7 +94,6 @@ func (t *Transport) newSession(cs *controlStream) *Session {
 		destroyOnce:                              sync.Once{},
 		handshakeDoneCh:                          make(chan struct{}),
 		controlMessageSender:                     cs,
-		pvh:                                      t,
 		handler:                                  t,
 		version:                                  0,
 		protocol:                                 t.Conn.Protocol(),
@@ -114,10 +115,14 @@ func (t *Transport) readStreams() {
 	for {
 		stream, err := t.Conn.AcceptUniStream(context.Background())
 		if err != nil {
-			// TODO
+			t.handleProtocolViolation(err)
 			return
 		}
-		go t.session.handleUniStream(stream)
+		go func() {
+			if err := t.session.handleUniStream(stream); err != nil {
+				t.handleProtocolViolation(err)
+			}
+		}()
 	}
 }
 
@@ -125,24 +130,31 @@ func (t *Transport) readDatagrams() {
 	for {
 		dgram, err := t.Conn.ReceiveDatagram(context.Background())
 		if err != nil {
-			// TODO
+			t.handleProtocolViolation(err)
 			return
 		}
-		go t.session.receiveDatagram(dgram)
+		go func() {
+			if err := t.session.receiveDatagram(dgram); err != nil {
+				t.handleProtocolViolation(err)
+			}
+		}()
 	}
 }
 
 func (t *Transport) handleProtocolViolation(err error) {
-	var pv ProtocolError
-	code := ErrorCodeInternal
-	message := "internal error"
-	if errors.As(err, &pv) {
-		code = pv.code
-		message = pv.message
-	}
-	if err := t.Conn.CloseWithError(code, message); err != nil {
-		t.logger.Error("failed to close connection", "error", err)
-	}
+	t.closeOnce.Do(func() {
+		var pv ProtocolError
+		code := ErrorCodeInternal
+		message := "internal error"
+		if errors.As(err, &pv) {
+			code = pv.code
+			message = pv.message
+		}
+		t.logger.Error("closing connection with error", "error", err)
+		if err := t.Conn.CloseWithError(code, message); err != nil {
+			t.logger.Error("failed to close connection", "error", err)
+		}
+	})
 }
 
 func (t *Transport) Close() error {

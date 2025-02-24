@@ -30,14 +30,16 @@ type controlStream struct {
 	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
 	queue     chan wire.ControlMessage
+	transport *Transport
 }
 
-func newControlStream() *controlStream {
+func newControlStream(t *Transport) *controlStream {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cs := &controlStream{
 		ctx:       ctx,
 		cancelCtx: cancel,
 		queue:     make(chan wire.ControlMessage, 100),
+		transport: t,
 	}
 	return cs
 }
@@ -56,8 +58,8 @@ func (s *controlStream) accept(conn Connection, receiver controlMessageReceiver)
 func (s *controlStream) open(conn Connection, receiver controlMessageReceiver) {
 	stream, err := conn.OpenStreamSync(s.ctx)
 	if err != nil {
-		// TODO: close transport and session?
-		panic(err)
+		s.transport.handleProtocolViolation(err)
+		return
 	}
 	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	go s.sendLoop(stream)
@@ -85,7 +87,7 @@ func (s *controlStream) sendLoop(writer io.Writer) {
 			s.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
 			_, err := writer.Write(compileMessage(msg))
 			if err != nil {
-				s.cancelCtx(err)
+				s.close(err)
 				return
 			}
 		}
@@ -96,9 +98,11 @@ func (s *controlStream) receiveLoop(parser controlMessageParser, receiver contro
 	for {
 		msg, err := parser.Parse()
 		if err != nil {
+			s.close(err)
 			return
 		}
 		if err = receiver.receive(msg); err != nil {
+			s.close(err)
 			return
 		}
 	}
@@ -106,4 +110,5 @@ func (s *controlStream) receiveLoop(parser controlMessageParser, receiver contro
 
 func (s *controlStream) close(err error) {
 	s.cancelCtx(err)
+	s.transport.handleProtocolViolation(err)
 }

@@ -17,7 +17,6 @@ func newSession(cms controlMessageSender, handler messageHandler, protocol Proto
 		destroyOnce:                              sync.Once{},
 		handshakeDoneCh:                          make(chan struct{}),
 		controlMessageSender:                     cms,
-		pvh:                                      nil,
 		handler:                                  handler,
 		version:                                  0,
 		protocol:                                 protocol,
