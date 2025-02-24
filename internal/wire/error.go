@@ -9,4 +9,5 @@ var (
 	errInvalidContentExistsByte = errors.New("invalid use of ContentExists byte")
 	errInvalidGroupOrder        = errors.New("invalid GroupOrder")
 	errLengthMismatch           = errors.New("length mismatch")
+	errInvalidFetchType         = errors.New("invalid fetch type")
 )

@@ -2,7 +2,6 @@ package moqtransport
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -13,8 +12,10 @@ import (
 
 func newSession(cms controlMessageSender, handler messageHandler, protocol Protocol, perspective Perspective) *Session {
 	return &Session{
-		logger:                                   defaultLogger,
-		destroyOnce:                              sync.Once{},
+		logger: defaultLogger,
+		ctx:    context.Background(),
+		cancelCtx: func(cause error) {
+		},
 		handshakeDoneCh:                          make(chan struct{}),
 		controlMessageSender:                     cms,
 		handler:                                  handler,
