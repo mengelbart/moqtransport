@@ -18,12 +18,12 @@ jobs:
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: v1.60
+        version: v1.64
   test:
     strategy:
       fail-fast: false
       matrix:
-        go: [ '1.21.x', '1.22.x' ]
+        go: [ '1.23.x', '1.24.x' ]
     runs-on: ubuntu-latest
     name: Unit tests (${{ matrix.go }})
     steps:
