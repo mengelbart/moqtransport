@@ -59,37 +59,64 @@ func (t *Transport) handle(m *Message) {
 	if t.Handler != nil {
 		switch m.Method {
 		case MessageSubscribe:
-			t.Handler.Handle(&subscriptionResponseWriter{
+			srw := &subscriptionResponseWriter{
 				id:         m.SubscribeID,
 				trackAlias: m.TrackAlias,
 				session:    t.session,
 				localTrack: newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
 					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
 				}),
-			}, m)
+				handled: false,
+			}
+			t.Handler.Handle(srw, m)
+			if !srw.handled {
+				if err := srw.Reject(0, "unhandled subscription"); err != nil {
+					t.logger.Error("failed to reject subscription", "error", err)
+				}
+			}
 		case MessageFetch:
-			t.Handler.Handle(&fetchResponseWriter{
+			frw := &fetchResponseWriter{
 				id:      m.SubscribeID,
 				session: t.session,
 				localTrack: newLocalTrack(t.Conn, m.SubscribeID, 0, func(code, count uint64, reason string) error {
 					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
 				}),
-			}, m)
+				handled: false,
+			}
+			t.Handler.Handle(frw, m)
+			if !frw.handled {
+				if err := frw.Reject(0, "unhandled fetch"); err != nil {
+					t.logger.Error("failed to reject fetch", "error", err)
+				}
+			}
 		case MessageAnnounce:
-			t.Handler.Handle(&announcementResponseWriter{
+			arw := &announcementResponseWriter{
 				namespace: m.Namespace,
 				session:   t.session,
-			}, m)
+				handled:   false,
+			}
+			t.Handler.Handle(arw, m)
+			if !arw.handled {
+				if err := arw.Reject(0, "unhandled announce"); err != nil {
+					t.logger.Error("failed to reject announce", "error", err)
+				}
+			}
 		case MessageSubscribeAnnounces:
-			t.Handler.Handle(&announcementSubscriptionResponseWriter{
+			asrw := &announcementSubscriptionResponseWriter{
 				prefix:  m.Namespace,
 				session: t.session,
-			}, m)
+				handled: false,
+			}
+			t.Handler.Handle(asrw, m)
+			if !asrw.handled {
+				if err := asrw.Reject(0, "unhandled announcement subscription"); err != nil {
+					t.logger.Error("failed to reject announcement subscription", "error", err)
+				}
+			}
 		default:
 			t.Handler.Handle(nil, m)
 		}
 	}
-	// TODO: Handle unhandled request
 }
 
 func (t *Transport) newSession(cs *controlStream) *Session {

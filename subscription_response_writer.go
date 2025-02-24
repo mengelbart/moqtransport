@@ -5,9 +5,11 @@ type subscriptionResponseWriter struct {
 	trackAlias uint64
 	session    *Session
 	localTrack *localTrack
+	handled    bool
 }
 
 func (w *subscriptionResponseWriter) Accept() error {
+	w.handled = true
 	if err := w.session.acceptSubscription(w.id, w.localTrack); err != nil {
 		return err
 	}
@@ -15,6 +17,7 @@ func (w *subscriptionResponseWriter) Accept() error {
 }
 
 func (w *subscriptionResponseWriter) Reject(code uint64, reason string) error {
+	w.handled = true
 	return w.session.rejectSubscription(w.id, code, reason)
 }
 
