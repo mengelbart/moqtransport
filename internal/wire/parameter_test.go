@@ -49,35 +49,27 @@ func TestParameterAppend(t *testing.T) {
 		},
 		{
 			p: VarintParameter{
-				Type:  0,
-				Value: uint64(RolePublisher),
+				Type:  MaxSubscribeIDParameterKey,
+				Value: uint64(1),
 			},
 			buf:    nil,
-			expect: []byte{0x00, 0x01, 0x01},
+			expect: []byte{0x02, 0x01, 0x01},
 		},
 		{
 			p: VarintParameter{
-				Type:  0,
-				Value: uint64(RoleSubscriber),
-			},
-			buf:    nil,
-			expect: []byte{0x00, 0x01, 0x02},
-		},
-		{
-			p: VarintParameter{
-				Type:  0,
-				Value: uint64(RolePubSub),
+				Type:  MaxSubscribeIDParameterKey,
+				Value: uint64(2),
 			},
 			buf:    []byte{},
-			expect: []byte{0x00, 0x01, 0x03},
+			expect: []byte{0x02, 0x01, 0x02},
 		},
 		{
 			p: VarintParameter{
-				Type:  0,
-				Value: uint64(RolePubSub),
+				Type:  MaxSubscribeIDParameterKey,
+				Value: uint64(3),
 			},
 			buf:    []byte{0x01, 0x02},
-			expect: []byte{0x01, 0x02, 0x00, 0x01, 0x03},
+			expect: []byte{0x01, 0x02, 0x02, 0x01, 0x03},
 		},
 	}
 	for i, tc := range cases {
@@ -97,10 +89,10 @@ func TestParseParameter(t *testing.T) {
 		n      int
 	}{
 		{
-			data: []byte{byte(RoleParameterKey), 0x01, byte(RolePublisher)},
+			data: []byte{byte(MaxSubscribeIDParameterKey), 0x01, 0x01},
 			expect: VarintParameter{
-				Type:  0,
-				Value: uint64(RolePublisher),
+				Type:  MaxSubscribeIDParameterKey,
+				Value: uint64(1),
 			},
 			pm:  setupParameterTypes,
 			err: nil,
@@ -182,11 +174,11 @@ func TestParseParameters(t *testing.T) {
 			err:    nil,
 		},
 		{
-			data: []byte{0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'},
+			data: []byte{0x02, 0x02, 0x01, 0x03, 0x01, 0x01, 'A'},
 			expect: Parameters{
-				RoleParameterKey: VarintParameter{
-					Type:  0,
-					Value: uint64(RolePublisher),
+				MaxSubscribeIDParameterKey: VarintParameter{
+					Type:  2,
+					Value: uint64(3),
 				},
 				PathParameterKey: StringParameter{
 					Type:  1,
@@ -217,8 +209,8 @@ func TestParseParameters(t *testing.T) {
 			err: nil,
 		},
 		{
-			data:   []byte{0x02, 0x00, 0x01, 0x01, 0x00, 0x01, 0x02},
-			expect: Parameters{0x00: VarintParameter{0, 1}},
+			data:   []byte{0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02},
+			expect: Parameters{0x02: VarintParameter{2, 1}},
 			err:    errDuplicateParameter,
 		},
 	}

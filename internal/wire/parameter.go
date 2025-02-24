@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	RoleParameterKey uint64 = iota
-	PathParameterKey
-	MaxSubscribeIDParameterKey
+	PathParameterKey           = 0x01
+	MaxSubscribeIDParameterKey = 0x02
 )
 
 const (
@@ -21,7 +20,6 @@ const (
 type parameterParserFunc func([]byte, uint64) (Parameter, int, error)
 
 var setupParameterTypes = map[uint64]parameterParserFunc{
-	RoleParameterKey:           parseVarintParameter,
 	PathParameterKey:           parseStringParameter,
 	MaxSubscribeIDParameterKey: parseVarintParameter,
 }

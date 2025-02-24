@@ -22,8 +22,6 @@ func newSession(cms controlMessageSender, handler messageHandler, protocol Proto
 		version:                                  0,
 		protocol:                                 protocol,
 		perspective:                              perspective,
-		localRole:                                RolePubSub,
-		remoteRole:                               0,
 		path:                                     "/path",
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
@@ -46,10 +44,6 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().QueueControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
 				wire.PathParameterKey: wire.StringParameter{
 					Type:  wire.PathParameterKey,
 					Value: "/path",
@@ -75,10 +69,6 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().QueueControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
 					Value: 100,
@@ -100,10 +90,6 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().QueueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(RolePubSub),
-				},
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
 					Value: 100,
@@ -114,10 +100,6 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
 				wire.PathParameterKey: wire.StringParameter{
 					Type:  wire.PathParameterKey,
 					Value: "/path",
@@ -137,10 +119,6 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().QueueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
 					Value: 100,
@@ -151,10 +129,6 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
 					Value: 100,
@@ -171,46 +145,7 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.RoleParameterKey: wire.VarintParameter{
-					Type:  wire.RoleParameterKey,
-					Value: uint64(wire.RolePubSub),
-				},
-			},
-		})
-		assert.Error(t, err)
-	})
-
-	t.Run("rejects_quic_client_without_role", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSender(ctrl)
-		mh := NewMockMessageHandler(ctrl)
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
-		err := s.receive(&wire.ClientSetupMessage{
-			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.PathParameterKey: wire.StringParameter{
-					Type:  wire.PathParameterKey,
-					Value: "/path",
-				},
-			},
-		})
-		assert.Error(t, err)
-	})
-
-	t.Run("rejects_wt_client_without_role", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSender(ctrl)
-		mh := NewMockMessageHandler(ctrl)
-		s := newSession(cms, mh, ProtocolWebTransport, PerspectiveServer)
-		err := s.receive(&wire.ClientSetupMessage{
-			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.PathParameterKey: wire.StringParameter{
-					Type:  wire.PathParameterKey,
-					Value: "/path",
-				},
-			},
+			SetupParameters:   map[uint64]wire.Parameter{},
 		})
 		assert.Error(t, err)
 	})
