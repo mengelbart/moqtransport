@@ -238,7 +238,7 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().QueueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
 			Expires:         0,
-			GroupOrder:      0,
+			GroupOrder:      1,
 			ContentExists:   false,
 			LargestGroupID:  0,
 			LargestObjectID: 0,

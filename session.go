@@ -969,6 +969,9 @@ func (s *Session) acceptSubscription(id uint64, lt *localTrack) error {
 		return err
 	}
 	sub.localTrack = lt
+	if sub.GroupOrder == 0 {
+		sub.GroupOrder = 0x1
+	}
 	if sub.isFetch {
 		if err := s.controlMessageSender.QueueControlMessage(&wire.FetchOkMessage{
 			SubscribeID:     sub.ID,
