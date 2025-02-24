@@ -21,6 +21,9 @@ type Transport struct {
 
 	Handler Handler
 
+	ctx       context.Context
+	cancelCtx context.CancelCauseFunc
+
 	closeOnce sync.Once
 }
 
@@ -29,6 +32,8 @@ func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
 	t.logger.Info("NewSession")
 
 	controlStream := newControlStream(t)
+
+	t.ctx, t.cancelCtx = context.WithCancelCause(context.Background())
 	t.session = t.newSession(controlStream)
 
 	switch t.Conn.Perspective() {
@@ -91,7 +96,8 @@ func (t *Transport) handle(m *Message) {
 func (t *Transport) newSession(cs *controlStream) *Session {
 	return &Session{
 		logger:                                   defaultLogger.With("perspective", t.Conn.Perspective()),
-		destroyOnce:                              sync.Once{},
+		ctx:                                      t.ctx,
+		cancelCtx:                                t.cancelCtx,
 		handshakeDoneCh:                          make(chan struct{}),
 		controlMessageSender:                     cs,
 		handler:                                  t,
@@ -142,6 +148,7 @@ func (t *Transport) readDatagrams() {
 }
 
 func (t *Transport) handleProtocolViolation(err error) {
+	t.cancelCtx(err)
 	t.closeOnce.Do(func() {
 		var pv ProtocolError
 		code := ErrorCodeInternal

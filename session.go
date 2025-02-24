@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
-	"sync"
 	"sync/atomic"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -29,7 +28,9 @@ type messageHandler interface {
 type Session struct {
 	logger *slog.Logger
 
-	destroyOnce     sync.Once
+	ctx       context.Context
+	cancelCtx context.CancelCauseFunc
+
 	handshakeDoneCh chan struct{}
 
 	controlMessageSender controlMessageSender
@@ -279,7 +280,7 @@ func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 	select {
 	case announcement.response <- nil:
 	default:
-		s.logger.Info("dopping unhandled AnnouncemeOk response")
+		s.logger.Info("dopping unhandled AnnounceOk response")
 	}
 	return nil
 }
@@ -745,8 +746,10 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	select {
+	case <-s.ctx.Done():
+		return context.Cause(s.ctx)
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	case res := <-a.response:
 		return res
 	}
@@ -798,16 +801,19 @@ func (s *Session) Fetch(
 		return nil, err
 	}
 	cm := &wire.FetchMessage{
-		SubscribeID:        f.ID,
-		TrackNamspace:      f.Namespace,
-		TrackName:          []byte(f.Trackname),
-		SubscriberPriority: 0,
-		GroupOrder:         0,
-		StartGroup:         0,
-		StartObject:        0,
-		EndGroup:           0,
-		EndObject:          0,
-		Parameters:         map[uint64]wire.Parameter{},
+		SubscribeID:          f.ID,
+		SubscriberPriority:   0,
+		GroupOrder:           0,
+		FetchType:            wire.FetchTypeStandalone,
+		TrackNamspace:        f.Namespace,
+		TrackName:            []byte(f.Trackname),
+		StartGroup:           0,
+		StartObject:          0,
+		EndGroup:             0,
+		EndObject:            0,
+		JoiningSubscribeID:   id,
+		PrecedingGroupOffset: 0,
+		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.controlMessageSender.QueueControlMessage(cm); err != nil {
 		_, _ = s.outgoingSubscriptions.reject(f.ID)
@@ -909,6 +915,8 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		return err
 	}
 	select {
+	case <-s.ctx.Done():
+		return context.Cause(s.ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	case resp := <-as.response:
@@ -958,6 +966,8 @@ func (s *Session) subscribe(
 	ps *subscription,
 ) (*RemoteTrack, error) {
 	select {
+	case <-s.ctx.Done():
+		return nil, context.Cause(s.ctx)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case res := <-ps.response:
