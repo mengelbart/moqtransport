@@ -62,10 +62,11 @@ func (m *subscriptionMap) addPending(s *subscription) error {
 		return errDuplicateSubscribeID
 	}
 	m.pendingSubscriptions[s.ID] = s
+	m.trackAliasToSusbcribeID[s.TrackAlias] = s.ID
 	return nil
 }
 
-func (m *subscriptionMap) confirm(id uint64, rt *RemoteTrack) (*subscription, error) {
+func (m *subscriptionMap) confirm(id uint64) (*subscription, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	_, ok := m.pendingSubscriptions[id]
@@ -76,10 +77,8 @@ func (m *subscriptionMap) confirm(id uint64, rt *RemoteTrack) (*subscription, er
 		}
 	}
 	s := m.pendingSubscriptions[id]
-	s.setRemoteTrack(rt)
 	delete(m.pendingSubscriptions, id)
 	m.subscriptions[id] = s
-	m.trackAliasToSusbcribeID[s.TrackAlias] = id
 	return s, nil
 }
 
@@ -124,6 +123,9 @@ func (m *subscriptionMap) findBySubscribeID(id uint64) (*subscription, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	sub, ok := m.subscriptions[id]
+	if !ok {
+		sub, ok = m.pendingSubscriptions[id]
+	}
 	if !ok {
 		return nil, false
 	}

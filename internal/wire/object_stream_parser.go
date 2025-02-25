@@ -16,7 +16,7 @@ var (
 
 type ObjectStreamParser struct {
 	reader messageReader
-	Typ    StreamType
+	typ    StreamType
 
 	subscribeID       uint64
 	trackAlias        uint64
@@ -24,15 +24,19 @@ type ObjectStreamParser struct {
 	GroupID           uint64
 }
 
+func (p *ObjectStreamParser) Type() StreamType {
+	return p.typ
+}
+
 func (p *ObjectStreamParser) TrackAlias() (uint64, error) {
-	if p.Typ != StreamTypeSubgroup {
+	if p.typ != StreamTypeSubgroup {
 		return 0, errors.New("only subgroup streams have a track alias")
 	}
 	return p.trackAlias, nil
 }
 
 func (p *ObjectStreamParser) SubscribeID() (uint64, error) {
-	if p.Typ != StreamTypeFetch {
+	if p.typ != StreamTypeFetch {
 		return 0, errors.New("only fetch streams have a subscribe ID")
 	}
 	return p.subscribeID, nil
@@ -52,7 +56,7 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		}
 		return &ObjectStreamParser{
 			reader:            br,
-			Typ:               StreamType(st),
+			typ:               StreamType(st),
 			subscribeID:       fhm.SubscribeID,
 			trackAlias:        0,
 			PublisherPriority: 0,
@@ -66,7 +70,7 @@ func NewObjectStreamParser(r io.Reader) (*ObjectStreamParser, error) {
 		}
 		return &ObjectStreamParser{
 			reader:            br,
-			Typ:               StreamType(st),
+			typ:               StreamType(st),
 			subscribeID:       0,
 			trackAlias:        shsm.TrackAlias,
 			PublisherPriority: shsm.PublisherPriority,
@@ -99,7 +103,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 		ObjectPayload:     nil,
 	}
 	var err error
-	switch p.Typ {
+	switch p.typ {
 	case StreamTypeFetch:
 		err = m.readFetch(p.reader)
 	case StreamTypeSubgroup:

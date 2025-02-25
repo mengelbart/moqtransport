@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync"
 	"sync/atomic"
+
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type Transport struct {
@@ -150,9 +152,15 @@ func (t *Transport) readStreams() {
 			return
 		}
 		go func() {
-			if err := t.session.handleUniStream(stream); err != nil {
+			t.logger.Info("handling new uni stream")
+			parser, err := wire.NewObjectStreamParser(stream)
+			if err != nil {
+				t.logger.Info("failed to read uni stream header", "error", err)
+				return
+			}
+			t.logger.Info("parsed object stream header")
+			if err := t.session.handleUniStream(parser); err != nil {
 				t.logger.Error("session failed to handle uni stream", "error", err)
-				t.handleProtocolViolation(err)
 				return
 			}
 		}()
