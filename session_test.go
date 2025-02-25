@@ -392,9 +392,8 @@ func TestSession(t *testing.T) {
 				},
 			},
 		}).DoAndReturn(func(_ wire.ControlMessage) error {
-			err := s.handleUniStream(mp)
-			assert.NoError(t, err)
-			err = s.onSubscribeOk(&wire.SubscribeOkMessage{
+			assert.NoError(t, s.handleUniStream(mp))
+			assert.NoError(t, s.onSubscribeOk(&wire.SubscribeOkMessage{
 				SubscribeID:     1,
 				Expires:         0,
 				GroupOrder:      1,
@@ -402,8 +401,7 @@ func TestSession(t *testing.T) {
 				LargestGroupID:  0,
 				LargestObjectID: 0,
 				Parameters:      map[uint64]wire.Parameter{},
-			})
-			assert.NoError(t, err)
+			}))
 			return nil
 		})
 		rt, err := s.Subscribe(context.Background(), 1, 2, []string{"namespace"}, "trackname", "auth")
