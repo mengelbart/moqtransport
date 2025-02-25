@@ -75,7 +75,7 @@ func (p *localTrack) sendDatagram(o Object) error {
 		return err
 	}
 	om := &wire.ObjectMessage{
-		TrackAlias:             0,
+		TrackAlias:             p.trackAlias,
 		GroupID:                o.GroupID,
 		SubgroupID:             o.SubGroupID,
 		ObjectID:               o.ObjectID,
