@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"slices"
 	"sync/atomic"
@@ -55,20 +56,12 @@ type Session struct {
 
 func (s *Session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findBySubscribeID(id)
-	rt := sub.getRemoteTrack()
-	if !ok || rt == nil {
-		return nil, false
-	}
-	return rt, true
+	return sub.remoteTrack, ok
 }
 
 func (s *Session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	sub, ok := s.outgoingSubscriptions.findByTrackAlias(alias)
-	rt := sub.getRemoteTrack()
-	if !ok || rt == nil {
-		return nil, false
-	}
-	return rt, true
+	return sub.remoteTrack, ok
 }
 
 func (s *Session) receive(msg wire.ControlMessage) error {
@@ -301,16 +294,14 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		}
 		return err
 	}
-	rt := newRemoteTrack(msg.SubscribeID, s)
-	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
+	sub, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
 	if err != nil {
 		return err
 	}
-	sub.setRemoteTrack(rt)
 	select {
 	case sub.response <- subscriptionResponse{
 		err:   nil,
-		track: rt,
+		track: sub.remoteTrack,
 	}:
 	default:
 		// TODO: Unsubscribe?
@@ -344,9 +335,8 @@ func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 		// TODO: Protocol violation?
 		return errUnknownSubscribeID
 	}
-	rt := sub.getRemoteTrack()
-	if rt != nil {
-		rt.done(msg.StatusCode, msg.ReasonPhrase)
+	if sub.remoteTrack != nil {
+		sub.remoteTrack.done(msg.StatusCode, msg.ReasonPhrase)
 	}
 	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
 	// after timeout to wait for late coming objects?
@@ -365,15 +355,14 @@ func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
 		}
 		return err
 	}
-	rt := newRemoteTrack(msg.SubscribeID, s)
-	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID, rt)
+	subscription, err := s.outgoingSubscriptions.confirm(msg.SubscribeID)
 	if err != nil {
 		return err
 	}
 	select {
 	case subscription.response <- subscriptionResponse{
 		err:   nil,
-		track: rt,
+		track: subscription.remoteTrack,
 	}:
 	default:
 		s.logger.Info("dropping unhandled SubscribeOk response")
@@ -620,14 +609,16 @@ func (s *Session) sendClientSetup() error {
 	return nil
 }
 
-func (s *Session) handleUniStream(stream ReceiveStream) error {
-	s.logger.Info("handling new uni stream")
-	parser, err := wire.NewObjectStreamParser(stream)
-	if err != nil {
-		return err
-	}
-	s.logger.Info("parsed object stream header")
-	switch parser.Typ {
+type objectMessageParser interface {
+	Type() wire.StreamType
+	SubscribeID() (uint64, error)
+	TrackAlias() (uint64, error)
+	Messages() iter.Seq2[*wire.ObjectMessage, error]
+}
+
+func (s *Session) handleUniStream(parser objectMessageParser) error {
+	var err error
+	switch parser.Type() {
 	case wire.StreamTypeFetch:
 		err = s.readFetchStream(parser)
 	case wire.StreamTypeSubgroup:
@@ -639,7 +630,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) error {
 	return nil
 }
 
-func (s *Session) readFetchStream(parser *wire.ObjectStreamParser) error {
+func (s *Session) readFetchStream(parser objectMessageParser) error {
 	s.logger.Info("reading fetch stream")
 	sid, err := parser.SubscribeID()
 	if err != nil {
@@ -653,7 +644,7 @@ func (s *Session) readFetchStream(parser *wire.ObjectStreamParser) error {
 	return rt.readFetchStream(parser)
 }
 
-func (s *Session) readSubgroupStream(parser *wire.ObjectStreamParser) error {
+func (s *Session) readSubgroupStream(parser objectMessageParser) error {
 	s.logger.Info("reading subgroup")
 	sid, err := parser.TrackAlias()
 	if err != nil {
@@ -770,11 +761,12 @@ func (s *Session) Fetch(
 		return nil, err
 	}
 	f := &subscription{
-		ID:        id,
-		Namespace: namespace,
-		Trackname: track,
-		isFetch:   true,
-		response:  make(chan subscriptionResponse, 1),
+		ID:          id,
+		Namespace:   namespace,
+		Trackname:   track,
+		isFetch:     true,
+		remoteTrack: newRemoteTrack(id, s),
+		response:    make(chan subscriptionResponse, 1),
 	}
 	if err := s.outgoingSubscriptions.addPending(f); err != nil {
 		var tooManySubscribes errMaxSusbcribeIDViolation
@@ -841,6 +833,7 @@ func (s *Session) Subscribe(
 		Expires:       0,
 		GroupOrder:    0,
 		ContentExists: false,
+		remoteTrack:   newRemoteTrack(id, s),
 		response:      make(chan subscriptionResponse, 1),
 	}
 	if err := s.outgoingSubscriptions.addPending(ps); err != nil {
@@ -964,7 +957,7 @@ func (s *Session) subscribe(
 }
 
 func (s *Session) acceptSubscription(id uint64, lt *localTrack) error {
-	sub, err := s.incomingSubscriptions.confirm(id, nil)
+	sub, err := s.incomingSubscriptions.confirm(id)
 	if err != nil {
 		return err
 	}

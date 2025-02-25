@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"context"
+	"io"
 	"sync/atomic"
 	"testing"
 
@@ -339,5 +340,71 @@ func TestSession(t *testing.T) {
 			Parameters:     map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
+	})
+
+	t.Run("receives_objects_before_susbcribe_ok", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		cms := NewMockControlMessageSender(ctrl)
+		mh := NewMockMessageHandler(ctrl)
+		mp := NewMockObjectMessageParser(ctrl)
+
+		mp.EXPECT().Type().Return(wire.StreamTypeSubgroup).AnyTimes()
+		mp.EXPECT().SubscribeID().Return(uint64(1), nil).AnyTimes()
+		mp.EXPECT().TrackAlias().Return(uint64(2), nil).AnyTimes()
+
+		mp.EXPECT().Messages().Return(func(yield func(*wire.ObjectMessage, error) bool) {
+			yield(&wire.ObjectMessage{
+				TrackAlias:             2,
+				GroupID:                0,
+				SubgroupID:             0,
+				ObjectID:               0,
+				PublisherPriority:      0,
+				ObjectHeaderExtensions: []wire.ObjectHeaderExtension{},
+				ObjectStatus:           0,
+				ObjectPayload:          []byte{},
+			}, nil)
+			yield(nil, io.EOF)
+		})
+
+		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
+		err := s.onMaxSubscribeID(&wire.MaxSubscribeIDMessage{
+			SubscribeID: 100,
+		})
+		assert.NoError(t, err)
+		close(s.handshakeDoneCh)
+		cms.EXPECT().QueueControlMessage(&wire.SubscribeMessage{
+			SubscribeID:        1,
+			TrackAlias:         2,
+			TrackNamespace:     []string{"namespace"},
+			TrackName:          []byte("trackname"),
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			Parameters: map[uint64]wire.Parameter{
+				wire.AuthorizationParameterKey: &wire.StringParameter{
+					Type:  wire.AuthorizationParameterKey,
+					Value: "auth",
+				},
+			},
+		}).Do(func(_ *wire.SubscribeMessage) {
+			err := s.handleUniStream(mp)
+			assert.NoError(t, err)
+			err = s.onSubscribeOk(&wire.SubscribeOkMessage{
+				SubscribeID:     1,
+				Expires:         0,
+				GroupOrder:      1,
+				ContentExists:   false,
+				LargestGroupID:  0,
+				LargestObjectID: 0,
+				Parameters:      map[uint64]wire.Parameter{},
+			})
+			assert.NoError(t, err)
+		})
+		rt, err := s.Subscribe(context.Background(), 1, 2, []string{"namespace"}, "trackname", "auth")
+		assert.NoError(t, err)
+		assert.NotNil(t, rt)
 	})
 }

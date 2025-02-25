@@ -18,3 +18,6 @@ type ControlMessageSender = controlMessageSender
 
 //go:generate sh -c "go run go.uber.org/mock/mockgen -build_flags=\"-tags=gomock\" -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_message_handler.go github.com/mengelbart/moqtransport MessageHandler"
 type MessageHandler = messageHandler
+
+//go:generate sh -c "go run go.uber.org/mock/mockgen -build_flags=\"-tags=gomock\" -package moqtransport -self_package github.com/mengelbart/moqtransport -destination mock_object_message_parser.go github.com/mengelbart/moqtransport ObjectMessageParser"
+type ObjectMessageParser = objectMessageParser

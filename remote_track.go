@@ -7,8 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"sync/atomic"
-
-	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 var errTooManyFetchStreams = errors.New("got too many fetch streams for remote track")
@@ -75,19 +73,19 @@ func (t *RemoteTrack) Close() error {
 	return t.unsubscriber.unsubscribe(t.subscribeID)
 }
 
-func (t *RemoteTrack) readFetchStream(parser *wire.ObjectStreamParser) error {
+func (t *RemoteTrack) readFetchStream(parser objectMessageParser) error {
 	if t.fetchCount.Add(1) > 1 {
 		return errTooManyFetchStreams
 	}
 	return t.readStream(parser)
 }
 
-func (t *RemoteTrack) readSubgroupStream(parser *wire.ObjectStreamParser) error {
+func (t *RemoteTrack) readSubgroupStream(parser objectMessageParser) error {
 	t.subGroupCount.Add(1)
 	return t.readStream(parser)
 }
 
-func (t *RemoteTrack) readStream(parser *wire.ObjectStreamParser) error {
+func (t *RemoteTrack) readStream(parser objectMessageParser) error {
 	for m, err := range parser.Messages() {
 		if err != nil {
 			if err == io.EOF {
