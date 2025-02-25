@@ -196,7 +196,7 @@ func TestSession(t *testing.T) {
 					Value: "auth",
 				},
 			},
-		}).Do(func(_ wire.ControlMessage) {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.receive(&wire.SubscribeOkMessage{
 				SubscribeID:     0,
 				Expires:         0,
@@ -207,6 +207,7 @@ func TestSession(t *testing.T) {
 				Parameters:      map[uint64]wire.Parameter{},
 			})
 			assert.NoError(t, err)
+			return nil
 		})
 		rt, err := s.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
@@ -310,11 +311,12 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().queueControlMessage(&wire.AnnounceMessage{
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
-		}).Do(func(_ wire.ControlMessage) {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
 				TrackNamespace: []string{"namespace"},
 			})
 			assert.NoError(t, err)
+			return nil
 		})
 		err := s.Announce(context.Background(), []string{"namespace"})
 		assert.NoError(t, err)
@@ -389,7 +391,7 @@ func TestSession(t *testing.T) {
 					Value: "auth",
 				},
 			},
-		}).Do(func(_ *wire.SubscribeMessage) {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.handleUniStream(mp)
 			assert.NoError(t, err)
 			err = s.onSubscribeOk(&wire.SubscribeOkMessage{
@@ -402,6 +404,7 @@ func TestSession(t *testing.T) {
 				Parameters:      map[uint64]wire.Parameter{},
 			})
 			assert.NoError(t, err)
+			return nil
 		})
 		rt, err := s.Subscribe(context.Background(), 1, 2, []string{"namespace"}, "trackname", "auth")
 		assert.NoError(t, err)
