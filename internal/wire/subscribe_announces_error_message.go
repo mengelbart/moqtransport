@@ -1,14 +1,32 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*SubscribeAnnouncesErrorMessage)(nil)
 
 // TODO: Add tests
 type SubscribeAnnouncesErrorMessage struct {
 	TrackNamespacePrefix Tuple
 	ErrorCode            uint64
 	ReasonPhrase         string
+}
+
+func (m *SubscribeAnnouncesErrorMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "subscribe_announces_error"),
+		slog.Any("track_namespace_prefix", m.TrackNamespacePrefix),
+		slog.Uint64("error_code", m.ErrorCode),
+		slog.Any("reason_phrase", qlog.RawInfo{
+			Length:        uint64(len(m.ReasonPhrase)),
+			PayloadLength: uint64(len(m.ReasonPhrase)),
+			Data:          []byte(m.ReasonPhrase),
+		}),
+	)
 }
 
 func (m SubscribeAnnouncesErrorMessage) Type() controlMessageType {

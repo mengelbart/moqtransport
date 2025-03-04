@@ -1,12 +1,17 @@
 package moqtransport
 
-import "github.com/mengelbart/moqtransport/internal/wire"
+import (
+	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/qlog"
+	"github.com/mengelbart/qlog/moqt"
+)
 
 type FetchStream struct {
-	stream SendStream
+	stream  SendStream
+	qlogger *qlog.Logger
 }
 
-func newFetchStream(stream SendStream, subscribeID uint64) (*FetchStream, error) {
+func newFetchStream(stream SendStream, subscribeID uint64, qlogger *qlog.Logger) (*FetchStream, error) {
 	fhm := &wire.FetchHeaderMessage{
 		SubscribeID: subscribeID,
 	}
@@ -16,8 +21,16 @@ func newFetchStream(stream SendStream, subscribeID uint64) (*FetchStream, error)
 	if err != nil {
 		return nil, err
 	}
+	if qlogger != nil {
+		qlogger.Log(moqt.StreamTypeSetEvent{
+			Owner:      moqt.GetOwner(moqt.OwnerLocal),
+			StreamID:   stream.StreamID(),
+			StreamType: moqt.StreamTypeFetchHeader,
+		})
+	}
 	return &FetchStream{
-		stream: stream,
+		stream:  stream,
+		qlogger: qlogger,
 	}, nil
 }
 
@@ -39,6 +52,24 @@ func (f *FetchStream) WriteObject(
 	_, err := f.stream.Write(buf)
 	if err != nil {
 		return 0, err
+	}
+	if f.qlogger != nil {
+		f.qlogger.Log(moqt.FetchObjectEvent{
+			EventName:              moqt.FetchObjectEventCreated,
+			StreamID:               f.stream.StreamID(),
+			GroupID:                groupID,
+			SubgroupID:             subgroupID,
+			ObjectID:               objectID,
+			ExtensionHeadersLength: 0,
+			ExtensionHeaders:       nil,
+			ObjectPayloadLength:    uint64(len(payload)),
+			ObjectStatus:           0,
+			ObjectPayload: qlog.RawInfo{
+				Length:        uint64(len(payload)),
+				PayloadLength: uint64(len(payload)),
+				Data:          payload,
+			},
+		})
 	}
 	return len(payload), nil
 }

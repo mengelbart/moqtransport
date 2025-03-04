@@ -1,8 +1,13 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*FetchOkMessage)(nil)
 
 // TODO: Add tests
 type FetchOkMessage struct {
@@ -12,6 +17,23 @@ type FetchOkMessage struct {
 	LargestGroupID      uint64
 	LargestObjectID     uint64
 	SubscribeParameters Parameters
+}
+
+func (m *FetchOkMessage) LogValue() slog.Value {
+	sps := []Parameter{}
+	for _, v := range m.SubscribeParameters {
+		sps = append(sps, v)
+	}
+	return slog.GroupValue(
+		slog.String("type", "fetch_ok"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Any("group_order", m.GroupOrder),
+		slog.Any("end_of_track", m.EndOfTrack),
+		slog.Uint64("largest_group_id", m.LargestGroupID),
+		slog.Uint64("largest_object_id", m.LargestObjectID),
+		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+	)
 }
 
 func (m FetchOkMessage) Type() controlMessageType {

@@ -65,3 +65,17 @@ func (mr *MockReceiveStreamMockRecorder) Stop(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockReceiveStream)(nil).Stop), arg0)
 }
+
+// StreamID mocks base method.
+func (m *MockReceiveStream) StreamID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StreamID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// StreamID indicates an expected call of StreamID.
+func (mr *MockReceiveStreamMockRecorder) StreamID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamID", reflect.TypeOf((*MockReceiveStream)(nil).StreamID))
+}

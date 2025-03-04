@@ -1,11 +1,22 @@
 package wire
 
 import (
+	"log/slog"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+var _ slog.LogValuer = (*UnsubscribeMessage)(nil)
+
 type UnsubscribeMessage struct {
 	SubscribeID uint64
+}
+
+func (m *UnsubscribeMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "unsubscribe"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+	)
 }
 
 func (m UnsubscribeMessage) Type() controlMessageType {

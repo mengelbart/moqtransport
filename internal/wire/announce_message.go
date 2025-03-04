@@ -1,8 +1,29 @@
 package wire
 
+import (
+	"log/slog"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
+)
+
+var _ slog.LogValuer = (*AnnounceMessage)(nil)
+
 type AnnounceMessage struct {
 	TrackNamespace Tuple
 	Parameters     Parameters
+}
+
+func (m *AnnounceMessage) LogValue() slog.Value {
+	ps := []Parameter{}
+	for _, v := range m.Parameters {
+		ps = append(ps, v)
+	}
+	return slog.GroupValue(
+		slog.String("type", "announce"),
+		slog.Any("track_namespace", m.TrackNamespace),
+		slog.Uint64("number_of_parameters", uint64(len(ps))),
+		slog.Any("parameters", slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))),
+	)
 }
 
 func (m AnnounceMessage) GetTrackNamespace() string {

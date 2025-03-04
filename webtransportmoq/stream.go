@@ -33,3 +33,8 @@ func (s *Stream) Reset(code uint32) {
 func (s *Stream) Stop(code uint32) {
 	s.receive.Stop(code)
 }
+
+// StreamID implements moqtransport.Stream.
+func (s *Stream) StreamID() uint64 {
+	return s.send.StreamID()
+}

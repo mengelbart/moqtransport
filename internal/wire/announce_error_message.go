@@ -1,13 +1,31 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*AnnounceErrorMessage)(nil)
 
 type AnnounceErrorMessage struct {
 	TrackNamespace Tuple
 	ErrorCode      uint64
 	ReasonPhrase   string
+}
+
+func (m *AnnounceErrorMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "announce_error"),
+		slog.Any("track_namespace", m.TrackNamespace),
+		slog.Uint64("error_code", m.ErrorCode),
+		slog.Any("reason_phrase", qlog.RawInfo{
+			Length:        uint64(len(m.ReasonPhrase)),
+			PayloadLength: uint64(len(m.ReasonPhrase)),
+			Data:          []byte(m.ReasonPhrase),
+		}),
+	)
 }
 
 func (m AnnounceErrorMessage) GetTrackNamespace() string {
