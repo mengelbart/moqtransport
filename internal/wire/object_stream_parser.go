@@ -28,6 +28,7 @@ type ObjectStreamParser struct {
 	trackAlias        uint64
 	PublisherPriority uint8
 	GroupID           uint64
+	SubgroupID        uint64
 }
 
 func (p *ObjectStreamParser) Type() StreamType {
@@ -84,6 +85,7 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			trackAlias:        0,
 			PublisherPriority: 0,
 			GroupID:           0,
+			SubgroupID:        0,
 		}, nil
 
 	case StreamTypeSubgroup:
@@ -100,6 +102,7 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			trackAlias:        shsm.TrackAlias,
 			PublisherPriority: shsm.PublisherPriority,
 			GroupID:           shsm.GroupID,
+			SubgroupID:        shsm.SubgroupID,
 		}, nil
 
 	default:
@@ -127,12 +130,17 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 		ObjectStatus:      0,
 		ObjectPayload:     nil,
 	}
-	var err error
 	switch p.typ {
 	case StreamTypeFetch:
-		err = m.readFetch(p.reader)
+		if err := m.readFetch(p.reader); err != nil {
+			return nil, err
+		}
 	case StreamTypeSubgroup:
-		err = m.readSubgroup(p.reader)
+		if err := m.readSubgroup(p.reader); err != nil {
+			return nil, err
+		}
+		m.SubgroupID = p.SubgroupID
+		m.GroupID = p.GroupID
 	default:
 		return nil, errInvalidStreamType
 	}
@@ -194,5 +202,5 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 			p.qlogger.Log(e)
 		}
 	}
-	return m, err
+	return m, nil
 }
