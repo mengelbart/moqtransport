@@ -50,19 +50,19 @@ func (m *subscriptionMap) updateMaxSubscribeID(next uint64) error {
 func (m *subscriptionMap) addPending(s *subscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if s.ID >= m.maxSubscribeID {
+	if s.id >= m.maxSubscribeID {
 		return errMaxSusbcribeIDViolation{
 			maxSubscribeID: m.maxSubscribeID,
 		}
 	}
-	if _, ok := m.pendingSubscriptions[s.ID]; ok {
+	if _, ok := m.pendingSubscriptions[s.id]; ok {
 		return errDuplicateSubscribeID
 	}
-	if _, ok := m.subscriptions[s.ID]; ok {
+	if _, ok := m.subscriptions[s.id]; ok {
 		return errDuplicateSubscribeID
 	}
-	m.pendingSubscriptions[s.ID] = s
-	m.trackAliasToSusbcribeID[s.TrackAlias] = s.ID
+	m.pendingSubscriptions[s.id] = s
+	m.trackAliasToSusbcribeID[s.trackAlias] = s.id
 	return nil
 }
 
@@ -115,7 +115,7 @@ func (m *subscriptionMap) delete(id uint64) (*subscription, bool) {
 	}
 	delete(m.pendingSubscriptions, id)
 	delete(m.subscriptions, id)
-	delete(m.trackAliasToSusbcribeID, sub.TrackAlias)
+	delete(m.trackAliasToSusbcribeID, sub.trackAlias)
 	return sub, true
 }
 

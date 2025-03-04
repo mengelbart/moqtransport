@@ -20,14 +20,14 @@ type subscriptionResponse struct {
 }
 
 type subscription struct {
-	ID            uint64
-	TrackAlias    uint64
-	Namespace     []string
-	Trackname     string
-	Authorization string
-	Expires       time.Duration
-	GroupOrder    uint8
-	ContentExists bool
+	id            uint64
+	trackAlias    uint64
+	namespace     []string
+	trackname     string
+	authorization string
+	expires       time.Duration
+	groupOrder    uint8
+	contentExists bool
 
 	remoteTrack *RemoteTrack
 	localTrack  *localTrack

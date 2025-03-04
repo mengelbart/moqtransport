@@ -452,9 +452,9 @@ func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) 
 
 func (s *Session) onFetch(msg *wire.FetchMessage) error {
 	f := &subscription{
-		ID:        msg.SubscribeID,
-		Namespace: msg.TrackNamespace,
-		Trackname: string(msg.TrackName),
+		id:        msg.SubscribeID,
+		namespace: msg.TrackNamespace,
+		trackname: string(msg.TrackName),
 		isFetch:   true,
 	}
 	if err := s.incomingSubscriptions.addPending(f); err != nil {
@@ -462,8 +462,8 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 	}
 	m := &Message{
 		Method:    MessageFetch,
-		Namespace: f.Namespace,
-		Track:     f.Trackname,
+		Namespace: f.namespace,
+		Track:     f.trackname,
 	}
 	s.handler.handle(m)
 	return nil
@@ -540,11 +540,11 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		return err
 	}
 	sub := &subscription{
-		ID:            msg.SubscribeID,
-		TrackAlias:    msg.TrackAlias,
-		Namespace:     msg.TrackNamespace,
-		Trackname:     string(msg.TrackName),
-		Authorization: auth,
+		id:            msg.SubscribeID,
+		trackAlias:    msg.TrackAlias,
+		namespace:     msg.TrackNamespace,
+		trackname:     string(msg.TrackName),
+		authorization: auth,
 		isFetch:       false,
 	}
 	if err := s.incomingSubscriptions.addPending(sub); err != nil {
@@ -559,11 +559,11 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	}
 	m := &Message{
 		Method:        MessageSubscribe,
-		SubscribeID:   sub.ID,
-		TrackAlias:    sub.TrackAlias,
-		Namespace:     sub.Namespace,
-		Track:         sub.Trackname,
-		Authorization: sub.Authorization,
+		SubscribeID:   sub.id,
+		TrackAlias:    sub.trackAlias,
+		Namespace:     sub.namespace,
+		Track:         sub.trackname,
+		Authorization: sub.authorization,
 		Status:        0,
 		LastGroupID:   0,
 		LastObjectID:  0,
@@ -755,9 +755,9 @@ func (s *Session) Fetch(
 		return nil, err
 	}
 	f := &subscription{
-		ID:          id,
-		Namespace:   namespace,
-		Trackname:   track,
+		id:          id,
+		namespace:   namespace,
+		trackname:   track,
 		isFetch:     true,
 		remoteTrack: newRemoteTrack(id, s),
 		response:    make(chan subscriptionResponse, 1),
@@ -775,12 +775,12 @@ func (s *Session) Fetch(
 		return nil, err
 	}
 	cm := &wire.FetchMessage{
-		SubscribeID:          f.ID,
+		SubscribeID:          f.id,
 		SubscriberPriority:   0,
 		GroupOrder:           0,
 		FetchType:            wire.FetchTypeStandalone,
-		TrackNamespace:       f.Namespace,
-		TrackName:            []byte(f.Trackname),
+		TrackNamespace:       f.namespace,
+		TrackName:            []byte(f.trackname),
 		StartGroup:           0,
 		StartObject:          0,
 		EndGroup:             0,
@@ -790,7 +790,7 @@ func (s *Session) Fetch(
 		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.controlMessageSender.queueControlMessage(cm); err != nil {
-		_, _ = s.outgoingSubscriptions.reject(f.ID)
+		_, _ = s.outgoingSubscriptions.reject(f.id)
 		return nil, err
 	}
 	return s.subscribe(ctx, f)
@@ -819,14 +819,14 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 	ps := &subscription{
-		ID:            id,
-		TrackAlias:    alias,
-		Namespace:     namespace,
-		Trackname:     name,
-		Authorization: auth,
-		Expires:       0,
-		GroupOrder:    0,
-		ContentExists: false,
+		id:            id,
+		trackAlias:    alias,
+		namespace:     namespace,
+		trackname:     name,
+		authorization: auth,
+		expires:       0,
+		groupOrder:    0,
+		contentExists: false,
 		remoteTrack:   newRemoteTrack(id, s),
 		response:      make(chan subscriptionResponse, 1),
 	}
@@ -843,10 +843,10 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 	cm := &wire.SubscribeMessage{
-		SubscribeID:        ps.ID,
-		TrackAlias:         ps.TrackAlias,
-		TrackNamespace:     ps.Namespace,
-		TrackName:          []byte(ps.Trackname),
+		SubscribeID:        ps.id,
+		TrackAlias:         ps.trackAlias,
+		TrackNamespace:     ps.namespace,
+		TrackName:          []byte(ps.trackname),
 		SubscriberPriority: 0,
 		GroupOrder:         0,
 		FilterType:         0,
@@ -855,14 +855,14 @@ func (s *Session) Subscribe(
 		EndGroup:           0,
 		Parameters:         map[uint64]wire.Parameter{},
 	}
-	if len(ps.Authorization) > 0 {
+	if len(ps.authorization) > 0 {
 		cm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
 			Type:  wire.AuthorizationParameterKey,
-			Value: ps.Authorization,
+			Value: ps.authorization,
 		}
 	}
 	if err := s.controlMessageSender.queueControlMessage(cm); err != nil {
-		_, _ = s.outgoingSubscriptions.reject(ps.ID)
+		_, _ = s.outgoingSubscriptions.reject(ps.id)
 		return nil, err
 	}
 	return s.subscribe(ctx, ps)
@@ -956,13 +956,13 @@ func (s *Session) acceptSubscription(id uint64, lt *localTrack) error {
 		return err
 	}
 	sub.localTrack = lt
-	if sub.GroupOrder == 0 {
-		sub.GroupOrder = 0x1
+	if sub.groupOrder == 0 {
+		sub.groupOrder = 0x1
 	}
 	if sub.isFetch {
 		if err := s.controlMessageSender.queueControlMessage(&wire.FetchOkMessage{
-			SubscribeID:     sub.ID,
-			GroupOrder:      sub.GroupOrder,
+			SubscribeID:     sub.id,
+			GroupOrder:      sub.groupOrder,
 			LargestGroupID:  0,
 			LargestObjectID: 0,
 		}); err != nil {
@@ -970,10 +970,10 @@ func (s *Session) acceptSubscription(id uint64, lt *localTrack) error {
 		}
 	} else {
 		if err := s.controlMessageSender.queueControlMessage(&wire.SubscribeOkMessage{
-			SubscribeID:     sub.ID,
-			Expires:         sub.Expires,
-			GroupOrder:      sub.GroupOrder,
-			ContentExists:   sub.ContentExists,
+			SubscribeID:     sub.id,
+			Expires:         sub.expires,
+			GroupOrder:      sub.groupOrder,
+			ContentExists:   sub.contentExists,
 			LargestGroupID:  0,
 			LargestObjectID: 0,
 			Parameters:      map[uint64]wire.Parameter{},
@@ -1011,16 +1011,16 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 	}
 	if sub.isFetch {
 		return s.controlMessageSender.queueControlMessage(&wire.FetchErrorMessage{
-			SubscribeID:  sub.ID,
+			SubscribeID:  sub.id,
 			ErrorCode:    errorCode,
 			ReasonPhrase: reason,
 		})
 	} else {
 		return s.controlMessageSender.queueControlMessage(&wire.SubscribeErrorMessage{
-			SubscribeID:  sub.ID,
+			SubscribeID:  sub.id,
 			ErrorCode:    errorCode,
 			ReasonPhrase: reason,
-			TrackAlias:   sub.TrackAlias,
+			TrackAlias:   sub.trackAlias,
 		})
 	}
 }
@@ -1032,7 +1032,7 @@ func (s *Session) subscriptionDone(id, code, count uint64, reason string) error 
 
 	}
 	return s.controlMessageSender.queueControlMessage(&wire.SubscribeDoneMessage{
-		SubscribeID:  sub.ID,
+		SubscribeID:  sub.id,
 		StatusCode:   code,
 		StreamCount:  count,
 		ReasonPhrase: reason,
