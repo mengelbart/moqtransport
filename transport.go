@@ -7,7 +7,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/qlog"
+	"github.com/mengelbart/qlog/moqt"
 )
 
 type Transport struct {
@@ -22,6 +25,8 @@ type Transport struct {
 
 	Handler Handler
 
+	Qlogger *qlog.Logger
+
 	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
 
@@ -32,7 +37,7 @@ func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
 	t.logger = defaultLogger.With("perspective", t.Conn.Perspective())
 	t.logger.Info("NewSession")
 
-	controlStream := newControlStream(t)
+	controlStream := newControlStream(t, t.Qlogger)
 
 	t.ctx, t.cancelCtx = context.WithCancelCause(context.Background())
 	t.session = t.newSession(controlStream)
@@ -67,7 +72,7 @@ func (t *Transport) handle(m *Message) {
 				session:    t.session,
 				localTrack: newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
 					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
-				}),
+				}, t.Qlogger),
 				handled: false,
 			}
 			t.Handler.Handle(srw, m)
@@ -82,7 +87,7 @@ func (t *Transport) handle(m *Message) {
 				session: t.session,
 				localTrack: newLocalTrack(t.Conn, m.SubscribeID, 0, func(code, count uint64, reason string) error {
 					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
-				}),
+				}, t.Qlogger),
 				handled: false,
 			}
 			t.Handler.Handle(frw, m)
@@ -153,7 +158,7 @@ func (t *Transport) readStreams() {
 		}
 		go func() {
 			t.logger.Info("handling new uni stream")
-			parser, err := wire.NewObjectStreamParser(stream)
+			parser, err := wire.NewObjectStreamParser(stream, stream.StreamID(), t.Qlogger)
 			if err != nil {
 				t.logger.Info("failed to read uni stream header", "error", err)
 				return
@@ -176,7 +181,41 @@ func (t *Transport) readDatagrams() {
 			return
 		}
 		go func() {
-			if err := t.session.receiveDatagram(dgram); err != nil {
+			msg := new(wire.ObjectMessage)
+			_, err := msg.ParseDatagram(dgram)
+			if err != nil {
+				t.logger.Error("failed to parse datagram object", "error", err)
+				return
+			}
+			if t.Qlogger != nil {
+				eth := slices.Collect(slices.Map(
+					msg.ObjectHeaderExtensions,
+					func(e wire.ObjectHeaderExtension) moqt.ExtensionHeader {
+						return moqt.ExtensionHeader{
+							HeaderType:   0, // TODO
+							HeaderValue:  0, // TODO
+							HeaderLength: 0, // TODO
+							Payload:      qlog.RawInfo{},
+						}
+					}),
+				)
+				t.Qlogger.Log(moqt.ObjectDatagramEvent{
+					EventName:              moqt.ObjectDatagramEventparsed,
+					TrackAlias:             msg.TrackAlias,
+					GroupID:                msg.GroupID,
+					ObjectID:               msg.ObjectID,
+					PublisherPriority:      msg.PublisherPriority,
+					ExtensionHeadersLength: uint64(len(msg.ObjectHeaderExtensions)),
+					ExtensionHeaders:       eth,
+					ObjectStatus:           uint64(msg.ObjectStatus),
+					Payload: qlog.RawInfo{
+						Length:        uint64(len(msg.ObjectPayload)),
+						PayloadLength: uint64(len(msg.ObjectPayload)),
+						Data:          msg.ObjectPayload,
+					},
+				})
+			}
+			if err := t.session.receiveDatagram(msg); err != nil {
 				t.logger.Error("session failed to handle dgram", "error", err)
 				t.handleProtocolViolation(err)
 				return

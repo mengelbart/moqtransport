@@ -1,8 +1,13 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*SubscribeUpdateMessage)(nil)
 
 type SubscribeUpdateMessage struct {
 	SubscribeID        uint64
@@ -11,6 +16,28 @@ type SubscribeUpdateMessage struct {
 	EndGroup           uint64
 	SubscriberPriority uint8
 	Parameters         Parameters
+}
+
+func (m *SubscribeUpdateMessage) LogValue() slog.Value {
+	ps := []Parameter{}
+	for _, v := range m.Parameters {
+		ps = append(ps, v)
+	}
+	attrs := []slog.Attr{
+		slog.String("type", "subscribe_update"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("start_group", m.StartGroup),
+		slog.Uint64("start_object", m.StartObject),
+		slog.Uint64("end_group", m.EndGroup),
+		slog.Any("subscriber_priority", m.SubscriberPriority),
+		slog.Uint64("number_of_parameters", uint64(len(ps))),
+	}
+	if len(ps) > 0 {
+		attrs = append(attrs,
+			slog.Any("setup_parameters", slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))),
+		)
+	}
+	return slog.GroupValue(attrs...)
 }
 
 func (m SubscribeUpdateMessage) Type() controlMessageType {

@@ -1,14 +1,27 @@
 package wire
 
 import (
+	"log/slog"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*FetchErrorMessage)(nil)
 
 // TODO: Add tests
 type FetchErrorMessage struct {
 	SubscribeID  uint64
 	ErrorCode    uint64
 	ReasonPhrase string
+}
+
+func (m *FetchErrorMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "fetch_error"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("error_code", m.ErrorCode),
+		slog.String("reason", m.ReasonPhrase),
+	)
 }
 
 func (m FetchErrorMessage) Type() controlMessageType {

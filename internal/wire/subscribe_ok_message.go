@@ -1,10 +1,14 @@
 package wire
 
 import (
+	"log/slog"
 	"time"
 
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*SubscribeOkMessage)(nil)
 
 type SubscribeOkMessage struct {
 	SubscribeID     uint64
@@ -14,6 +18,36 @@ type SubscribeOkMessage struct {
 	LargestGroupID  uint64
 	LargestObjectID uint64
 	Parameters      Parameters
+}
+
+func (m *SubscribeOkMessage) LogValue() slog.Value {
+	sps := []Parameter{}
+	for _, v := range m.Parameters {
+		sps = append(sps, v)
+	}
+	attrs := []slog.Attr{
+		slog.String("type", "subscribe_ok"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("expires", uint64(m.Expires.Milliseconds())),
+		slog.Any("group_order", m.GroupOrder),
+		slog.Any("content_exists", m.ContentExists),
+	}
+	if m.ContentExists {
+		attrs = append(attrs,
+			slog.Uint64("largest_group_id", m.LargestGroupID),
+			slog.Uint64("largest_object_id", m.LargestObjectID),
+		)
+	}
+	attrs = append(attrs,
+		slog.Uint64("number_of_parameters", uint64(len(sps))),
+	)
+	if len(sps) > 0 {
+		attrs = append(attrs,
+			slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+		)
+
+	}
+	return slog.GroupValue(attrs...)
 }
 
 func (m SubscribeOkMessage) GetSubscribeID() uint64 {

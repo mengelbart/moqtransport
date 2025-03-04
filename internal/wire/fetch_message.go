@@ -1,6 +1,10 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
+	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -9,13 +13,15 @@ const (
 	FetchTypeJoining    = 0x02
 )
 
+var _ slog.LogValuer = (*FetchMessage)(nil)
+
 // TODO: Add tests
 type FetchMessage struct {
 	SubscribeID          uint64
 	SubscriberPriority   uint8
 	GroupOrder           uint8
 	FetchType            uint64
-	TrackNamspace        Tuple
+	TrackNamespace       Tuple
 	TrackName            []byte
 	StartGroup           uint64
 	StartObject          uint64
@@ -24,6 +30,52 @@ type FetchMessage struct {
 	JoiningSubscribeID   uint64
 	PrecedingGroupOffset uint64
 	Parameters           Parameters
+}
+
+// Attrs implements moqt.ControlMessage.
+func (m *FetchMessage) LogValue() slog.Value {
+	ps := []Parameter{}
+	for _, v := range m.Parameters {
+		ps = append(ps, v)
+	}
+	attrs := []slog.Attr{
+		slog.String("type", "fetch"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Any("subscriber_priority", m.SubscriberPriority),
+		slog.Any("group_order", m.GroupOrder),
+		slog.Uint64("fetch_type", m.FetchType),
+	}
+
+	if m.FetchType == FetchTypeStandalone {
+		attrs = append(attrs,
+			slog.Any("track_namespace", m.TrackNamespace),
+			slog.Any("track_name", qlog.RawInfo{
+				Length:        uint64(len(m.TrackName)),
+				PayloadLength: uint64(len(m.TrackName)),
+				Data:          m.TrackName,
+			}),
+			slog.Uint64("start_group", m.StartGroup),
+			slog.Uint64("start_object", m.StartObject),
+			slog.Uint64("end_group", m.EndGroup),
+			slog.Uint64("end_object", m.EndObject),
+		)
+	}
+	if m.FetchType == FetchTypeJoining {
+		attrs = append(attrs,
+			slog.Uint64("joining_subscribe_id", m.JoiningSubscribeID),
+			slog.Uint64("preceding_group_offset", m.PrecedingGroupOffset),
+		)
+	}
+
+	attrs = append(attrs,
+		slog.Uint64("number_of_parameters", uint64(len(ps))),
+	)
+
+	params := slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))
+	if len(params) > 0 {
+		slog.Any("parameters", params)
+	}
+	return slog.GroupValue(attrs...)
 }
 
 func (m FetchMessage) Type() controlMessageType {
@@ -35,7 +87,7 @@ func (m *FetchMessage) Append(buf []byte) []byte {
 	buf = append(buf, m.SubscriberPriority)
 	buf = append(buf, m.GroupOrder)
 	buf = quicvarint.Append(buf, m.FetchType)
-	buf = m.TrackNamspace.append(buf)
+	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, m.TrackName)
 	buf = quicvarint.Append(buf, m.StartGroup)
 	buf = quicvarint.Append(buf, m.StartObject)
@@ -75,7 +127,7 @@ func (m *FetchMessage) parse(data []byte) (err error) {
 	}
 
 	if m.FetchType == FetchTypeStandalone {
-		m.TrackNamspace, n, err = parseTuple(data)
+		m.TrackNamespace, n, err = parseTuple(data)
 		if err != nil {
 			return err
 		}
