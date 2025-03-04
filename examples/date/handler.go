@@ -175,7 +175,6 @@ func (h *moqHandler) setupDateTrack() {
 	for {
 		select {
 		case ts := <-ticker.C:
-			log.Printf("TICK: %v", ts)
 			for _, p := range publishers {
 				sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
 				if err != nil {
