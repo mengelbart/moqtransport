@@ -1,8 +1,21 @@
 package wire
 
+import (
+	"log/slog"
+)
+
+var _ slog.LogValuer = (*SubscribeAnnouncesOkMessage)(nil)
+
 // TODO: Add tests
 type SubscribeAnnouncesOkMessage struct {
 	TrackNamespacePrefix Tuple
+}
+
+func (m *SubscribeAnnouncesOkMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "subscribe_announces_ok"),
+		slog.Any("track_namespace_prefix", m.TrackNamespacePrefix),
+	)
 }
 
 func (m SubscribeAnnouncesOkMessage) Type() controlMessageType {

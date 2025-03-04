@@ -1,7 +1,20 @@
 package wire
 
+import (
+	"log/slog"
+)
+
+var _ slog.LogValuer = (*AnnounceOkMessage)(nil)
+
 type AnnounceOkMessage struct {
 	TrackNamespace Tuple
+}
+
+func (m *AnnounceOkMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "announce_ok"),
+		slog.Any("track_namespace", m.TrackNamespace),
+	)
 }
 
 func (m AnnounceOkMessage) GetTrackNamespace() string {

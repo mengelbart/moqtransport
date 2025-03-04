@@ -1,6 +1,13 @@
 package wire
 
-import "github.com/quic-go/quic-go/quicvarint"
+import (
+	"log/slog"
+
+	"github.com/mengelbart/qlog"
+	"github.com/quic-go/quic-go/quicvarint"
+)
+
+var _ slog.LogValuer = (*TrackStatusMessage)(nil)
 
 type TrackStatusMessage struct {
 	TrackNamespace Tuple
@@ -8,6 +15,21 @@ type TrackStatusMessage struct {
 	StatusCode     uint64
 	LastGroupID    uint64
 	LastObjectID   uint64
+}
+
+func (m *TrackStatusMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "track_status"),
+		slog.Any("track_namespace", m.TrackNamespace),
+		slog.Any("track_name", qlog.RawInfo{
+			Length:        uint64(len(m.TrackName)),
+			PayloadLength: uint64(len(m.TrackName)),
+			Data:          []byte(m.TrackName),
+		}),
+		slog.Uint64("status_code", m.StatusCode),
+		slog.Uint64("last_group_id", m.LastGroupID),
+		slog.Uint64("last_object_id", m.LastObjectID),
+	)
 }
 
 func (m TrackStatusMessage) Type() controlMessageType {

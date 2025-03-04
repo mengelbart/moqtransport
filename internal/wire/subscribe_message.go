@@ -1,6 +1,10 @@
 package wire
 
 import (
+	"log/slog"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
+	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -21,6 +25,8 @@ func (f FilterType) append(buf []byte) []byte {
 	return quicvarint.Append(buf, uint64(FilterTypeLatestGroup))
 }
 
+var _ slog.LogValuer = (*SubscribeMessage)(nil)
+
 type SubscribeMessage struct {
 	SubscribeID        uint64
 	TrackAlias         uint64
@@ -33,6 +39,47 @@ type SubscribeMessage struct {
 	StartObject        uint64
 	EndGroup           uint64
 	Parameters         Parameters
+}
+
+func (m *SubscribeMessage) LogValue() slog.Value {
+	sps := []Parameter{}
+	for _, v := range m.Parameters {
+		sps = append(sps, v)
+	}
+	attrs := []slog.Attr{
+		slog.String("type", "subscribe"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("track_alias", m.TrackAlias),
+		slog.Any("track_namespace", m.TrackNamespace),
+		slog.Any("track_name", qlog.RawInfo{
+			Length:        uint64(len(m.TrackName)),
+			PayloadLength: uint64(len(m.TrackName)),
+			Data:          m.TrackName,
+		}),
+		slog.Any("subscriber_priority", m.SubscriberPriority),
+		slog.Any("group_order", m.GroupOrder),
+		slog.Any("filter_type", m.FilterType),
+	}
+	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
+		attrs = append(attrs,
+			slog.Uint64("start_group", m.StartGroup),
+			slog.Uint64("start_object", m.StartObject),
+		)
+	}
+	if m.FilterType == FilterTypeAbsoluteRange {
+		attrs = append(attrs,
+			slog.Uint64("end_group", m.EndGroup),
+		)
+	}
+	attrs = append(attrs,
+		slog.Uint64("number_of_parameters", uint64(len(sps))),
+	)
+	if len(sps) > 0 {
+		attrs = append(attrs,
+			slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+		)
+	}
+	return slog.GroupValue(attrs...)
 }
 
 func (m SubscribeMessage) GetSubscribeID() uint64 {

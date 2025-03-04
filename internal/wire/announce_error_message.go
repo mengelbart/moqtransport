@@ -1,13 +1,26 @@
 package wire
 
 import (
+	"log/slog"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*AnnounceErrorMessage)(nil)
 
 type AnnounceErrorMessage struct {
 	TrackNamespace Tuple
 	ErrorCode      uint64
 	ReasonPhrase   string
+}
+
+func (m *AnnounceErrorMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "announce_error"),
+		slog.Any("track_namespace", m.TrackNamespace),
+		slog.Uint64("error_code", m.ErrorCode),
+		slog.String("reason", m.ReasonPhrase),
+	)
 }
 
 func (m AnnounceErrorMessage) GetTrackNamespace() string {

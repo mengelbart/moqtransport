@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/qlog"
+	"github.com/mengelbart/qlog/moqt"
 )
 
 type controlMessageReceiver interface {
@@ -21,21 +23,24 @@ func newControlMessageParser(r io.Reader) controlMessageParser {
 }
 
 type controlMessageSender interface {
-	QueueControlMessage(wire.ControlMessage) error
+	queueControlMessage(wire.ControlMessage) error
 	close(err error)
 }
 
 type controlStream struct {
 	logger    *slog.Logger
+	qlogger   *qlog.Logger
 	ctx       context.Context
 	cancelCtx context.CancelCauseFunc
 	queue     chan wire.ControlMessage
 	transport *Transport
 }
 
-func newControlStream(t *Transport) *controlStream {
+func newControlStream(t *Transport, qlogger *qlog.Logger) *controlStream {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cs := &controlStream{
+		logger:    nil,
+		qlogger:   qlogger,
 		ctx:       ctx,
 		cancelCtx: cancel,
 		queue:     make(chan wire.ControlMessage, 100),
@@ -69,7 +74,7 @@ func (s *controlStream) open(conn Connection, receiver controlMessageReceiver) {
 }
 
 // queueControlMessage implements controlMessageSender.
-func (s *controlStream) QueueControlMessage(msg wire.ControlMessage) error {
+func (s *controlStream) queueControlMessage(msg wire.ControlMessage) error {
 	select {
 	case <-s.ctx.Done():
 		return context.Cause(s.ctx)
@@ -80,14 +85,23 @@ func (s *controlStream) QueueControlMessage(msg wire.ControlMessage) error {
 	}
 }
 
-func (s *controlStream) sendLoop(writer io.Writer) {
+func (s *controlStream) sendLoop(writer SendStream) {
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case msg := <-s.queue:
+			buf := compileMessage(msg)
+			if s.qlogger != nil {
+				s.qlogger.Log(moqt.ControlMessageEvent{
+					EventName: moqt.ControlMessageEventCreated,
+					StreamID:  writer.StreamID(),
+					Length:    uint64(len(buf)),
+					Message:   msg,
+				})
+			}
 			s.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
-			_, err := writer.Write(compileMessage(msg))
+			_, err := writer.Write(buf)
 			if err != nil {
 				s.logger.Error("failed to write control message", "error", err)
 				s.close(err)
@@ -104,6 +118,14 @@ func (s *controlStream) receiveLoop(parser controlMessageParser, receiver contro
 			s.logger.Error("failed to parse control message", "error", err)
 			s.close(err)
 			return
+		}
+		if s.qlogger != nil {
+			s.qlogger.Log(moqt.ControlMessageEvent{
+				EventName: moqt.ControlMessageEventParsed,
+				StreamID:  0,
+				Length:    0,
+				Message:   msg,
+			})
 		}
 		if err = receiver.receive(msg); err != nil {
 			s.logger.Error("session failed to handle control message", "error", err)

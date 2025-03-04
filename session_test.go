@@ -42,7 +42,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 
-		cms.EXPECT().QueueControlMessage(&wire.ClientSetupMessage{
+		cms.EXPECT().queueControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.PathParameterKey: wire.StringParameter{
@@ -67,7 +67,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolWebTransport, PerspectiveClient)
 
-		cms.EXPECT().QueueControlMessage(&wire.ClientSetupMessage{
+		cms.EXPECT().queueControlMessage(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
@@ -88,7 +88,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
 
-		cms.EXPECT().QueueControlMessage(&wire.ServerSetupMessage{
+		cms.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
@@ -117,7 +117,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolWebTransport, PerspectiveServer)
 
-		cms.EXPECT().QueueControlMessage(&wire.ServerSetupMessage{
+		cms.EXPECT().queueControlMessage(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
@@ -157,7 +157,7 @@ func TestSession(t *testing.T) {
 		mh := NewMockMessageHandler(ctrl)
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 
-		cms.EXPECT().QueueControlMessage(&wire.SubscribesBlocked{
+		cms.EXPECT().queueControlMessage(&wire.SubscribesBlockedMessage{
 			MaximumSubscribeID: 1,
 		}).Times(1)
 
@@ -179,7 +179,7 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		s.outgoingSubscriptions.maxSubscribeID = 1
-		cms.EXPECT().QueueControlMessage(&wire.SubscribeMessage{
+		cms.EXPECT().queueControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
@@ -236,7 +236,7 @@ func TestSession(t *testing.T) {
 			err := s.acceptSubscription(0, nil)
 			assert.NoError(t, err)
 		})
-		cms.EXPECT().QueueControlMessage(&wire.SubscribeOkMessage{
+		cms.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
 			Expires:         0,
 			GroupOrder:      1,
@@ -279,7 +279,7 @@ func TestSession(t *testing.T) {
 		).DoAndReturn(func(m *Message) {
 			assert.NoError(t, s.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 		})
-		cms.EXPECT().QueueControlMessage(&wire.SubscribeErrorMessage{
+		cms.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
 			SubscribeID:  0,
 			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
 			ReasonPhrase: "track not found",
@@ -307,7 +307,7 @@ func TestSession(t *testing.T) {
 		mh := NewMockMessageHandler(ctrl)
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		cms.EXPECT().QueueControlMessage(&wire.AnnounceMessage{
+		cms.EXPECT().queueControlMessage(&wire.AnnounceMessage{
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		}).Do(func(_ wire.ControlMessage) {
@@ -332,7 +332,7 @@ func TestSession(t *testing.T) {
 		}).DoAndReturn(func(req *Message) {
 			assert.NoError(t, s.acceptAnnouncement(req.Namespace))
 		})
-		cms.EXPECT().QueueControlMessage(&wire.AnnounceOkMessage{
+		cms.EXPECT().queueControlMessage(&wire.AnnounceOkMessage{
 			TrackNamespace: []string{"namespace"},
 		})
 		err := s.receive(&wire.AnnounceMessage{
@@ -372,7 +372,7 @@ func TestSession(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		close(s.handshakeDoneCh)
-		cms.EXPECT().QueueControlMessage(&wire.SubscribeMessage{
+		cms.EXPECT().queueControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        1,
 			TrackAlias:         2,
 			TrackNamespace:     []string{"namespace"},

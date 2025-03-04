@@ -1,12 +1,23 @@
 package wire
 
 import (
+	"log/slog"
+
 	"github.com/quic-go/quic-go/quicvarint"
 )
+
+var _ slog.LogValuer = (*FetchCancelMessage)(nil)
 
 // TODO: Add tests
 type FetchCancelMessage struct {
 	SubscribeID uint64
+}
+
+func (m *FetchCancelMessage) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("type", "fetch_cancel"),
+		slog.Uint64("subscribe_id", m.SubscribeID),
+	)
 }
 
 func (m FetchCancelMessage) Type() controlMessageType {
