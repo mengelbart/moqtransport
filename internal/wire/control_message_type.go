@@ -2,6 +2,7 @@ package wire
 
 import (
 	"io"
+	"log/slog"
 )
 
 type controlMessageType uint64
@@ -108,4 +109,5 @@ type Message interface {
 type ControlMessage interface {
 	Message
 	Type() controlMessageType
+	slog.LogValuer
 }

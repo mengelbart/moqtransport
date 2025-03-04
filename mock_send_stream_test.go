@@ -65,6 +65,20 @@ func (mr *MockSendStreamMockRecorder) Reset(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Reset", reflect.TypeOf((*MockSendStream)(nil).Reset), arg0)
 }
 
+// StreamID mocks base method.
+func (m *MockSendStream) StreamID() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StreamID")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// StreamID indicates an expected call of StreamID.
+func (mr *MockSendStreamMockRecorder) StreamID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamID", reflect.TypeOf((*MockSendStream)(nil).StreamID))
+}
+
 // Write mocks base method.
 func (m *MockSendStream) Write(p []byte) (int, error) {
 	m.ctrl.T.Helper()

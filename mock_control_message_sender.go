@@ -40,20 +40,6 @@ func (m *MockControlMessageSender) EXPECT() *MockControlMessageSenderMockRecorde
 	return m.recorder
 }
 
-// QueueControlMessage mocks base method.
-func (m *MockControlMessageSender) QueueControlMessage(arg0 wire.ControlMessage) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "QueueControlMessage", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// QueueControlMessage indicates an expected call of QueueControlMessage.
-func (mr *MockControlMessageSenderMockRecorder) QueueControlMessage(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueueControlMessage", reflect.TypeOf((*MockControlMessageSender)(nil).QueueControlMessage), arg0)
-}
-
 // close mocks base method.
 func (m *MockControlMessageSender) close(err error) {
 	m.ctrl.T.Helper()
@@ -64,4 +50,18 @@ func (m *MockControlMessageSender) close(err error) {
 func (mr *MockControlMessageSenderMockRecorder) close(err any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "close", reflect.TypeOf((*MockControlMessageSender)(nil).close), err)
+}
+
+// queueControlMessage mocks base method.
+func (m *MockControlMessageSender) queueControlMessage(arg0 wire.ControlMessage) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "queueControlMessage", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// queueControlMessage indicates an expected call of queueControlMessage.
+func (mr *MockControlMessageSenderMockRecorder) queueControlMessage(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "queueControlMessage", reflect.TypeOf((*MockControlMessageSender)(nil).queueControlMessage), arg0)
 }

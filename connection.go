@@ -61,6 +61,9 @@ type ReceiveStream interface {
 	// Stop stops reading from the stream and sends a signal to the sender to
 	// stop sending on the stream.
 	Stop(uint32)
+
+	// StreamID returns the ID of the stream
+	StreamID() uint64
 }
 
 // A Stream is the interface implemented by the sending end of unidirectional
@@ -73,6 +76,9 @@ type SendStream interface {
 
 	// Reset closes the stream and stops retransmitting outstanding data.
 	Reset(uint32)
+
+	// StreamID returns the ID of the stream
+	StreamID() uint64
 }
 
 var ErrDatagramSupportDisabled = errors.New("datagram support disabled")
