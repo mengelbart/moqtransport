@@ -66,14 +66,19 @@ func (t *Transport) handle(m *Message) {
 	if t.Handler != nil {
 		switch m.Method {
 		case MessageSubscribe:
+			lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
+				return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
+			}, t.Qlogger)
+			if err := t.session.addLocalTrack(lt); err != nil {
+				// TODO
+				panic(err)
+			}
 			srw := &subscriptionResponseWriter{
 				id:         m.SubscribeID,
 				trackAlias: m.TrackAlias,
 				session:    t.session,
-				localTrack: newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
-					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
-				}, t.Qlogger),
-				handled: false,
+				localTrack: lt,
+				handled:    false,
 			}
 			t.Handler.Handle(srw, m)
 			if !srw.handled {
@@ -143,8 +148,8 @@ func (t *Transport) newSession(cs *controlStream) *Session {
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestSubscribesBlocked:                 atomic.Uint64{},
-		outgoingSubscriptions:                    newSubscriptionMap(0),
-		incomingSubscriptions:                    newSubscriptionMap(t.InitialMaxSubscribeID),
+		remoteTracks:                             newRemoteTrackMap(0),
+		localTracks:                              newLocalTrackMap(t.InitialMaxSubscribeID),
 	}
 }
 

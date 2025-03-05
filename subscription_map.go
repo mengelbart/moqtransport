@@ -5,11 +5,11 @@ import (
 	"sync"
 )
 
-type errMaxSusbcribeIDViolation struct {
+type errSubscribesBlocked struct {
 	maxSubscribeID uint64
 }
 
-func (e errMaxSusbcribeIDViolation) Error() string {
+func (e errSubscribesBlocked) Error() string {
 	return fmt.Sprintf("too many subscribes, max_subscribe_id=%v", e.maxSubscribeID)
 }
 
@@ -51,7 +51,7 @@ func (m *subscriptionMap) addPending(s *subscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if s.id >= m.maxSubscribeID {
-		return errMaxSusbcribeIDViolation{
+		return errSubscribesBlocked{
 			maxSubscribeID: m.maxSubscribeID,
 		}
 	}

@@ -11,10 +11,6 @@ import (
 
 var errTooManyFetchStreams = errors.New("got too many fetch streams for remote track")
 
-type unsubscriber interface {
-	unsubscribe(id uint64) error
-}
-
 // ErrSubscribeDone is returned when reading from a RemoteTrack when the
 // subscription has ended.
 type ErrSubscribeDone struct {
@@ -29,31 +25,38 @@ func (e ErrSubscribeDone) Error() string {
 
 // RemoteTrack is a track provided by the remote peer.
 type RemoteTrack struct {
-	logger       *slog.Logger
-	subscribeID  uint64
-	unsubscriber unsubscriber
-	buffer       chan *Object
+	logger          *slog.Logger
+	unsubscribeFunc func() error
+	buffer          chan *Object
 
 	doneCtx       context.Context
 	doneCtxCancel context.CancelCauseFunc
 
 	subGroupCount atomic.Uint64
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
+
+	responseChan chan error
 }
 
-func newRemoteTrack(id uint64, u unsubscriber) *RemoteTrack {
+func newRemoteTrack() *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
-		logger:        defaultLogger,
-		subscribeID:   id,
-		unsubscriber:  u,
-		buffer:        make(chan *Object, 100),
-		doneCtx:       ctx,
-		doneCtxCancel: cancel,
-		subGroupCount: atomic.Uint64{},
-		fetchCount:    atomic.Uint64{},
+		logger:          defaultLogger,
+		buffer:          make(chan *Object, 100),
+		doneCtx:         ctx,
+		doneCtxCancel:   cancel,
+		subGroupCount:   atomic.Uint64{},
+		fetchCount:      atomic.Uint64{},
+		unsubscribeFunc: nil,
+		responseChan:    make(chan error, 1),
 	}
 	return t
+}
+
+// onUnsubscribe func sets the callback to be called when the user wants to
+// unsubscribe from the track. MUST be called before the track is used.
+func (t *RemoteTrack) onUnsubscribe(cb func() error) {
+	t.unsubscribeFunc = cb
 }
 
 // ReadObject returns the next object received from the peer.
@@ -70,7 +73,10 @@ func (t *RemoteTrack) ReadObject(ctx context.Context) (*Object, error) {
 
 // Close implements io.Closer. Calling close unsubscribes from the subscription.
 func (t *RemoteTrack) Close() error {
-	return t.unsubscriber.unsubscribe(t.subscribeID)
+	if t.unsubscribeFunc != nil {
+		return t.unsubscribeFunc()
+	}
+	return nil
 }
 
 func (t *RemoteTrack) readFetchStream(parser objectMessageParser) error {

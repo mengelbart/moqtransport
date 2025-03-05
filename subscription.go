@@ -14,11 +14,6 @@ const (
 	SubscribeStatusExpired           = 0x06
 )
 
-type subscriptionResponse struct {
-	err   error
-	track *RemoteTrack
-}
-
 type subscription struct {
 	id            uint64
 	trackAlias    uint64
@@ -29,10 +24,7 @@ type subscription struct {
 	groupOrder    uint8
 	contentExists bool
 
-	remoteTrack *RemoteTrack
-	localTrack  *localTrack
+	localTrack *localTrack
 
 	isFetch bool
-
-	response chan subscriptionResponse
 }
