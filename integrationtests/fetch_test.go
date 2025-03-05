@@ -22,7 +22,7 @@ func TestFetch(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
+		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
@@ -38,7 +38,7 @@ func TestFetch(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
+		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "unauthorized")
 		assert.Nil(t, rt)
@@ -61,7 +61,7 @@ func TestFetch(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Fetch(context.Background(), 0, []string{"namespace"}, "track")
+		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 

@@ -62,40 +62,72 @@ func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
 	return t.session, nil
 }
 
+func (t *Transport) handleSubscription(m *Message) {
+	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
+		return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
+	}, t.Qlogger)
+
+	if err := t.session.addLocalTrack(lt); err != nil {
+		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
+			t.handleProtocolViolation(err)
+			return
+		}
+		if rejectErr := t.session.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+			t.logger.Error("failed to add localtrack and failed to reject subscription", "error", err, "rejectErr", rejectErr)
+			// TODO: Close conn?
+		}
+		return
+	}
+	srw := &subscriptionResponseWriter{
+		id:         m.SubscribeID,
+		trackAlias: m.TrackAlias,
+		session:    t.session,
+		localTrack: lt,
+		handled:    false,
+	}
+	t.Handler.Handle(srw, m)
+	if !srw.handled {
+		if err := srw.Reject(0, "unhandled subscription"); err != nil {
+			t.logger.Error("failed to reject subscription", "error", err)
+		}
+	}
+
+}
+
+func (t *Transport) handleFetch(m *Message) {
+	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, nil, t.Qlogger)
+	if err := t.session.addLocalTrack(lt); err != nil {
+		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
+			t.handleProtocolViolation(err)
+			return
+		}
+		if rejectErr := t.session.rejectFetch(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+			t.logger.Error("failed to add localtrack and failed to reject fetch", "error", err, "rejectErr", rejectErr)
+			// TODO: Close conn?
+		}
+		return
+	}
+	frw := &fetchResponseWriter{
+		id:         m.SubscribeID,
+		session:    t.session,
+		localTrack: lt,
+		handled:    false,
+	}
+	t.Handler.Handle(frw, m)
+	if !frw.handled {
+		if err := frw.Reject(0, "unhandled fetch"); err != nil {
+			t.logger.Error("failed to reject fetch", "error", err)
+		}
+	}
+}
+
 func (t *Transport) handle(m *Message) {
 	if t.Handler != nil {
 		switch m.Method {
 		case MessageSubscribe:
-			srw := &subscriptionResponseWriter{
-				id:         m.SubscribeID,
-				trackAlias: m.TrackAlias,
-				session:    t.session,
-				localTrack: newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
-					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
-				}, t.Qlogger),
-				handled: false,
-			}
-			t.Handler.Handle(srw, m)
-			if !srw.handled {
-				if err := srw.Reject(0, "unhandled subscription"); err != nil {
-					t.logger.Error("failed to reject subscription", "error", err)
-				}
-			}
+			t.handleSubscription(m)
 		case MessageFetch:
-			frw := &fetchResponseWriter{
-				id:      m.SubscribeID,
-				session: t.session,
-				localTrack: newLocalTrack(t.Conn, m.SubscribeID, 0, func(code, count uint64, reason string) error {
-					return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
-				}, t.Qlogger),
-				handled: false,
-			}
-			t.Handler.Handle(frw, m)
-			if !frw.handled {
-				if err := frw.Reject(0, "unhandled fetch"); err != nil {
-					t.logger.Error("failed to reject fetch", "error", err)
-				}
-			}
+			t.handleFetch(m)
 		case MessageAnnounce:
 			arw := &announcementResponseWriter{
 				namespace: m.Namespace,
@@ -138,13 +170,14 @@ func (t *Transport) newSession(cs *controlStream) *Session {
 		protocol:                                 t.Conn.Protocol(),
 		perspective:                              t.Conn.Perspective(),
 		path:                                     "",
+		maxSubscribeID:                           t.InitialMaxSubscribeID,
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestSubscribesBlocked:                 atomic.Uint64{},
-		outgoingSubscriptions:                    newSubscriptionMap(0),
-		incomingSubscriptions:                    newSubscriptionMap(t.InitialMaxSubscribeID),
+		remoteTracks:                             newRemoteTrackMap(0),
+		localTracks:                              newLocalTrackMap(),
 	}
 }
 

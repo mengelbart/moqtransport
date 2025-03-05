@@ -24,13 +24,14 @@ func newSession(cms controlMessageSender, handler messageHandler, protocol Proto
 		protocol:                                 protocol,
 		perspective:                              perspective,
 		path:                                     "/path",
+		maxSubscribeID:                           100,
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestSubscribesBlocked:                 atomic.Uint64{},
-		outgoingSubscriptions:                    newSubscriptionMap(0),
-		incomingSubscriptions:                    newSubscriptionMap(100),
+		remoteTracks:                             newRemoteTrackMap(0),
+		localTracks:                              newLocalTrackMap(),
 	}
 }
 
@@ -157,17 +158,47 @@ func TestSession(t *testing.T) {
 		mh := NewMockMessageHandler(ctrl)
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 
+		cms.EXPECT().queueControlMessage(&wire.SubscribeMessage{
+			SubscribeID:        0,
+			TrackAlias:         0,
+			TrackNamespace:     wire.Tuple{"namespace"},
+			TrackName:          []byte("track1"),
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			FilterType:         0,
+			StartGroup:         0,
+			StartObject:        0,
+			EndGroup:           0,
+			Parameters: wire.Parameters{
+				wire.AuthorizationParameterKey: &wire.StringParameter{
+					Type:  wire.AuthorizationParameterKey,
+					Value: "auth",
+				},
+			},
+		}).DoAndReturn(func(cm wire.ControlMessage) error {
+			err := s.onSubscribeOk(&wire.SubscribeOkMessage{
+				SubscribeID:     0,
+				Expires:         0,
+				GroupOrder:      0,
+				ContentExists:   false,
+				LargestGroupID:  0,
+				LargestObjectID: 0,
+				Parameters:      wire.Parameters{},
+			})
+			assert.NoError(t, err)
+			return nil
+		}).Times(1)
 		cms.EXPECT().queueControlMessage(&wire.SubscribesBlockedMessage{
 			MaximumSubscribeID: 1,
 		}).Times(1)
 
-		s.outgoingSubscriptions.maxSubscribeID = 1
+		s.remoteTracks.maxSubscribeID = 1
 		close(s.handshakeDoneCh)
-		rt, err := s.Subscribe(context.Background(), 2, 0, []string{"namespace"}, "track", "auth")
-		assert.Error(t, err)
-		assert.Nil(t, rt)
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
+		assert.NoError(t, err)
+		assert.NotNil(t, rt)
 
-		rt, err = s.Subscribe(context.Background(), 2, 0, []string{"namespace"}, "track", "auth")
+		rt, err = s.Subscribe(context.Background(), []string{"namespace"}, "track2", "auth")
 		assert.Error(t, err)
 		assert.Nil(t, rt)
 	})
@@ -178,7 +209,7 @@ func TestSession(t *testing.T) {
 		mh := NewMockMessageHandler(ctrl)
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		s.outgoingSubscriptions.maxSubscribeID = 1
+		s.remoteTracks.maxSubscribeID = 1
 		cms.EXPECT().queueControlMessage(&wire.SubscribeMessage{
 			SubscribeID:        0,
 			TrackAlias:         0,
@@ -209,7 +240,7 @@ func TestSession(t *testing.T) {
 			assert.NoError(t, err)
 			return nil
 		})
-		rt, err := s.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
@@ -234,8 +265,8 @@ func TestSession(t *testing.T) {
 			ErrorCode:     0,
 			ReasonPhrase:  "",
 		}).Do(func(_ *Message) {
-			err := s.acceptSubscription(0, nil)
-			assert.NoError(t, err)
+			assert.NoError(t, s.addLocalTrack(&localTrack{}))
+			assert.NoError(t, s.acceptSubscription(0))
 		})
 		cms.EXPECT().queueControlMessage(&wire.SubscribeOkMessage{
 			SubscribeID:     0,
@@ -278,6 +309,7 @@ func TestSession(t *testing.T) {
 				ReasonPhrase:  "",
 			},
 		).DoAndReturn(func(m *Message) {
+			assert.NoError(t, s.addLocalTrack(&localTrack{}))
 			assert.NoError(t, s.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 		})
 		cms.EXPECT().queueControlMessage(&wire.SubscribeErrorMessage{
@@ -351,11 +383,11 @@ func TestSession(t *testing.T) {
 		mp := NewMockObjectMessageParser(ctrl)
 
 		mp.EXPECT().Type().Return(wire.StreamTypeSubgroup).AnyTimes()
-		mp.EXPECT().SubscribeID().Return(uint64(1), nil).AnyTimes()
-		mp.EXPECT().TrackAlias().Return(uint64(2), nil).AnyTimes()
+		mp.EXPECT().SubscribeID().Return(uint64(0), nil).AnyTimes()
+		mp.EXPECT().TrackAlias().Return(uint64(0), nil).AnyTimes()
 
 		mp.EXPECT().Messages().Return(func(yield func(*wire.ObjectMessage, error) bool) {
-			yield(&wire.ObjectMessage{
+			if !yield(&wire.ObjectMessage{
 				TrackAlias:             2,
 				GroupID:                0,
 				SubgroupID:             0,
@@ -364,7 +396,10 @@ func TestSession(t *testing.T) {
 				ObjectHeaderExtensions: []wire.ObjectHeaderExtension{},
 				ObjectStatus:           0,
 				ObjectPayload:          []byte{},
-			}, nil)
+			}, nil) {
+				assert.Fail(t, "yield returned false")
+				return
+			}
 			yield(nil, io.EOF)
 		})
 
@@ -375,8 +410,8 @@ func TestSession(t *testing.T) {
 		assert.NoError(t, err)
 		close(s.handshakeDoneCh)
 		cms.EXPECT().queueControlMessage(&wire.SubscribeMessage{
-			SubscribeID:        1,
-			TrackAlias:         2,
+			SubscribeID:        0,
+			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("trackname"),
 			SubscriberPriority: 0,
@@ -394,7 +429,7 @@ func TestSession(t *testing.T) {
 		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			assert.NoError(t, s.handleUniStream(mp))
 			assert.NoError(t, s.onSubscribeOk(&wire.SubscribeOkMessage{
-				SubscribeID:     1,
+				SubscribeID:     0,
 				Expires:         0,
 				GroupOrder:      1,
 				ContentExists:   false,
@@ -404,7 +439,7 @@ func TestSession(t *testing.T) {
 			}))
 			return nil
 		})
-		rt, err := s.Subscribe(context.Background(), 1, 2, []string{"namespace"}, "trackname", "auth")
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "trackname", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})

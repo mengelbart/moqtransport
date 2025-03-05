@@ -10,7 +10,7 @@ type subscriptionResponseWriter struct {
 
 func (w *subscriptionResponseWriter) Accept() error {
 	w.handled = true
-	if err := w.session.acceptSubscription(w.id, w.localTrack); err != nil {
+	if err := w.session.acceptSubscription(w.id); err != nil {
 		return err
 	}
 	return nil

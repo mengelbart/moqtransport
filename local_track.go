@@ -34,7 +34,7 @@ type localTrack struct {
 
 func newLocalTrack(conn Connection, subscribeID, trackAlias uint64, onSubscribeDone subscribeDoneCallback, qlogger *qlog.Logger) *localTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
-	publisher := &localTrack{
+	lt := &localTrack{
 		qlogger:         qlogger,
 		conn:            conn,
 		subscribeID:     subscribeID,
@@ -46,7 +46,7 @@ func newLocalTrack(conn Connection, subscribeID, trackAlias uint64, onSubscribeD
 		cancelCtx:       cancel,
 		subscribeDone:   onSubscribeDone,
 	}
-	return publisher
+	return lt
 }
 
 func (p *localTrack) getFetchStream() (*FetchStream, error) {
@@ -135,7 +135,10 @@ func (p *localTrack) openSubgroup(groupID, subgroupID uint64, priority uint8) (*
 
 func (s *localTrack) close(code uint64, reason string) error {
 	s.cancelCtx(ErrSubscriptionDone)
-	return s.subscribeDone(code, s.subgroupCount, reason)
+	if s.subscribeDone != nil {
+		return s.subscribeDone(code, s.subgroupCount, reason)
+	}
+	return nil
 }
 
 func (s *localTrack) unsubscribe() {
