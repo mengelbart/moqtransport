@@ -10,13 +10,13 @@ type fetchResponseWriter struct {
 // Accept implements ResponseWriter.
 func (f *fetchResponseWriter) Accept() error {
 	f.handled = true
-	return f.session.acceptSubscription(f.id, f.localTrack)
+	return f.session.acceptFetch(f.id)
 }
 
 // Reject implements ResponseWriter.
 func (f *fetchResponseWriter) Reject(code uint64, reason string) error {
 	f.handled = true
-	return f.session.rejectSubscription(f.id, code, reason)
+	return f.session.rejectFetch(f.id, code, reason)
 }
 
 func (f *fetchResponseWriter) FetchStream() (*FetchStream, error) {

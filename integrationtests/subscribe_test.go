@@ -22,7 +22,7 @@ func TestSubscribe(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
@@ -39,7 +39,7 @@ func TestSubscribe(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "unauthorized")
 		assert.Nil(t, rt)
@@ -62,7 +62,7 @@ func TestSubscribe(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
@@ -125,7 +125,7 @@ func TestSubscribe(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
@@ -163,7 +163,7 @@ func TestSubscribe(t *testing.T) {
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), 0, 0, []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
