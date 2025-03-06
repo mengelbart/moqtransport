@@ -11,5 +11,13 @@ const (
 )
 
 const (
+	TrackStatusInProgress   = 0x00
+	TrackStatusDoesNotExist = 0x01
+	TrackStatusNotYetBegun  = 0x02
+	TrackStatusFinished     = 0x03
+	TrackStatusUnavailable  = 0x04
+)
+
+const (
 	maxVarint uint64 = 1<<62 - 1
 )

@@ -152,6 +152,24 @@ func (t *Transport) handle(m *Message) {
 					t.logger.Error("failed to reject announcement subscription", "error", err)
 				}
 			}
+		case MessageTrackStatusRequest:
+			tsrw := &trackStatusResponseWriter{
+				session: t.session,
+				handled: false,
+				status: TrackStatus{
+					Namespace:    m.Namespace,
+					Trackname:    m.Track,
+					StatusCode:   0,
+					LastGroupID:  0,
+					LastObjectID: 0,
+				},
+			}
+			t.Handler.Handle(tsrw, m)
+			if !tsrw.handled {
+				if err := tsrw.Reject(0, ""); err != nil {
+					t.logger.Error("failed to sende track status response", "error", err)
+				}
+			}
 		default:
 			t.Handler.Handle(nil, m)
 		}
