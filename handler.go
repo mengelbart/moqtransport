@@ -33,11 +33,6 @@ type Message struct {
 	// Authorization
 	Authorization string
 
-	// TrackStatusMessage
-	Status       uint64
-	LastGroupID  uint64
-	LastObjectID uint64
-
 	// NewSessionURI is set in a GoAway message and points to a URI that can be
 	// used to setup a new session before closing the current session.
 	NewSessionURI string

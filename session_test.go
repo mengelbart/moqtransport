@@ -32,6 +32,7 @@ func newSession(cms controlMessageSender, handler messageHandler, protocol Proto
 		highestSubscribesBlocked:                 atomic.Uint64{},
 		remoteTracks:                             newRemoteTrackMap(0),
 		localTracks:                              newLocalTrackMap(),
+		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
 	}
 }
 
@@ -258,9 +259,6 @@ func TestSession(t *testing.T) {
 			Namespace:     []string{"namespace"},
 			Track:         "track",
 			Authorization: "",
-			Status:        0,
-			LastGroupID:   0,
-			LastObjectID:  0,
 			NewSessionURI: "",
 			ErrorCode:     0,
 			ReasonPhrase:  "",

@@ -27,6 +27,8 @@ var (
 	errInvalidPathParameterType           = errors.New("invalid path parameter type")
 	errInvalidMaxSubscribeIDParameterType = errors.New("invalid max subscribe ID parameter type")
 	errInvalidAuthParameterType           = errors.New("invalid auth parameter type")
+	errDuplicateTrackStatusRequest        = errors.New("track status already requested")
+	errUnknownTrackStatusRequest          = errors.New("got unexpected track status requrest")
 )
 
 type messageHandler interface {
@@ -69,6 +71,8 @@ type Session struct {
 	highestSubscribesBlocked atomic.Uint64
 	remoteTracks             *remoteTrackMap
 	localTracks              *localTrackMap
+
+	outgoingTrackStatusRequests *trackStatusRequestMap
 }
 
 func (s *Session) handleUniStream(parser objectMessageParser) error {
@@ -420,8 +424,35 @@ func (s *Session) fetchCancel(id uint64) error {
 	})
 }
 
-func (s *Session) RequestTrackStatus() {
-	// TODO
+func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, track string) (*trackStatus, error) {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return nil, err
+	}
+	tsr := &trackStatusRequest{
+		namespace: namespace,
+		trackname: track,
+		response:  make(chan *trackStatus, 1),
+	}
+
+	if !s.outgoingTrackStatusRequests.add(tsr) {
+		return nil, errDuplicateTrackStatusRequest
+	}
+	tsrm := &wire.TrackStatusRequestMessage{
+		TrackNamespace: namespace,
+		TrackName:      track,
+	}
+	if err := s.controlMessageSender.queueControlMessage(tsrm); err != nil {
+		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.TrackNamespace, tsrm.TrackName)
+		return nil, err
+	}
+	select {
+	case <-s.ctx.Done():
+		return nil, context.Cause(s.ctx)
+	case <-ctx.Done():
+		return nil, context.Cause(ctx)
+	case status := <-tsr.response:
+		return status, nil
+	}
 }
 
 // Announce announces namespace to the peer. It blocks until a response from the
@@ -726,9 +757,6 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
 		Authorization: auth,
-		Status:        0,
-		LastGroupID:   0,
-		LastObjectID:  0,
 		NewSessionURI: "",
 		ErrorCode:     0,
 		ReasonPhrase:  "",
@@ -804,9 +832,6 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		SubscribeID:   msg.SubscribeID,
 		TrackAlias:    0,
 		Authorization: "",
-		Status:        0,
-		LastGroupID:   0,
-		LastObjectID:  0,
 		NewSessionURI: "",
 		ErrorCode:     0,
 		ReasonPhrase:  "",
@@ -869,17 +894,21 @@ func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) erro
 }
 
 func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
-	s.handler.handle(&Message{
-		Method:        MessageTrackStatus,
-		Namespace:     msg.TrackNamespace,
-		Track:         msg.TrackName,
-		Authorization: "",
-		Status:        msg.StatusCode,
-		LastGroupID:   msg.LastGroupID,
-		LastObjectID:  msg.LastObjectID,
-		ErrorCode:     0,
-		ReasonPhrase:  "",
-	})
+	tsr, ok := s.outgoingTrackStatusRequests.delete(msg.TrackNamespace, msg.TrackName)
+	if !ok {
+		return errUnknownTrackStatusRequest
+	}
+	select {
+	case tsr.response <- &trackStatus{
+		namespace:    tsr.namespace,
+		trackname:    tsr.trackname,
+		statusCode:   msg.StatusCode,
+		lastGroupID:  msg.LastGroupID,
+		lastObjectID: msg.LastObjectID,
+	}:
+	default:
+		s.logger.Info("dropping unhandled track status")
+	}
 	return nil
 }
 
