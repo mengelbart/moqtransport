@@ -13,14 +13,22 @@ import (
 )
 
 var (
-	// ErrControlMessageQueueOverflow is returned if a control message cannot be
-	// send due to queue overflow.
-	ErrControlMessageQueueOverflow = errors.New("control message overflow, message not queued")
-
-	ErrUnknownAnnouncementNamespace = errors.New("unknown announcement namespace")
+	errControlMessageQueueOverflow        = errors.New("control message overflow, message not queued")
+	errUnknownAnnouncementNamespace       = errors.New("unknown announcement namespace")
+	errMaxSubscribeIDViolated             = errors.New("max subscribe ID violated")
+	errClientReceivedClientSetup          = errors.New("client received client setup message")
+	errServerReceveidServerSetup          = errors.New("server received server setup message")
+	errIncompatibleVersions               = errors.New("incompatible versions")
+	errUnexpectedMessageType              = errors.New("unexpected message type")
+	errUnexpectedMessageTypeBeforeSetup   = errors.New("unexpected message type before setup")
+	errUnknownSubscribeAnnouncesPrefix    = errors.New("unknown subscribe_announces prefix")
+	errUnknownTrackAlias                  = errors.New("unknown track alias")
+	errMissingPathParameter               = errors.New("missing path parameter")
+	errUnexpectedPathParameter            = errors.New("unexpected path parameter on QUIC connection")
+	errInvalidPathParameterType           = errors.New("invalid path parameter type")
+	errInvalidMaxSubscribeIDParameterType = errors.New("invalid max subscribe ID parameter type")
+	errInvalidAuthParameterType           = errors.New("invalid auth parameter type")
 )
-
-var errMaxSubscribeIDViolated = errors.New("max subscribe ID violated")
 
 type messageHandler interface {
 	handle(*Message)
@@ -121,10 +129,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 		case *wire.UnsubscribeMessage:
 			err = s.onUnsubscribe(m)
 		default:
-			err = ProtocolError{
-				code:    ErrorCodeProtocolViolation,
-				message: "unexpected message type",
-			}
+			err = errUnexpectedMessageType
 		}
 		return err
 	}
@@ -136,18 +141,12 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 		return s.onServerSetup(m)
 	}
 
-	return ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: "unexpected message type before setup",
-	}
+	return errUnexpectedMessageTypeBeforeSetup
 }
 
 func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	if s.perspective != PerspectiveServer {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "client received client setup message",
-		}
+		return errClientReceivedClientSetup
 	}
 	selectedVersion := -1
 	for _, v := range slices.Backward(wire.SupportedVersions) {
@@ -157,10 +156,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		}
 	}
 	if selectedVersion == -1 {
-		return ProtocolError{
-			code:    ErrorCodeUnsupportedVersion,
-			message: "incompatible versions",
-		}
+		return errIncompatibleVersions
 	}
 	s.version = wire.Version(selectedVersion)
 
@@ -197,17 +193,11 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 
 func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	if s.perspective != PerspectiveClient {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "server received server setup message",
-		}
+		return errServerReceveidServerSetup
 	}
 
 	if !slices.Contains(wire.SupportedVersions, m.SelectedVersion) {
-		return ProtocolError{
-			code:    ErrorCodeUnsupportedVersion,
-			message: "incompatible versions",
-		}
+		return errIncompatibleVersions
 	}
 	s.version = m.SelectedVersion
 
@@ -315,7 +305,6 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 	sub, ok := s.remoteTracks.findBySubscribeID(msg.SubscribeID)
 	if !ok {
-		// TODO: Protocol violation?
 		return errUnknownSubscribeID
 	}
 	sub.done(msg.StatusCode, msg.ReasonPhrase)
@@ -375,10 +364,7 @@ func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
 	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
 	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe_announces prefix",
-		}
+		return errUnknownSubscribeAnnouncesPrefix
 	}
 	select {
 	case as.response <- announcementSubscriptionResponse{
@@ -393,10 +379,7 @@ func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
 	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
 	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown subscribe_announces prefix",
-		}
+		return errUnknownSubscribeAnnouncesPrefix
 	}
 	select {
 	case as.response <- announcementSubscriptionResponse{
@@ -438,8 +421,12 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 	return nil
 }
 
-func (s *Session) onFetchCancel(_ *wire.FetchCancelMessage) error {
-	// TODO
+func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
+	lt, ok := s.localTracks.delete(msg.SubscribeID)
+	if !ok {
+		return errUnknownSubscribeID
+	}
+	lt.unsubscribe()
 	return nil
 }
 
@@ -638,10 +625,7 @@ func (s *Session) readSubgroupStream(parser objectMessageParser) error {
 func (s *Session) receiveDatagram(msg *wire.ObjectMessage) error {
 	subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
 	if !ok {
-		return ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "unknown track alias",
-		}
+		return errUnknownTrackAlias
 	}
 	subscription.push(&Object{
 		GroupID:    msg.GroupID,
@@ -710,7 +694,7 @@ func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorC
 		return err
 	}
 	if !s.incomingAnnouncements.delete(namespace) {
-		return ErrUnknownAnnouncementNamespace
+		return errUnknownAnnouncementNamespace
 	}
 	acm := &wire.AnnounceCancelMessage{
 		TrackNamespace: namespace,
@@ -919,7 +903,7 @@ func (s *Session) Unannounce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	if ok := s.outgoingAnnouncements.delete(namespace); ok {
-		return ErrUnknownAnnouncementNamespace
+		return errUnknownAnnouncementNamespace
 	}
 	u := &wire.UnannounceMessage{
 		TrackNamespace: namespace,
@@ -1038,23 +1022,14 @@ func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool)
 		if !protocolIsQUIC {
 			return "", nil
 		}
-		return "", ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "missing path parameter",
-		}
+		return "", errMissingPathParameter
 	}
 	if !protocolIsQUIC {
-		return "", ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "path parameter is not allowed on non-QUIC connections",
-		}
+		return "", errUnexpectedPathParameter
 	}
 	pathParamValue, ok := pathParam.(wire.StringParameter)
 	if !ok {
-		return "", ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "invalid path parameter type",
-		}
+		return "", errInvalidPathParameterType
 	}
 	return pathParamValue.Value, nil
 }
@@ -1066,10 +1041,7 @@ func validateMaxSubscribeIDParameter(setupParameters wire.Parameters) (uint64, e
 	}
 	maxSubscribeIDParamValue, ok := maxSubscribeIDParam.(wire.VarintParameter)
 	if !ok {
-		return 0, ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "invalid max subscribe ID parameter type",
-		}
+		return 0, errInvalidMaxSubscribeIDParameterType
 	}
 	return maxSubscribeIDParamValue.Value, nil
 }
@@ -1081,10 +1053,7 @@ func validateAuthParameter(subscribeParameters wire.Parameters) (string, error) 
 	}
 	authParamValue, ok := authParam.(wire.StringParameter)
 	if !ok {
-		return "", ProtocolError{
-			code:    ErrorCodeProtocolViolation,
-			message: "invalid auth parameter type",
-		}
+		return "", errInvalidAuthParameterType
 	}
 	return authParamValue.Value, nil
 }
