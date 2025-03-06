@@ -178,6 +178,7 @@ func (t *Transport) newSession(cs *controlStream) *Session {
 		highestSubscribesBlocked:                 atomic.Uint64{},
 		remoteTracks:                             newRemoteTrackMap(0),
 		localTracks:                              newLocalTrackMap(),
+		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
 	}
 }
 
