@@ -424,14 +424,14 @@ func (s *Session) fetchCancel(id uint64) error {
 	})
 }
 
-func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, track string) (*trackStatus, error) {
+func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, track string) (*TrackStatus, error) {
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
 	tsr := &trackStatusRequest{
 		namespace: namespace,
 		trackname: track,
-		response:  make(chan *trackStatus, 1),
+		response:  make(chan *TrackStatus, 1),
 	}
 
 	if !s.outgoingTrackStatusRequests.add(tsr) {
@@ -453,6 +453,16 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 	case status := <-tsr.response:
 		return status, nil
 	}
+}
+
+func (s *Session) sendTrackStatus(ts TrackStatus) error {
+	return s.controlMessageSender.queueControlMessage(&wire.TrackStatusMessage{
+		TrackNamespace: ts.Namespace,
+		TrackName:      ts.Trackname,
+		StatusCode:     ts.StatusCode,
+		LastGroupID:    ts.LastGroupID,
+		LastObjectID:   ts.LastObjectID,
+	})
 }
 
 // Announce announces namespace to the peer. It blocks until a response from the
@@ -882,8 +892,6 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 	return nil
 }
 
-// TODO: Does a track status request expect a response? If so, we need to make
-// sure we send one here, in case it is not done by the callback.
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
 	s.handler.handle(&Message{
 		Method:    MessageTrackStatusRequest,
@@ -899,12 +907,12 @@ func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 		return errUnknownTrackStatusRequest
 	}
 	select {
-	case tsr.response <- &trackStatus{
-		namespace:    tsr.namespace,
-		trackname:    tsr.trackname,
-		statusCode:   msg.StatusCode,
-		lastGroupID:  msg.LastGroupID,
-		lastObjectID: msg.LastObjectID,
+	case tsr.response <- &TrackStatus{
+		Namespace:    tsr.namespace,
+		Trackname:    tsr.trackname,
+		StatusCode:   msg.StatusCode,
+		LastGroupID:  msg.LastGroupID,
+		LastObjectID: msg.LastObjectID,
 	}:
 	default:
 		s.logger.Info("dropping unhandled track status")

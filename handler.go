@@ -73,6 +73,17 @@ type FetchPublisher interface {
 	FetchStream() (*FetchStream, error)
 }
 
+// StatusRequestHandler is the interface implemented by ResponseWriters of
+// TrackStatusRequest messages. The first call to Accept sends the response.
+// Calling Reject sets the status to "track does not exist" and then calls
+// Accept. Reject ignores the errorCode and reasonPhrase. Applications are
+// responsible for following the ruls of track status messages.
+type StatusRequestHandler interface {
+	// SetStatus sets the status for the response. Call this before calling
+	// Accept.
+	SetStatus(statusCode, lastGroupID, lastObjectID uint64)
+}
+
 // A Handler responds to MoQ messages.
 type Handler interface {
 	Handle(ResponseWriter, *Message)
