@@ -81,7 +81,7 @@ func (s *controlStream) queueControlMessage(msg wire.ControlMessage) error {
 	case s.queue <- msg:
 		return nil
 	default:
-		return ErrControlMessageQueueOverflow
+		return errControlMessageQueueOverflow
 	}
 }
 
