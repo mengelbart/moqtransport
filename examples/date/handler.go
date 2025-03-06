@@ -122,7 +122,6 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 	transport := &moqtransport.Transport{
 		Conn:                  conn,
 		InitialMaxSubscribeID: 100,
-		DatagramsDisabled:     false,
 		Handler:               h.getHandler(),
 		Qlogger:               qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
 	}

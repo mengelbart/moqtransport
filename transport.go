@@ -21,7 +21,6 @@ type Transport struct {
 	Conn Connection
 
 	InitialMaxSubscribeID uint64
-	DatagramsDisabled     bool
 
 	Handler Handler
 
@@ -56,9 +55,7 @@ func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
 
 	t.logger.Info("control stream started")
 	go t.readStreams()
-	if !t.DatagramsDisabled {
-		go t.readDatagrams()
-	}
+	go t.readDatagrams()
 	return t.session, nil
 }
 
