@@ -900,14 +900,12 @@ func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []stri
 	return s.controlMessageSender.queueControlMessage(uam)
 }
 
-// TODO
 func (s *Session) acceptAnnouncementSubscription(as []string) error {
 	return s.controlMessageSender.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
 		TrackNamespacePrefix: as,
 	})
 }
 
-// TODO
 func (s *Session) rejectAnnouncementSubscription(as []string, c uint64, r string) error {
 	return s.controlMessageSender.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
 		TrackNamespacePrefix: as,
