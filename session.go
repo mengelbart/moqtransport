@@ -224,7 +224,7 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 
 func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 	a := &announcement{
-		Namespace:  msg.TrackNamespace,
+		namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
 	}
 	if err := s.incomingAnnouncements.add(a); err != nil {
@@ -235,7 +235,7 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 	}
 	message := &Message{
 		Method:    MessageAnnounce,
-		Namespace: a.Namespace,
+		Namespace: a.namespace,
 	}
 	s.handler.handle(message)
 	return nil
@@ -680,7 +680,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	a := &announcement{
-		Namespace:  namespace,
+		namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 		response:   make(chan error, 1),
 	}
@@ -688,11 +688,11 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	am := &wire.AnnounceMessage{
-		TrackNamespace: a.Namespace,
+		TrackNamespace: a.namespace,
 		Parameters:     a.parameters,
 	}
 	if err := s.controlMessageSender.queueControlMessage(am); err != nil {
-		_, _ = s.outgoingAnnouncements.reject(a.Namespace)
+		_, _ = s.outgoingAnnouncements.reject(a.namespace)
 		return err
 	}
 	select {
