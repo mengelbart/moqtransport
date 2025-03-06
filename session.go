@@ -738,15 +738,17 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 }
 
 func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
-	sub, ok := s.remoteTracks.confirm(msg.SubscribeID)
+	rt, ok := s.remoteTracks.confirm(msg.SubscribeID)
 	if !ok {
 		return errUnknownSubscribeID
 	}
 	select {
-	case sub.responseChan <- nil:
+	case rt.responseChan <- nil:
 	default:
-		// TODO: Unsubscribe?
-		s.logger.Info("dropping unhandled SubscribeOk response")
+		s.logger.Warn("dropping unhandled SubscribeOk response")
+		if err := rt.Close(); err != nil {
+			s.logger.Error("failed to unsubscribe from unhandled subscription", "error", err)
+		}
 	}
 	return nil
 }
@@ -821,8 +823,10 @@ func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
 	select {
 	case rt.responseChan <- nil:
 	default:
-		// TODO: Unsubscribe?
-		s.logger.Info("dropping unhandled SubscribeOk response")
+		s.logger.Info("dropping unhandled fetchOk response")
+		if err := rt.Close(); err != nil {
+			s.logger.Error("failed to unsubscribe from unhandled fetch", "error", err)
+		}
 	}
 	return nil
 
