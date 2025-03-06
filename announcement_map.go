@@ -20,14 +20,14 @@ func newAnnouncementMap() *announcementMap {
 
 func findAnnouncement(as []*announcement, namespace []string) int {
 	return slices.IndexFunc(as, func(x *announcement) bool {
-		return slices.Equal(namespace, x.Namespace)
+		return slices.Equal(namespace, x.namespace)
 	})
 }
 
 func (m *announcementMap) add(a *announcement) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncement(m.pending, a.Namespace)
+	i := findAnnouncement(m.pending, a.namespace)
 	if i >= 0 {
 		return errDuplicateAnnouncementNamespace
 	}
@@ -44,7 +44,7 @@ func (m *announcementMap) confirmAndGet(namespace []string) (*announcement, erro
 	}
 	e := m.pending[i]
 	m.pending = slices.Delete(m.pending, i, i+1)
-	i = findAnnouncement(m.announcements, e.Namespace)
+	i = findAnnouncement(m.announcements, e.namespace)
 	if i > 0 {
 		return nil, errDuplicateAnnouncementNamespace
 	}
@@ -62,7 +62,7 @@ func (m *announcementMap) confirm(namespace []string) error {
 	e := m.pending[i]
 	m.pending = slices.Delete(m.pending, i, i+1)
 
-	i = findAnnouncement(m.announcements, e.Namespace)
+	i = findAnnouncement(m.announcements, e.namespace)
 	if i > 0 {
 		return errDuplicateAnnouncementNamespace
 	}
