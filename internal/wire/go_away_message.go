@@ -6,8 +6,6 @@ import (
 	"github.com/mengelbart/qlog"
 )
 
-var _ slog.LogValuer = (*GoAwayMessage)(nil)
-
 type GoAwayMessage struct {
 	NewSessionURI string
 }

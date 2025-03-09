@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*SubscribeAnnouncesErrorMessage)(nil)
-
 // TODO: Add tests
 type SubscribeAnnouncesErrorMessage struct {
 	TrackNamespacePrefix Tuple

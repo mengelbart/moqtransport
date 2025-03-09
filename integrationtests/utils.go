@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
@@ -56,8 +57,12 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 		Handler: handler,
 		Session: ss,
 	}
-	err := str.Run()
-	assert.NoError(t, err)
+	serverSetup := make(chan struct{})
+	go func() {
+		err := str.Run()
+		assert.NoError(t, err)
+		close(serverSetup)
+	}()
 	defer str.Close()
 
 	cs := moqtransport.NewSession(moqtransport.ProtocolQUIC, moqtransport.PerspectiveClient, 100)
@@ -67,10 +72,15 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 		Handler: nil,
 		Session: cs,
 	}
-	err = ctr.Run()
+	err := ctr.Run()
 	assert.NoError(t, err)
 	defer ctr.Close()
 
+	select {
+	case <-serverSetup:
+	case <-time.After(time.Second):
+		assert.Fail(t, "failed to setup sessions and transports")
+	}
 	return str, ss, ctr, cs, func() {
 		assert.NoError(t, str.Close())
 		assert.NoError(t, ctr.Close())

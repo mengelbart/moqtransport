@@ -7,8 +7,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*SubscribeErrorMessage)(nil)
-
 type SubscribeErrorMessage struct {
 	SubscribeID  uint64
 	ErrorCode    uint64

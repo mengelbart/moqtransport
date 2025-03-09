@@ -7,8 +7,9 @@ import (
 )
 
 type VarintParameter struct {
-	Type  uint64
-	Value uint64
+	Type  uint64 `json:"-"`
+	Name  string `json:"name"`
+	Value uint64 `json:"value"`
 }
 
 func (r VarintParameter) String() string {
@@ -26,7 +27,7 @@ func (r VarintParameter) append(buf []byte) []byte {
 	return buf
 }
 
-func parseVarintParameter(data []byte, typ uint64) (Parameter, int, error) {
+func parseVarintParameter(data []byte, typ uint64, name string) (Parameter, int, error) {
 	parsed := 0
 	l, n, err := quicvarint.Parse(data)
 	if err != nil {
@@ -46,6 +47,7 @@ func parseVarintParameter(data []byte, typ uint64) (Parameter, int, error) {
 	}
 	return VarintParameter{
 		Type:  typ,
+		Name:  name,
 		Value: v,
 	}, parsed, nil
 }

@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*SubscribesBlockedMessage)(nil)
-
 type SubscribesBlockedMessage struct {
 	MaximumSubscribeID uint64
 }

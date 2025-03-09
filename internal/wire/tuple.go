@@ -1,6 +1,11 @@
 package wire
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -13,6 +18,13 @@ func (t Tuple) append(buf []byte) []byte {
 		buf = append(buf, t...)
 	}
 	return buf
+}
+
+func (t Tuple) MarshalJSON() ([]byte, error) {
+	elements := slices.Collect(slices.Map(t, func(s string) string {
+		return fmt.Sprintf(`{"value": "%v"}`, s)
+	}))
+	return []byte(json.RawMessage("[" + strings.Join(elements, ",") + "]")), nil
 }
 
 func (t Tuple) String() string {

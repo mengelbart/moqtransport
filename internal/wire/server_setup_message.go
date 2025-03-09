@@ -2,12 +2,11 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
+	"slices"
 
-	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-var _ slog.LogValuer = (*ServerSetupMessage)(nil)
 
 type ServerSetupMessage struct {
 	SelectedVersion Version
@@ -15,18 +14,14 @@ type ServerSetupMessage struct {
 }
 
 func (m *ServerSetupMessage) LogValue() slog.Value {
-	sps := []Parameter{}
-	for _, v := range m.SetupParameters {
-		sps = append(sps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "server_setup"),
 		slog.Uint64("selected_version", uint64(m.SelectedVersion)),
-		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.SetupParameters))),
 	}
-	if len(sps) > 0 {
+	if len(m.SetupParameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("setup_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+			slog.Any("setup_parameters", slices.Collect(maps.Values(m.SetupParameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -54,5 +49,5 @@ func (m *ServerSetupMessage) parse(data []byte) error {
 
 	m.SelectedVersion = Version(sv)
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data, setupParameterTypes)
+	return m.SetupParameters.parseSetupParameters(data)
 }

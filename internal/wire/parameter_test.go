@@ -84,7 +84,7 @@ func TestParseParameter(t *testing.T) {
 	cases := []struct {
 		data   []byte
 		expect Parameter
-		pm     map[uint64]parameterParserFunc
+		pm     map[uint64]parameterParser
 		err    error
 		n      int
 	}{
@@ -92,9 +92,10 @@ func TestParseParameter(t *testing.T) {
 			data: []byte{byte(MaxSubscribeIDParameterKey), 0x01, 0x01},
 			expect: VarintParameter{
 				Type:  MaxSubscribeIDParameterKey,
+				Name:  "max_subscribe_id",
 				Value: uint64(1),
 			},
-			pm:  setupParameterTypes,
+			pm:  setupParameterParsers,
 			err: nil,
 			n:   3,
 		},
@@ -102,33 +103,38 @@ func TestParseParameter(t *testing.T) {
 			data: append(append([]byte{byte(PathParameterKey)}, quicvarint.Append([]byte{}, uint64(len("/path/param")))...), "/path/param"...),
 			expect: StringParameter{
 				Type:  1,
+				Name:  "path",
 				Value: "/path/param",
 			},
-			pm:  setupParameterTypes,
+			pm:  setupParameterParsers,
 			err: nil,
 			n:   13,
 		},
 		{
 			data:   []byte{},
 			expect: nil,
-			pm:     versionSpecificParameterTypes,
+			pm:     versionSpecificParameterParsers,
 			err:    io.EOF,
 			n:      0,
 		},
 		{
-			data:   []byte{0x05, 0x01, 0x00},
-			expect: nil,
-			pm:     versionSpecificParameterTypes,
-			err:    nil,
-			n:      3,
+			data: []byte{0x05, 0x01, 0x00},
+			expect: UnknownParameter{
+				Type:  5,
+				Value: []byte{0x00},
+			},
+			pm:  versionSpecificParameterParsers,
+			err: nil,
+			n:   3,
 		},
 		{
 			data: []byte{0x01, 0x01, 'A'},
 			expect: StringParameter{
 				Type:  PathParameterKey,
+				Name:  "path",
 				Value: "A",
 			},
-			pm:  setupParameterTypes,
+			pm:  setupParameterParsers,
 			err: nil,
 			n:   3,
 		},
@@ -169,19 +175,25 @@ func TestParseParameters(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data:   []byte{0x01, 0x01, 0x01, 'A'},
-			expect: Parameters{PathParameterKey: StringParameter{Type: 1, Value: "A"}},
-			err:    nil,
+			data: []byte{0x01, 0x01, 0x01, 'A'},
+			expect: Parameters{PathParameterKey: StringParameter{
+				Type:  1,
+				Name:  "path",
+				Value: "A",
+			}},
+			err: nil,
 		},
 		{
 			data: []byte{0x02, 0x02, 0x01, 0x03, 0x01, 0x01, 'A'},
 			expect: Parameters{
 				MaxSubscribeIDParameterKey: VarintParameter{
 					Type:  2,
+					Name:  "max_subscribe_id",
 					Value: uint64(3),
 				},
 				PathParameterKey: StringParameter{
 					Type:  1,
+					Name:  "path",
 					Value: "A",
 				},
 			},
@@ -191,6 +203,7 @@ func TestParseParameters(t *testing.T) {
 			data: []byte{0x01, 0x01, 0x01, 'A', 0x02, 0x02, 0x02, 0x02},
 			expect: Parameters{PathParameterKey: StringParameter{
 				Type:  1,
+				Name:  "path",
 				Value: "A",
 			}},
 			err: nil,
@@ -202,22 +215,33 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data: []byte{0x02, 0x0f, 0x01, 0x00, 0x01, 0x01, 'A'},
-			expect: Parameters{PathParameterKey: StringParameter{
-				Type:  PathParameterKey,
-				Value: "A",
-			}},
+			expect: Parameters{
+				0x0f: UnknownParameter{
+					Type:  0x0f,
+					Value: []byte{0x00},
+				},
+				PathParameterKey: StringParameter{
+					Type:  PathParameterKey,
+					Name:  "path",
+					Value: "A",
+				},
+			},
 			err: nil,
 		},
 		{
-			data:   []byte{0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02},
-			expect: Parameters{0x02: VarintParameter{2, 1}},
-			err:    errDuplicateParameter,
+			data: []byte{0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02},
+			expect: Parameters{0x02: VarintParameter{
+				Type:  2,
+				Name:  "max_subscribe_id",
+				Value: 1,
+			}},
+			err: errDuplicateParameter,
 		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
 			res := Parameters{}
-			err := res.parse(tc.data, setupParameterTypes)
+			err := res.parseSetupParameters(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

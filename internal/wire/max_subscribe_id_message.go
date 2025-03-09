@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*MaxSubscribeIDMessage)(nil)
-
 // TODO: Add tests
 type MaxSubscribeIDMessage struct {
 	SubscribeID uint64

@@ -45,10 +45,12 @@ func TestSession(t *testing.T) {
 				SetupParameters: map[uint64]wire.Parameter{
 					wire.PathParameterKey: wire.StringParameter{
 						Type:  wire.PathParameterKey,
+						Name:  "path",
 						Value: "/path",
 					},
 					wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 						Type:  wire.MaxSubscribeIDParameterKey,
+						Name:  "max_subscribe_id",
 						Value: 100,
 					},
 				},
@@ -71,6 +73,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
+					Name:  "max_subscribe_id",
 					Value: 100,
 				},
 			},
@@ -95,6 +98,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
+					Name:  "max_subscribe_id",
 					Value: 100,
 				},
 			},
@@ -105,6 +109,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.PathParameterKey: wire.StringParameter{
 					Type:  wire.PathParameterKey,
+					Name:  "path",
 					Value: "/path",
 				},
 			},
@@ -124,6 +129,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
+					Name:  "max_subscribe_id",
 					Value: 100,
 				},
 			},
@@ -134,6 +140,7 @@ func TestSession(t *testing.T) {
 			SetupParameters: map[uint64]wire.Parameter{
 				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 					Type:  wire.MaxSubscribeIDParameterKey,
+					Name:  "max_subscribe_id",
 					Value: 100,
 				},
 			},
@@ -175,6 +182,7 @@ func TestSession(t *testing.T) {
 			Parameters: wire.Parameters{
 				wire.AuthorizationParameterKey: &wire.StringParameter{
 					Type:  wire.AuthorizationParameterKey,
+					Name:  "authorization_info",
 					Value: "auth",
 				},
 			},
@@ -228,6 +236,7 @@ func TestSession(t *testing.T) {
 			Parameters: map[uint64]wire.Parameter{
 				2: &wire.StringParameter{
 					Type:  2,
+					Name:  "authorization_info",
 					Value: "auth",
 				},
 			},
@@ -432,6 +441,7 @@ func TestSession(t *testing.T) {
 			Parameters: map[uint64]wire.Parameter{
 				wire.AuthorizationParameterKey: &wire.StringParameter{
 					Type:  wire.AuthorizationParameterKey,
+					Name:  "authorization_info",
 					Value: "auth",
 				},
 			},
