@@ -49,27 +49,29 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 	clientSession *moqtransport.Session,
 	cancel func(),
 ) {
+	ss := moqtransport.NewSession(moqtransport.ProtocolQUIC, moqtransport.PerspectiveServer, 100)
+	assert.NotNil(t, ss)
 	str := &moqtransport.Transport{
-		Conn:                  quicmoq.NewServer(sConn),
-		InitialMaxSubscribeID: 100,
-		Handler:               handler,
+		Conn:    quicmoq.NewServer(sConn),
+		Handler: handler,
+		Session: ss,
 	}
-	st, err := str.NewSession(context.Background())
+	err := str.Run()
 	assert.NoError(t, err)
-	assert.NotNil(t, st)
 	defer str.Close()
 
+	cs := moqtransport.NewSession(moqtransport.ProtocolQUIC, moqtransport.PerspectiveClient, 100)
+	assert.NotNil(t, cs)
 	ctr := &moqtransport.Transport{
-		Conn:                  quicmoq.NewClient(cConn),
-		InitialMaxSubscribeID: 100,
-		Handler:               nil,
+		Conn:    quicmoq.NewClient(cConn),
+		Handler: nil,
+		Session: cs,
 	}
-	ct, err := ctr.NewSession(context.Background())
+	err = ctr.Run()
 	assert.NoError(t, err)
-	assert.NotNil(t, ct)
 	defer ctr.Close()
 
-	return str, st, ctr, ct, func() {
+	return str, ss, ctr, cs, func() {
 		assert.NoError(t, str.Close())
 		assert.NoError(t, ctr.Close())
 	}

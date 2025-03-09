@@ -22,11 +22,6 @@ func newControlMessageParser(r io.Reader) controlMessageParser {
 	return wire.NewControlMessageParser(r)
 }
 
-type controlMessageSender interface {
-	queueControlMessage(wire.ControlMessage) error
-	close(err error)
-}
-
 type controlStream struct {
 	logger    *slog.Logger
 	qlogger   *qlog.Logger

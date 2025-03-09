@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -13,63 +12,61 @@ import (
 	"github.com/mengelbart/qlog/moqt"
 )
 
+var errNilSession = errors.New("transport session is nil")
+
 type Transport struct {
-	logger *slog.Logger
-
-	session *Session
-
-	Conn Connection
-
-	InitialMaxSubscribeID uint64
-
-	Handler Handler
-
-	Qlogger *qlog.Logger
-
-	ctx       context.Context
-	cancelCtx context.CancelCauseFunc
-
-	closeOnce sync.Once
+	Conn          Connection
+	Handler       Handler
+	Qlogger       *qlog.Logger
+	Session       *Session
+	logger        *slog.Logger
+	controlStream *controlStream
+	ctx           context.Context
+	cancelCtx     context.CancelCauseFunc
+	closeOnce     sync.Once
 }
 
-func (t *Transport) NewSession(ctx context.Context) (*Session, error) {
+func (t *Transport) Run() error {
+	if t.Session == nil {
+		return errNilSession
+	}
 	t.logger = defaultLogger.With("perspective", t.Conn.Perspective())
 	t.logger.Info("NewSession")
-
-	controlStream := newControlStream(t, t.Qlogger)
-
 	t.ctx, t.cancelCtx = context.WithCancelCause(context.Background())
-	t.session = t.newSession(controlStream)
+
+	t.controlStream = newControlStream(t, t.Qlogger)
 
 	switch t.Conn.Perspective() {
 	case PerspectiveServer:
-		go controlStream.accept(t.Conn, t.session)
+		go t.controlStream.accept(t.Conn, t.Session)
 	case PerspectiveClient:
-		if err := t.session.sendClientSetup(); err != nil {
-			return nil, err
+		if err := t.Session.sendClientSetup(); err != nil {
+			return err
 		}
-		go controlStream.open(t.Conn, t.session)
+		go t.controlStream.open(t.Conn, t.Session)
 	default:
-		return nil, errors.New("invalid perspective")
+		return errors.New("invalid perspective")
 	}
 
 	t.logger.Info("control stream started")
 	go t.readStreams()
 	go t.readDatagrams()
-	return t.session, nil
+	go t.sendControlMessages()
+	go t.readControlMessages()
+	return nil
 }
 
 func (t *Transport) handleSubscription(m *Message) {
 	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
-		return t.session.subscriptionDone(m.SubscribeID, code, count, reason)
+		return t.Session.subscriptionDone(m.SubscribeID, code, count, reason)
 	}, t.Qlogger)
 
-	if err := t.session.addLocalTrack(lt); err != nil {
+	if err := t.Session.addLocalTrack(lt); err != nil {
 		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.session.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject subscription", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
@@ -78,7 +75,7 @@ func (t *Transport) handleSubscription(m *Message) {
 	srw := &subscriptionResponseWriter{
 		id:         m.SubscribeID,
 		trackAlias: m.TrackAlias,
-		session:    t.session,
+		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
 	}
@@ -93,12 +90,12 @@ func (t *Transport) handleSubscription(m *Message) {
 
 func (t *Transport) handleFetch(m *Message) {
 	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, nil, t.Qlogger)
-	if err := t.session.addLocalTrack(lt); err != nil {
+	if err := t.Session.addLocalTrack(lt); err != nil {
 		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.session.rejectFetch(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectFetch(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject fetch", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
@@ -106,7 +103,7 @@ func (t *Transport) handleFetch(m *Message) {
 	}
 	frw := &fetchResponseWriter{
 		id:         m.SubscribeID,
-		session:    t.session,
+		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
 	}
@@ -128,7 +125,7 @@ func (t *Transport) handle(m *Message) {
 		case MessageAnnounce:
 			arw := &announcementResponseWriter{
 				namespace: m.Namespace,
-				session:   t.session,
+				session:   t.Session,
 				handled:   false,
 			}
 			t.Handler.Handle(arw, m)
@@ -140,7 +137,7 @@ func (t *Transport) handle(m *Message) {
 		case MessageSubscribeAnnounces:
 			asrw := &announcementSubscriptionResponseWriter{
 				prefix:  m.Namespace,
-				session: t.session,
+				session: t.Session,
 				handled: false,
 			}
 			t.Handler.Handle(asrw, m)
@@ -151,7 +148,7 @@ func (t *Transport) handle(m *Message) {
 			}
 		case MessageTrackStatusRequest:
 			tsrw := &trackStatusResponseWriter{
-				session: t.session,
+				session: t.Session,
 				handled: false,
 				status: TrackStatus{
 					Namespace:    m.Namespace,
@@ -173,27 +170,29 @@ func (t *Transport) handle(m *Message) {
 	}
 }
 
-func (t *Transport) newSession(cs *controlStream) *Session {
-	return &Session{
-		logger:                                   defaultLogger.With("perspective", t.Conn.Perspective()),
-		ctx:                                      t.ctx,
-		cancelCtx:                                t.cancelCtx,
-		handshakeDoneCh:                          make(chan struct{}),
-		controlMessageSender:                     cs,
-		handler:                                  t,
-		version:                                  0,
-		protocol:                                 t.Conn.Protocol(),
-		perspective:                              t.Conn.Perspective(),
-		path:                                     "",
-		maxSubscribeID:                           t.InitialMaxSubscribeID,
-		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    newAnnouncementMap(),
-		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		highestSubscribesBlocked:                 atomic.Uint64{},
-		remoteTracks:                             newRemoteTrackMap(0),
-		localTracks:                              newLocalTrackMap(),
-		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
+func (t *Transport) readControlMessages() {
+	for {
+		msg, err := t.Session.readControlMessage(t.ctx)
+		if err != nil {
+			t.logger.Info("exiting control message read loop", "error", err)
+			return
+		}
+		t.handle(msg)
+	}
+}
+
+func (t *Transport) sendControlMessages() {
+	for {
+		msg, err := t.Session.sendControlMessage(t.ctx)
+		if err != nil {
+			t.logger.Info("exiting control message send loop", "error", err)
+			return
+		}
+		if err := t.controlStream.queueControlMessage(msg); err != nil {
+			t.logger.Error("failed to queue control message, exiting control message send loop", "error", err)
+			t.handleProtocolViolation(err)
+			return
+		}
 	}
 }
 
@@ -213,7 +212,7 @@ func (t *Transport) readStreams() {
 				return
 			}
 			t.logger.Info("parsed object stream header")
-			if err := t.session.handleUniStream(parser); err != nil {
+			if err := t.Session.handleUniStream(parser); err != nil {
 				t.logger.Error("session failed to handle uni stream", "error", err)
 				return
 			}
@@ -264,7 +263,7 @@ func (t *Transport) readDatagrams() {
 					},
 				})
 			}
-			if err := t.session.receiveDatagram(msg); err != nil {
+			if err := t.Session.receiveDatagram(msg); err != nil {
 				t.logger.Error("session failed to handle dgram", "error", err)
 				t.handleProtocolViolation(err)
 				return

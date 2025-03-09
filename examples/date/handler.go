@@ -119,26 +119,27 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 }
 
 func (h *moqHandler) handle(conn moqtransport.Connection) {
+	session := moqtransport.NewSession(conn.Protocol(), conn.Perspective(), 100)
 	transport := &moqtransport.Transport{
-		Conn:                  conn,
-		InitialMaxSubscribeID: 100,
-		Handler:               h.getHandler(),
-		Qlogger:               qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
+		Conn:    conn,
+		Handler: h.getHandler(),
+		Qlogger: qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
+		Session: session,
 	}
-	ms, err := transport.NewSession(context.Background())
+	err := transport.Run()
 	if err != nil {
 		log.Printf("MoQ Session initialization failed: %v", err)
 		conn.CloseWithError(0, "session initialization error")
 		return
 	}
 	if h.publish {
-		if err := ms.Announce(context.Background(), h.namespace); err != nil {
+		if err := session.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
 			return
 		}
 	}
 	if h.subscribe {
-		if err := h.subscribeAndRead(ms, h.namespace, h.trackname); err != nil {
+		if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
 			log.Printf("failed to subscribe to track: %v", err)
 			conn.CloseWithError(0, "internal error")
 			return
