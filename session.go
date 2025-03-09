@@ -377,7 +377,6 @@ func (s *Session) subscriptionDone(id, code, count uint64, reason string) error 
 	lt, ok := s.localTracks.delete(id)
 	if !ok {
 		return errUnknownSubscribeID
-
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeDoneMessage{
 		SubscribeID:  lt.subscribeID,
@@ -867,7 +866,7 @@ func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
 // TODO: Maybe don't immediately close the track and give app a chance to react
 // first?
 func (s *Session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
-	lt, ok := s.localTracks.delete(msg.SubscribeID)
+	lt, ok := s.localTracks.findByID(msg.SubscribeID)
 	if !ok {
 		return errUnknownSubscribeID
 	}
