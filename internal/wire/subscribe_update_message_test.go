@@ -100,6 +100,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 				Parameters: Parameters{
 					AuthorizationParameterKey: StringParameter{
 						Type:  AuthorizationParameterKey,
+						Name:  "authorization_info",
 						Value: "P",
 					},
 				},

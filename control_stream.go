@@ -44,28 +44,41 @@ func newControlStream(t *Transport, qlogger *qlog.Logger) *controlStream {
 	return cs
 }
 
-func (s *controlStream) accept(conn Connection, receiver controlMessageReceiver) {
+func (s *controlStream) accept(conn Connection, receiver controlMessageReceiver) error {
 	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	stream, err := conn.AcceptStream(s.ctx)
 	if err != nil {
-		s.logger.Error("failed to accept control stream", "error", err)
-		s.close(err)
-		return
+		return err
 	}
+	if s.qlogger != nil {
+		s.qlogger.Log(moqt.StreamTypeSetEvent{
+			Owner:      moqt.GetOwner(moqt.OwnerRemote),
+			StreamID:   stream.StreamID(),
+			StreamType: "control",
+		})
+	}
+
 	go s.sendLoop(stream)
 	go s.receiveLoop(newControlMessageParser(stream), receiver)
+	return nil
 }
 
-func (s *controlStream) open(conn Connection, receiver controlMessageReceiver) {
+func (s *controlStream) open(conn Connection, receiver controlMessageReceiver) error {
 	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	stream, err := conn.OpenStreamSync(s.ctx)
 	if err != nil {
-		s.logger.Error("failed to open control stream", "error", err)
-		s.close(err)
-		return
+		return err
+	}
+	if s.qlogger != nil {
+		s.qlogger.Log(moqt.StreamTypeSetEvent{
+			Owner:      moqt.GetOwner(moqt.OwnerLocal),
+			StreamID:   stream.StreamID(),
+			StreamType: "control",
+		})
 	}
 	go s.sendLoop(stream)
 	go s.receiveLoop(newControlMessageParser(stream), receiver)
+	return nil
 }
 
 // queueControlMessage implements controlMessageSender.

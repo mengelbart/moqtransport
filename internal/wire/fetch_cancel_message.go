@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*FetchCancelMessage)(nil)
-
 // TODO: Add tests
 type FetchCancelMessage struct {
 	SubscribeID uint64

@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*UnsubscribeMessage)(nil)
-
 type UnsubscribeMessage struct {
 	SubscribeID uint64
 }

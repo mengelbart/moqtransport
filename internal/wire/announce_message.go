@@ -2,11 +2,10 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 )
-
-var _ slog.LogValuer = (*AnnounceMessage)(nil)
 
 type AnnounceMessage struct {
 	TrackNamespace Tuple
@@ -14,18 +13,14 @@ type AnnounceMessage struct {
 }
 
 func (m *AnnounceMessage) LogValue() slog.Value {
-	ps := []Parameter{}
-	for _, v := range m.Parameters {
-		ps = append(ps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "announce"),
 		slog.Any("track_namespace", m.TrackNamespace),
-		slog.Uint64("number_of_parameters", uint64(len(ps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
 	}
-	if len(ps) > 0 {
+	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("parameters", slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))),
+			slog.Any("parameters", slices.Collect(maps.Values(m.Parameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -53,5 +48,5 @@ func (m *AnnounceMessage) parse(data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data, versionSpecificParameterTypes)
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

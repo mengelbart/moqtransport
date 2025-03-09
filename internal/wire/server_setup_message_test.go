@@ -115,6 +115,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 				SelectedVersion: 0,
 				SetupParameters: Parameters{PathParameterKey: StringParameter{
 					Type:  PathParameterKey,
+					Name:  "path",
 					Value: "A",
 				}},
 			},
@@ -128,6 +129,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 				SelectedVersion: 0,
 				SetupParameters: Parameters{PathParameterKey: StringParameter{
 					Type:  PathParameterKey,
+					Name:  "path",
 					Value: "A",
 				}},
 			},

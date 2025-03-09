@@ -4,8 +4,6 @@ import (
 	"log/slog"
 )
 
-var _ slog.LogValuer = (*SubscribeAnnouncesOkMessage)(nil)
-
 // TODO: Add tests
 type SubscribeAnnouncesOkMessage struct {
 	TrackNamespacePrefix Tuple

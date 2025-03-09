@@ -4,8 +4,6 @@ import (
 	"log/slog"
 )
 
-var _ slog.LogValuer = (*AnnounceOkMessage)(nil)
-
 type AnnounceOkMessage struct {
 	TrackNamespace Tuple
 }

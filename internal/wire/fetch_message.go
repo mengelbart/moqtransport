@@ -2,6 +2,7 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/qlog"
@@ -12,8 +13,6 @@ const (
 	FetchTypeStandalone = 0x01
 	FetchTypeJoining    = 0x02
 )
-
-var _ slog.LogValuer = (*FetchMessage)(nil)
 
 // TODO: Add tests
 type FetchMessage struct {
@@ -34,10 +33,6 @@ type FetchMessage struct {
 
 // Attrs implements moqt.ControlMessage.
 func (m *FetchMessage) LogValue() slog.Value {
-	ps := []Parameter{}
-	for _, v := range m.Parameters {
-		ps = append(ps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "fetch"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
@@ -68,12 +63,13 @@ func (m *FetchMessage) LogValue() slog.Value {
 	}
 
 	attrs = append(attrs,
-		slog.Uint64("number_of_parameters", uint64(len(ps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
 	)
 
-	params := slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))
-	if len(params) > 0 {
-		slog.Any("parameters", params)
+	if len(m.Parameters) > 0 {
+		attrs = append(attrs,
+			slog.Any("setup_parameters", slices.Collect(maps.Values(m.Parameters))),
+		)
 	}
 	return slog.GroupValue(attrs...)
 }
@@ -178,5 +174,5 @@ func (m *FetchMessage) parse(data []byte) (err error) {
 	}
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data, versionSpecificParameterTypes)
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

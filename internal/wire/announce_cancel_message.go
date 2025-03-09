@@ -6,8 +6,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*AnnounceCancelMessage)(nil)
-
 type AnnounceCancelMessage struct {
 	TrackNamespace Tuple
 	ErrorCode      uint64

@@ -254,6 +254,7 @@ func (s *Session) sendClientSetup() error {
 	params := map[uint64]wire.Parameter{
 		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 			Type:  wire.MaxSubscribeIDParameterKey,
+			Name:  "max_subscribe_id",
 			Value: s.MaxSubscribeID,
 		},
 	}
@@ -261,6 +262,7 @@ func (s *Session) sendClientSetup() error {
 		path := s.path
 		params[wire.PathParameterKey] = wire.StringParameter{
 			Type:  wire.PathParameterKey,
+			Name:  "path",
 			Value: path,
 		}
 	}
@@ -316,6 +318,7 @@ func (s *Session) Subscribe(
 	if len(auth) > 0 {
 		cm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
 			Type:  wire.AuthorizationParameterKey,
+			Name:  "authorization_info",
 			Value: auth,
 		}
 	}
@@ -760,6 +763,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		SetupParameters: map[uint64]wire.Parameter{
 			wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 				Type:  wire.MaxSubscribeIDParameterKey,
+				Name:  "max_subscribe_id",
 				Value: 100,
 			},
 		},

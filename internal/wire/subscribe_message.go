@@ -2,6 +2,7 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/qlog"
@@ -25,8 +26,6 @@ func (f FilterType) append(buf []byte) []byte {
 	return quicvarint.Append(buf, uint64(FilterTypeLatestGroup))
 }
 
-var _ slog.LogValuer = (*SubscribeMessage)(nil)
-
 type SubscribeMessage struct {
 	SubscribeID        uint64
 	TrackAlias         uint64
@@ -42,10 +41,6 @@ type SubscribeMessage struct {
 }
 
 func (m *SubscribeMessage) LogValue() slog.Value {
-	sps := []Parameter{}
-	for _, v := range m.Parameters {
-		sps = append(sps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
@@ -72,11 +67,11 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 		)
 	}
 	attrs = append(attrs,
-		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
 	)
-	if len(sps) > 0 {
+	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+			slog.Any("subscribe_parameters", slices.Collect(maps.Values(m.Parameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -176,5 +171,5 @@ func (m *SubscribeMessage) parse(data []byte) (err error) {
 		data = data[n:]
 	}
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data, versionSpecificParameterTypes)
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

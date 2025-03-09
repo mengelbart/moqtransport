@@ -2,12 +2,11 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-var _ slog.LogValuer = (*FetchOkMessage)(nil)
 
 // TODO: Add tests
 type FetchOkMessage struct {
@@ -20,10 +19,6 @@ type FetchOkMessage struct {
 }
 
 func (m *FetchOkMessage) LogValue() slog.Value {
-	sps := []Parameter{}
-	for _, v := range m.SubscribeParameters {
-		sps = append(sps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "fetch_ok"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
@@ -31,11 +26,11 @@ func (m *FetchOkMessage) LogValue() slog.Value {
 		slog.Any("end_of_track", m.EndOfTrack),
 		slog.Uint64("largest_group_id", m.LargestGroupID),
 		slog.Uint64("largest_object_id", m.LargestObjectID),
-		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.SubscribeParameters))),
 	}
-	if len(sps) > 0 {
+	if len(m.SubscribeParameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+			slog.Any("subscribe_parameters", slices.Collect(maps.Values(m.SubscribeParameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -84,5 +79,5 @@ func (m *FetchOkMessage) parse(data []byte) (err error) {
 	}
 	data = data[n:]
 
-	return m.SubscribeParameters.parse(data, versionSpecificParameterTypes)
+	return m.SubscribeParameters.parseVersionSpecificParameters(data)
 }

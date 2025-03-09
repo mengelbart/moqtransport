@@ -7,8 +7,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-var _ slog.LogValuer = (*TrackStatusMessage)(nil)
-
 type TrackStatusMessage struct {
 	TrackNamespace Tuple
 	TrackName      string

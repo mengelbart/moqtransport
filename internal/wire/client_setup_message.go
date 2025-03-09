@@ -2,12 +2,11 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-var _ slog.LogValuer = (*ClientSetupMessage)(nil)
 
 type ClientSetupMessage struct {
 	SupportedVersions versions
@@ -15,19 +14,15 @@ type ClientSetupMessage struct {
 }
 
 func (m *ClientSetupMessage) LogValue() slog.Value {
-	sps := []Parameter{}
-	for _, v := range m.SetupParameters {
-		sps = append(sps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "client_setup"),
 		slog.Uint64("number_of_supported_versions", uint64(len(m.SupportedVersions))),
 		slog.Any("supported_versions", m.SupportedVersions),
-		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.SetupParameters))),
 	}
-	if len(sps) > 0 {
+	if len(m.SetupParameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("setup_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+			slog.Any("setup_parameters", slices.Collect(maps.Values(m.SetupParameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -56,5 +51,5 @@ func (m *ClientSetupMessage) parse(data []byte) error {
 	}
 	data = data[n:]
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data, setupParameterTypes)
+	return m.SetupParameters.parseSetupParameters(data)
 }

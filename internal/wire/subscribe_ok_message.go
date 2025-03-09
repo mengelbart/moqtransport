@@ -2,13 +2,12 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-var _ slog.LogValuer = (*SubscribeOkMessage)(nil)
 
 type SubscribeOkMessage struct {
 	SubscribeID     uint64
@@ -21,10 +20,6 @@ type SubscribeOkMessage struct {
 }
 
 func (m *SubscribeOkMessage) LogValue() slog.Value {
-	sps := []Parameter{}
-	for _, v := range m.Parameters {
-		sps = append(sps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_ok"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
@@ -39,11 +34,11 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 		)
 	}
 	attrs = append(attrs,
-		slog.Uint64("number_of_parameters", uint64(len(sps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
 	)
-	if len(sps) > 0 {
+	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("subscribe_parameters", slices.Collect(slices.Map(sps, func(e Parameter) any { return e }))),
+			slog.Any("subscribe_parameters", slices.Collect(maps.Values(m.Parameters))),
 		)
 
 	}
@@ -102,7 +97,7 @@ func (m *SubscribeOkMessage) parse(data []byte) (err error) {
 
 	if !m.ContentExists {
 		m.Parameters = Parameters{}
-		return m.Parameters.parse(data, versionSpecificParameterTypes)
+		return m.Parameters.parseVersionSpecificParameters(data)
 	}
 
 	m.LargestGroupID, n, err = quicvarint.Parse(data)
@@ -118,5 +113,5 @@ func (m *SubscribeOkMessage) parse(data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data, versionSpecificParameterTypes)
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

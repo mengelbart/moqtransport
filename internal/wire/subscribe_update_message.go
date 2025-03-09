@@ -2,12 +2,11 @@ package wire
 
 import (
 	"log/slog"
+	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
-
-var _ slog.LogValuer = (*SubscribeUpdateMessage)(nil)
 
 type SubscribeUpdateMessage struct {
 	SubscribeID        uint64
@@ -19,10 +18,6 @@ type SubscribeUpdateMessage struct {
 }
 
 func (m *SubscribeUpdateMessage) LogValue() slog.Value {
-	ps := []Parameter{}
-	for _, v := range m.Parameters {
-		ps = append(ps, v)
-	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_update"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
@@ -30,11 +25,11 @@ func (m *SubscribeUpdateMessage) LogValue() slog.Value {
 		slog.Uint64("start_object", m.StartObject),
 		slog.Uint64("end_group", m.EndGroup),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
-		slog.Uint64("number_of_parameters", uint64(len(ps))),
+		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
 	}
-	if len(ps) > 0 {
+	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("setup_parameters", slices.Collect(slices.Map(ps, func(e Parameter) any { return e }))),
+			slog.Any("setup_parameters", slices.Collect(maps.Values(m.Parameters))),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -87,5 +82,5 @@ func (m *SubscribeUpdateMessage) parse(data []byte) (err error) {
 	data = data[1:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parse(data, versionSpecificParameterTypes)
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

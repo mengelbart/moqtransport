@@ -6,8 +6,6 @@ import (
 	"github.com/mengelbart/qlog"
 )
 
-var _ slog.LogValuer = (*TrackStatusRequestMessage)(nil)
-
 type TrackStatusRequestMessage struct {
 	TrackNamespace Tuple
 	TrackName      string

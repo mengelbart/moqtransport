@@ -38,16 +38,19 @@ func (t *Transport) Run() error {
 
 	switch t.Conn.Perspective() {
 	case PerspectiveServer:
-		go t.controlStream.accept(t.Conn, t.Session)
+		if err := t.controlStream.accept(t.Conn, t.Session); err != nil {
+			return err
+		}
 	case PerspectiveClient:
 		if err := t.Session.sendClientSetup(); err != nil {
 			return err
 		}
-		go t.controlStream.open(t.Conn, t.Session)
+		if err := t.controlStream.open(t.Conn, t.Session); err != nil {
+			return err
+		}
 	default:
 		return errors.New("invalid perspective")
 	}
-
 	t.logger.Info("control stream started")
 	go t.readStreams()
 	go t.readDatagrams()
