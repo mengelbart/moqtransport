@@ -31,8 +31,9 @@ var (
 	errUnknownTrackStatusRequest          = errors.New("got unexpected track status requrest")
 )
 
-type messageHandler interface {
-	handle(*Message)
+type controlMessageQueue[T any] interface {
+	enqueue(context.Context, T) error
+	dequeue(context.Context) (T, error)
 }
 
 type objectMessageParser interface {
@@ -42,25 +43,57 @@ type objectMessageParser interface {
 	Messages() iter.Seq2[*wire.ObjectMessage, error]
 }
 
+type queue[T any] struct {
+	queue chan T
+}
+
+func newQueue[T any]() *queue[T] {
+	return &queue[T]{
+		queue: make(chan T, 1),
+	}
+}
+
+// For some reason the linter thinks this is unused, but it implements the
+// controlMessageQueue interface.
+//
+//nolint:unused
+func (q *queue[T]) enqueue(ctx context.Context, msg T) error {
+	select {
+	case q.queue <- msg:
+		return nil
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	}
+}
+
+// For some reason the linter thinks this is unused, but it implements the
+// controlMessageQueue interface.
+//
+//nolint:unused
+func (q *queue[T]) dequeue(ctx context.Context) (T, error) {
+	select {
+	case <-ctx.Done():
+		return *new(T), context.Cause(ctx)
+	case msg := <-q.queue:
+		return msg, nil
+	}
+}
+
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
-	logger *slog.Logger
+	Protocol       Protocol
+	Perspective    Perspective
+	MaxSubscribeID uint64
 
-	ctx       context.Context
-	cancelCtx context.CancelCauseFunc
+	logger *slog.Logger
 
 	handshakeDoneCh chan struct{}
 
-	controlMessageSender controlMessageSender
+	ctrlMsgSendQueue    controlMessageQueue[wire.ControlMessage]
+	ctrlMsgReceiveQueue controlMessageQueue[*Message]
 
-	handler messageHandler
-
-	version     wire.Version
-	protocol    Protocol
-	perspective Perspective
-	path        string
-
-	maxSubscribeID uint64
+	version wire.Version
+	path    string
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
@@ -73,6 +106,36 @@ type Session struct {
 	localTracks              *localTrackMap
 
 	outgoingTrackStatusRequests *trackStatusRequestMap
+}
+
+func NewSession(proto Protocol, perspective Perspective, initMaxSubscribeID uint64) *Session {
+	return &Session{
+		logger:                                   defaultLogger.With("perspective", perspective),
+		handshakeDoneCh:                          make(chan struct{}),
+		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
+		ctrlMsgReceiveQueue:                      newQueue[*Message](),
+		version:                                  0,
+		Protocol:                                 proto,
+		Perspective:                              perspective,
+		path:                                     "",
+		MaxSubscribeID:                           initMaxSubscribeID,
+		outgoingAnnouncements:                    newAnnouncementMap(),
+		incomingAnnouncements:                    newAnnouncementMap(),
+		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
+		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
+		highestSubscribesBlocked:                 atomic.Uint64{},
+		remoteTracks:                             newRemoteTrackMap(0),
+		localTracks:                              newLocalTrackMap(),
+		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
+	}
+}
+
+func (s *Session) sendControlMessage(ctx context.Context) (wire.ControlMessage, error) {
+	return s.ctrlMsgSendQueue.dequeue(ctx)
+}
+
+func (s *Session) readControlMessage(ctx context.Context) (*Message, error) {
+	return s.ctrlMsgReceiveQueue.dequeue(ctx)
 }
 
 func (s *Session) handleUniStream(parser objectMessageParser) error {
@@ -132,16 +195,16 @@ func (s *Session) receiveDatagram(msg *wire.ObjectMessage) error {
 }
 
 func (s *Session) addLocalTrack(lt *localTrack) error {
-	if lt.subscribeID >= s.maxSubscribeID {
+	if lt.subscribeID >= s.MaxSubscribeID {
 		return errMaxSubscribeIDViolated
 	}
 	// Update max subscribe ID for peer
-	if lt.subscribeID >= s.maxSubscribeID/2 {
-		s.maxSubscribeID *= 2
-		if err := s.controlMessageSender.queueControlMessage(&wire.MaxSubscribeIDMessage{
-			SubscribeID: s.maxSubscribeID,
+	if lt.subscribeID >= s.MaxSubscribeID/2 {
+		s.MaxSubscribeID *= 2
+		if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.MaxSubscribeIDMessage{
+			SubscribeID: s.MaxSubscribeID,
 		}); err != nil {
-			s.logger.Error("failed to queue max subscribe ID message", "error", err)
+			s.logger.Warn("skipping sending of max_subscribe_id due to control message queue overflow")
 		}
 	}
 	ok := s.localTracks.addPending(lt)
@@ -191,23 +254,20 @@ func (s *Session) sendClientSetup() error {
 	params := map[uint64]wire.Parameter{
 		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
 			Type:  wire.MaxSubscribeIDParameterKey,
-			Value: s.maxSubscribeID,
+			Value: s.MaxSubscribeID,
 		},
 	}
-	if s.protocol == ProtocolQUIC {
+	if s.Protocol == ProtocolQUIC {
 		path := s.path
 		params[wire.PathParameterKey] = wire.StringParameter{
 			Type:  wire.PathParameterKey,
 			Value: path,
 		}
 	}
-	if err := s.controlMessageSender.queueControlMessage(&wire.ClientSetupMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ClientSetupMessage{
 		SupportedVersions: wire.SupportedVersions,
 		SetupParameters:   params,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 // Subscribe subscribes to track in namespace using id as the subscribe ID. It
@@ -228,9 +288,11 @@ func (s *Session) Subscribe(
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
 			if previous < tooManySubscribes.maxSubscribeID {
-				err = errors.Join(err, s.controlMessageSender.queueControlMessage(&wire.SubscribesBlockedMessage{
+				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribesBlockedMessage{
 					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
-				}))
+				}); queueErr != nil {
+					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
+				}
 			}
 		}
 		return nil, err
@@ -257,13 +319,11 @@ func (s *Session) Subscribe(
 			Value: auth,
 		}
 	}
-	if err = s.controlMessageSender.queueControlMessage(cm); err != nil {
-		_, _ = s.remoteTracks.reject(id)
+	if err = s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		return nil, err
 	}
+
 	select {
-	case <-s.ctx.Done():
-		err = context.Cause(s.ctx)
 	case <-ctx.Done():
 		err = context.Cause(ctx)
 	case err = <-rt.responseChan:
@@ -283,7 +343,7 @@ func (s *Session) acceptSubscription(id uint64) error {
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return s.controlMessageSender.queueControlMessage(&wire.SubscribeOkMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeOkMessage{
 		SubscribeID:     id,
 		Expires:         0,
 		GroupOrder:      1,
@@ -299,7 +359,7 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return s.controlMessageSender.queueControlMessage(&wire.SubscribeErrorMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeErrorMessage{
 		SubscribeID:  lt.subscribeID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
@@ -308,7 +368,7 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 }
 
 func (s *Session) unsubscribe(id uint64) error {
-	return s.controlMessageSender.queueControlMessage(&wire.UnsubscribeMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.UnsubscribeMessage{
 		SubscribeID: id,
 	})
 }
@@ -319,7 +379,7 @@ func (s *Session) subscriptionDone(id, code, count uint64, reason string) error 
 		return errUnknownSubscribeID
 
 	}
-	return s.controlMessageSender.queueControlMessage(&wire.SubscribeDoneMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeDoneMessage{
 		SubscribeID:  lt.subscribeID,
 		StatusCode:   code,
 		StreamCount:  count,
@@ -344,9 +404,11 @@ func (s *Session) Fetch(
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
 			if previous < tooManySubscribes.maxSubscribeID {
-				err = errors.Join(err, s.controlMessageSender.queueControlMessage(&wire.SubscribesBlockedMessage{
+				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribesBlockedMessage{
 					MaximumSubscribeID: tooManySubscribes.maxSubscribeID,
-				}))
+				}); queueErr != nil {
+					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
+				}
 			}
 		}
 		return nil, err
@@ -369,13 +431,11 @@ func (s *Session) Fetch(
 		PrecedingGroupOffset: 0,
 		Parameters:           map[uint64]wire.Parameter{},
 	}
-	if err = s.controlMessageSender.queueControlMessage(cm); err != nil {
+	if err = s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		_, _ = s.remoteTracks.reject(id)
 		return nil, err
 	}
 	select {
-	case <-s.ctx.Done():
-		err = context.Cause(s.ctx)
 	case <-ctx.Done():
 		err = context.Cause(ctx)
 	case err = <-rt.responseChan:
@@ -395,7 +455,7 @@ func (s *Session) acceptFetch(id uint64) error {
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return s.controlMessageSender.queueControlMessage(&wire.FetchOkMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchOkMessage{
 		SubscribeID:         id,
 		GroupOrder:          1,
 		EndOfTrack:          0,
@@ -410,7 +470,7 @@ func (s *Session) rejectFetch(id uint64, errorCode uint64, reason string) error 
 	if !ok {
 		return errUnknownSubscribeID
 	}
-	return s.controlMessageSender.queueControlMessage(&wire.FetchErrorMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchErrorMessage{
 		SubscribeID:  lt.subscribeID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
@@ -419,7 +479,7 @@ func (s *Session) rejectFetch(id uint64, errorCode uint64, reason string) error 
 }
 
 func (s *Session) fetchCancel(id uint64) error {
-	return s.controlMessageSender.queueControlMessage(&wire.FetchCancelMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchCancelMessage{
 		SubscribeID: id,
 	})
 }
@@ -441,13 +501,11 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		TrackNamespace: namespace,
 		TrackName:      track,
 	}
-	if err := s.controlMessageSender.queueControlMessage(tsrm); err != nil {
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, tsrm); err != nil {
 		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.TrackNamespace, tsrm.TrackName)
 		return nil, err
 	}
 	select {
-	case <-s.ctx.Done():
-		return nil, context.Cause(s.ctx)
 	case <-ctx.Done():
 		return nil, context.Cause(ctx)
 	case status := <-tsr.response:
@@ -456,7 +514,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 }
 
 func (s *Session) sendTrackStatus(ts TrackStatus) error {
-	return s.controlMessageSender.queueControlMessage(&wire.TrackStatusMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.TrackStatusMessage{
 		TrackNamespace: ts.Namespace,
 		TrackName:      ts.Trackname,
 		StatusCode:     ts.StatusCode,
@@ -484,13 +542,11 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		TrackNamespace: a.namespace,
 		Parameters:     a.parameters,
 	}
-	if err := s.controlMessageSender.queueControlMessage(am); err != nil {
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, am); err != nil {
 		_, _ = s.outgoingAnnouncements.reject(a.namespace)
 		return err
 	}
 	select {
-	case <-s.ctx.Done():
-		return context.Cause(s.ctx)
 	case <-ctx.Done():
 		return context.Cause(ctx)
 	case res := <-a.response:
@@ -502,7 +558,7 @@ func (s *Session) acceptAnnouncement(namespace []string) error {
 	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
 		return err
 	}
-	if err := s.controlMessageSender.queueControlMessage(&wire.AnnounceOkMessage{
+	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceOkMessage{
 		TrackNamespace: namespace,
 	}); err != nil {
 		return err
@@ -511,7 +567,7 @@ func (s *Session) acceptAnnouncement(namespace []string) error {
 }
 
 func (s *Session) rejectAnnouncement(ns []string, c uint64, r string) error {
-	return s.controlMessageSender.queueControlMessage(&wire.AnnounceErrorMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceErrorMessage{
 		TrackNamespace: ns,
 		ErrorCode:      c,
 		ReasonPhrase:   r,
@@ -528,7 +584,7 @@ func (s *Session) Unannounce(ctx context.Context, namespace []string) error {
 	u := &wire.UnannounceMessage{
 		TrackNamespace: namespace,
 	}
-	return s.controlMessageSender.queueControlMessage(u)
+	return s.ctrlMsgSendQueue.enqueue(ctx, u)
 }
 
 func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorCode uint64, reason string) error {
@@ -543,7 +599,7 @@ func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorC
 		ErrorCode:      errorCode,
 		ReasonPhrase:   reason,
 	}
-	return s.controlMessageSender.queueControlMessage(acm)
+	return s.ctrlMsgSendQueue.enqueue(ctx, acm)
 }
 
 // SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
@@ -563,13 +619,11 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		TrackNamespacePrefix: as.namespace,
 		Parameters:           map[uint64]wire.Parameter{},
 	}
-	if err := s.controlMessageSender.queueControlMessage(sam); err != nil {
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, sam); err != nil {
 		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(as.namespace)
 		return err
 	}
 	select {
-	case <-s.ctx.Done():
-		return context.Cause(s.ctx)
 	case <-ctx.Done():
 		return ctx.Err()
 	case resp := <-as.response:
@@ -578,13 +632,13 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 }
 
 func (s *Session) acceptAnnouncementSubscription(as []string) error {
-	return s.controlMessageSender.queueControlMessage(&wire.SubscribeAnnouncesOkMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesOkMessage{
 		TrackNamespacePrefix: as,
 	})
 }
 
 func (s *Session) rejectAnnouncementSubscription(as []string, c uint64, r string) error {
-	return s.controlMessageSender.queueControlMessage(&wire.SubscribeAnnouncesErrorMessage{
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesErrorMessage{
 		TrackNamespacePrefix: as,
 		ErrorCode:            c,
 		ReasonPhrase:         r,
@@ -596,7 +650,7 @@ func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []stri
 	uam := &wire.UnsubscribeAnnouncesMessage{
 		TrackNamespacePrefix: namespace,
 	}
-	return s.controlMessageSender.queueControlMessage(uam)
+	return s.ctrlMsgSendQueue.enqueue(ctx, uam)
 }
 
 // Session message handlers
@@ -671,7 +725,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 }
 
 func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
-	if s.perspective != PerspectiveServer {
+	if s.Perspective != PerspectiveServer {
 		return errClientReceivedClientSetup
 	}
 	selectedVersion := -1
@@ -686,7 +740,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	s.version = wire.Version(selectedVersion)
 
-	path, err := validatePathParameter(m.SetupParameters, s.protocol == ProtocolQUIC)
+	path, err := validatePathParameter(m.SetupParameters, s.Protocol == ProtocolQUIC)
 	if err != nil {
 		return err
 	}
@@ -702,7 +756,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		}
 	}
 
-	if err := s.controlMessageSender.queueControlMessage(&wire.ServerSetupMessage{
+	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: map[uint64]wire.Parameter{
 			wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
@@ -718,7 +772,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 }
 
 func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
-	if s.perspective != PerspectiveClient {
+	if s.Perspective != PerspectiveClient {
 		return errServerReceveidServerSetup
 	}
 
@@ -739,11 +793,10 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
-	s.handler.handle(&Message{
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:        MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
-	return nil
 }
 
 func (s *Session) onMaxSubscribeID(msg *wire.MaxSubscribeIDMessage) error {
@@ -771,8 +824,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	s.handler.handle(m)
-	return nil
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
@@ -846,8 +898,7 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	s.handler.handle(m)
-	return nil
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
@@ -864,7 +915,6 @@ func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
 		}
 	}
 	return nil
-
 }
 
 func (s *Session) onFetchError(msg *wire.FetchErrorMessage) error {
@@ -893,12 +943,11 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	s.handler.handle(&Message{
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:    MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
 		Track:     msg.TrackName,
 	})
-	return nil
 }
 
 func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
@@ -935,8 +984,7 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		Method:    MessageAnnounce,
 		Namespace: a.namespace,
 	}
-	s.handler.handle(message)
-	return nil
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
 }
 
 func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
@@ -976,18 +1024,16 @@ func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
 		Method:    MessageUnannounce,
 		Namespace: msg.TrackNamespace,
 	}
-	s.handler.handle(req)
-	return nil
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), req)
 }
 
 func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	s.handler.handle(&Message{
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:       MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
 		ReasonPhrase: msg.ReasonPhrase,
 	})
-	return nil
 }
 
 func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
@@ -996,11 +1042,10 @@ func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 	}); err != nil {
 		return err
 	}
-	s.handler.handle(&Message{
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:    MessageSubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
-	return nil
 }
 
 func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
@@ -1037,9 +1082,8 @@ func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 }
 
 func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	s.handler.handle(&Message{
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
-	return nil
 }
