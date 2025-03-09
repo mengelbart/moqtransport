@@ -31,6 +31,16 @@ func (m *localTrackMap) addPending(lt *localTrack) bool {
 	return true
 }
 
+func (m *localTrackMap) findByID(id uint64) (*localTrack, bool) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	sub, ok := m.pending[id]
+	if !ok {
+		sub, ok = m.open[id]
+	}
+	return sub, ok
+}
+
 func (m *localTrackMap) delete(id uint64) (*localTrack, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
