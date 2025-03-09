@@ -46,8 +46,10 @@ func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
 	if h.publish {
 		go h.setupDateTrack()
 	}
-	h.handle(conn)
-	select {}
+	if err := h.handle(conn); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (h *moqHandler) runServer(ctx context.Context) error {
@@ -73,7 +75,12 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		h.handle(webtransportmoq.NewServer(session))
+		go func() {
+			if err := h.handle(webtransportmoq.NewServer(session)); err != nil {
+				log.Printf("failed to handle webtransport session: %v", err)
+				session.CloseWithError(0, err.Error())
+			}
+		}()
 	})
 	for {
 		conn, err := listener.Accept(ctx)
@@ -84,7 +91,12 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 			go wt.ServeQUICConn(conn)
 		}
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "moq-00" {
-			go h.handle(quicmoq.NewServer(conn))
+			go func() {
+				if err := h.handle(quicmoq.NewServer(conn)); err != nil {
+					log.Printf("failed to handle QUIC connection: %v", err)
+					conn.CloseWithError(0, err.Error())
+				}
+			}()
 		}
 	}
 }
@@ -118,33 +130,36 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 	})
 }
 
-func (h *moqHandler) handle(conn moqtransport.Connection) {
+func (h *moqHandler) handle(conn moqtransport.Connection) error {
+	qlogFile, err := os.Create(fmt.Sprintf("moq_%v.sqlog", conn.Perspective()))
+	if err != nil {
+		return err
+	}
 	session := moqtransport.NewSession(conn.Protocol(), conn.Perspective(), 100)
 	transport := &moqtransport.Transport{
 		Conn:    conn,
 		Handler: h.getHandler(),
-		Qlogger: qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
+		Qlogger: qlog.NewQLOGHandler(qlogFile, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
 		Session: session,
 	}
-	err := transport.Run()
+	err = transport.Run()
 	if err != nil {
 		log.Printf("MoQ Session initialization failed: %v", err)
-		conn.CloseWithError(0, "session initialization error")
-		return
+		return err
 	}
 	if h.publish {
 		if err := session.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
-			return
 		}
 	}
 	if h.subscribe {
-		if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
-			log.Printf("failed to subscribe to track: %v", err)
-			conn.CloseWithError(0, "internal error")
-			return
-		}
+		return h.subscribeAndRead(session, h.namespace, h.trackname)
+		//if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
+		//	log.Printf("failed to subscribe to track: %v", err)
+		//	return err
+		//}
 	}
+	return nil
 }
 
 func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []string, trackname string) error {
@@ -152,25 +167,25 @@ func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []strin
 	if err != nil {
 		return err
 	}
-	go func() {
-		for {
-			o, err := rs.ReadObject(context.Background())
-			if err != nil {
-				if err == io.EOF {
-					log.Printf("got last object")
-					return
-				}
-				return
+	_ = time.AfterFunc(10*time.Second, func() {
+		rs.Close()
+	})
+	for {
+		o, err := rs.ReadObject(context.Background())
+		if err != nil {
+			if err == io.EOF {
+				log.Printf("got last object")
+				return nil
 			}
-			log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
+			return err
 		}
-	}()
-	return nil
+		log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
+	}
 }
 
 func (h *moqHandler) setupDateTrack() {
 	publishers := []moqtransport.Publisher{}
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	groupID := 0
 	for {
 		select {
@@ -179,6 +194,7 @@ func (h *moqHandler) setupDateTrack() {
 				sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
 				if err != nil {
 					log.Printf("failed to open new subgroup: %v", err)
+					p.CloseWithError(moqtransport.SubscribeStatusSubscriptionEnded, "unsubscribed")
 					return
 				}
 				if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
