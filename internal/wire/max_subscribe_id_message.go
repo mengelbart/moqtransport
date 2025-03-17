@@ -26,7 +26,7 @@ func (m *MaxSubscribeIDMessage) Append(buf []byte) []byte {
 	return quicvarint.Append(buf, m.SubscribeID)
 }
 
-func (m *MaxSubscribeIDMessage) parse(data []byte) (err error) {
+func (m *MaxSubscribeIDMessage) parse(_ Version, data []byte) (err error) {
 	m.SubscribeID, _, err = quicvarint.Parse(data)
 	return err
 }

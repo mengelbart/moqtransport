@@ -30,7 +30,7 @@ func (m *GoAwayMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *GoAwayMessage) parse(data []byte) (err error) {
+func (m *GoAwayMessage) parse(_ Version, data []byte) (err error) {
 	newSessionURI, _, err := parseVarIntBytes(data)
 	m.NewSessionURI = string(newSessionURI)
 	return err

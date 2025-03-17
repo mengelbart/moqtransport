@@ -40,7 +40,7 @@ func (m *ServerSetupMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *ServerSetupMessage) parse(data []byte) error {
+func (m *ServerSetupMessage) parse(_ Version, data []byte) error {
 	sv, n, err := quicvarint.Parse(data)
 	if err != nil {
 		return err
