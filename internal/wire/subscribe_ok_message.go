@@ -71,7 +71,7 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	return m.Parameters.append(buf)
 }
 
-func (m *SubscribeOkMessage) parse(data []byte) (err error) {
+func (m *SubscribeOkMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {

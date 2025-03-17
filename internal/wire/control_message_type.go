@@ -103,7 +103,7 @@ type messageReader interface {
 
 type Message interface {
 	Append([]byte) []byte
-	parse([]byte) error
+	parse(Version, []byte) error
 }
 
 type ControlMessage interface {

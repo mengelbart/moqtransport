@@ -26,7 +26,7 @@ func (m *FetchCancelMessage) Append(buf []byte) []byte {
 	return quicvarint.Append(buf, m.SubscribeID)
 }
 
-func (m *FetchCancelMessage) parse(data []byte) (err error) {
+func (m *FetchCancelMessage) parse(_ Version, data []byte) (err error) {
 	m.SubscribeID, _, err = quicvarint.Parse(data)
 	return err
 }

@@ -36,7 +36,7 @@ func (m *AnnounceErrorMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *AnnounceErrorMessage) parse(data []byte) (err error) {
+func (m *AnnounceErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {

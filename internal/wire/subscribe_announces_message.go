@@ -37,7 +37,7 @@ func (m *SubscribeAnnouncesMessage) Append(buf []byte) []byte {
 	return m.Parameters.append(buf)
 }
 
-func (m *SubscribeAnnouncesMessage) parse(data []byte) (err error) {
+func (m *SubscribeAnnouncesMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.TrackNamespacePrefix, n, err = parseTuple(data)
 	if err != nil {

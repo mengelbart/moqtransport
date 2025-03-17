@@ -44,7 +44,7 @@ func (m *ClientSetupMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *ClientSetupMessage) parse(data []byte) error {
+func (m *ClientSetupMessage) parse(_ Version, data []byte) error {
 	n, err := m.SupportedVersions.parse(data)
 	if err != nil {
 		return err
