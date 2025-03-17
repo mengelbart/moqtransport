@@ -20,12 +20,16 @@ type SubscribeOkMessage struct {
 }
 
 func (m *SubscribeOkMessage) LogValue() slog.Value {
+	ce := 0
+	if m.ContentExists {
+		ce = 1
+	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_ok"),
 		slog.Uint64("subscribe_id", m.SubscribeID),
 		slog.Uint64("expires", uint64(m.Expires.Milliseconds())),
 		slog.Any("group_order", m.GroupOrder),
-		slog.Any("content_exists", m.ContentExists),
+		slog.Int("content_exists", ce),
 	}
 	if m.ContentExists {
 		attrs = append(attrs,
