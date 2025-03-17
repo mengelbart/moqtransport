@@ -49,7 +49,7 @@ func (m *FetchOkMessage) Append(buf []byte) []byte {
 	return m.SubscribeParameters.append(buf)
 }
 
-func (m *FetchOkMessage) parse(data []byte) (err error) {
+func (m *FetchOkMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {

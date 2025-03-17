@@ -155,7 +155,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
 			res := &ClientSetupMessage{}
-			err := res.parse(tc.data)
+			err := res.parse(CurrentVersion, tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

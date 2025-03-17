@@ -42,7 +42,7 @@ func (m *TrackStatusMessage) Append(buf []byte) []byte {
 	return quicvarint.Append(buf, m.LastObjectID)
 }
 
-func (m *TrackStatusMessage) parse(data []byte) (err error) {
+func (m *TrackStatusMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {

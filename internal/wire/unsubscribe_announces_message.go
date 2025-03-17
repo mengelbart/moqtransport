@@ -24,7 +24,7 @@ func (m *UnsubscribeAnnouncesMessage) Append(buf []byte) []byte {
 	return m.TrackNamespacePrefix.append(buf)
 }
 
-func (m *UnsubscribeAnnouncesMessage) parse(data []byte) (err error) {
+func (m *UnsubscribeAnnouncesMessage) parse(_ Version, data []byte) (err error) {
 	m.TrackNamespacePrefix, _, err = parseTuple(data)
 	return err
 }

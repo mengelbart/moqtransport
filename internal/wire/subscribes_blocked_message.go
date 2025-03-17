@@ -25,7 +25,7 @@ func (m *SubscribesBlockedMessage) Append(buf []byte) []byte {
 	return quicvarint.Append(buf, m.MaximumSubscribeID)
 }
 
-func (m *SubscribesBlockedMessage) parse(data []byte) (err error) {
+func (m *SubscribesBlockedMessage) parse(_ Version, data []byte) (err error) {
 	m.MaximumSubscribeID, _, err = quicvarint.Parse(data)
 	return err
 }
