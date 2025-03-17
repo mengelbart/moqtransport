@@ -28,7 +28,7 @@ func (m *AnnounceOkMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *AnnounceOkMessage) parse(data []byte) (err error) {
+func (m *AnnounceOkMessage) parse(_ Version, data []byte) (err error) {
 	m.TrackNamespace, _, err = parseTuple(data)
 	return err
 }

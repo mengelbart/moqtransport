@@ -26,7 +26,7 @@ func (m *UnsubscribeMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (m *UnsubscribeMessage) parse(data []byte) (err error) {
+func (m *UnsubscribeMessage) parse(_ Version, data []byte) (err error) {
 	m.SubscribeID, _, err = quicvarint.Parse(data)
 	return err
 }

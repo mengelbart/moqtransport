@@ -39,7 +39,7 @@ func (m *AnnounceMessage) Append(buf []byte) []byte {
 	return m.Parameters.append(buf)
 }
 
-func (m *AnnounceMessage) parse(data []byte) (err error) {
+func (m *AnnounceMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {

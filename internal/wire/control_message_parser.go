@@ -90,6 +90,6 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	default:
 		return nil, errInvalidMessageType
 	}
-	err = m.parse(msg)
+	err = m.parse(CurrentVersion, msg)
 	return m, err
 }

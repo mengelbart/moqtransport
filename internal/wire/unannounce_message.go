@@ -24,7 +24,7 @@ func (m *UnannounceMessage) Append(buf []byte) []byte {
 	return buf
 }
 
-func (p *UnannounceMessage) parse(data []byte) (err error) {
+func (p *UnannounceMessage) parse(_ Version, data []byte) (err error) {
 	p.TrackNamespace, _, err = parseTuple(data)
 	return err
 }

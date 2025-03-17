@@ -32,7 +32,7 @@ func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {
 	return appendVarIntBytes(buf, []byte(m.TrackName))
 }
 
-func (m *TrackStatusRequestMessage) parse(data []byte) (err error) {
+func (m *TrackStatusRequestMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {

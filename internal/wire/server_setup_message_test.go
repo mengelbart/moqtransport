@@ -139,7 +139,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
 			res := &ServerSetupMessage{}
-			err := res.parse(tc.data)
+			err := res.parse(CurrentVersion, tc.data)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)
 				assert.Equal(t, tc.expect, res)

@@ -32,7 +32,7 @@ func (m *FetchErrorMessage) Append(buf []byte) []byte {
 	return appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 }
 
-func (m *FetchErrorMessage) parse(data []byte) (err error) {
+func (m *FetchErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.SubscribeID, n, err = quicvarint.Parse(data)
 	if err != nil {
