@@ -240,8 +240,8 @@ func (t *Transport) readDatagrams() {
 			}
 			if t.Qlogger != nil {
 				eth := slices.Collect(slices.Map(
-					msg.ObjectHeaderExtensions,
-					func(e wire.ObjectHeaderExtension) moqt.ExtensionHeader {
+					msg.ObjectExtensionHeaders,
+					func(e wire.ObjectExtensionHeader) moqt.ExtensionHeader {
 						return moqt.ExtensionHeader{
 							HeaderType:   0, // TODO
 							HeaderValue:  0, // TODO
@@ -256,7 +256,7 @@ func (t *Transport) readDatagrams() {
 					GroupID:                msg.GroupID,
 					ObjectID:               msg.ObjectID,
 					PublisherPriority:      msg.PublisherPriority,
-					ExtensionHeadersLength: uint64(len(msg.ObjectHeaderExtensions)),
+					ExtensionHeadersLength: uint64(len(msg.ObjectExtensionHeaders)),
 					ExtensionHeaders:       eth,
 					ObjectStatus:           uint64(msg.ObjectStatus),
 					Payload: qlog.RawInfo{

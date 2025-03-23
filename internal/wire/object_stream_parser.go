@@ -147,8 +147,8 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 	if p.qlogger != nil {
 		var e qlog.Event
 		eth := slices.Collect(slices.Map(
-			m.ObjectHeaderExtensions,
-			func(e ObjectHeaderExtension) moqt.ExtensionHeader {
+			m.ObjectExtensionHeaders,
+			func(e ObjectExtensionHeader) moqt.ExtensionHeader {
 				return moqt.ExtensionHeader{
 					HeaderType:   e.key(),
 					HeaderValue:  0, // TODO
@@ -165,7 +165,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 				SubgroupID:             m.SubgroupID,
 				ObjectID:               m.ObjectID,
 				PublisherPriority:      m.PublisherPriority,
-				ExtensionHeadersLength: uint64(len(m.ObjectHeaderExtensions)),
+				ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
 				ExtensionHeaders:       eth,
 				ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
 				ObjectStatus:           uint64(m.ObjectStatus),
@@ -187,7 +187,7 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 				GroupID:                gid,
 				SubgroupID:             sid,
 				ObjectID:               m.ObjectID,
-				ExtensionHeadersLength: uint64(len(m.ObjectHeaderExtensions)),
+				ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
 				ExtensionHeaders:       eth,
 				ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
 				ObjectStatus:           uint64(m.ObjectStatus),
