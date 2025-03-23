@@ -35,7 +35,7 @@ type ObjectMessage struct {
 	SubgroupID             uint64
 	ObjectID               uint64
 	PublisherPriority      uint8
-	ObjectHeaderExtensions ObjectHeaderExtensions
+	ObjectExtensionHeaders ObjectExtensionHeaders
 	ObjectStatus           ObjectStatus
 	ObjectPayload          []byte
 }
@@ -46,7 +46,7 @@ func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.GroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
-	buf = m.ObjectHeaderExtensions.append(buf)
+	buf = m.ObjectExtensionHeaders.append(buf)
 	buf = append(buf, m.ObjectPayload...)
 	return buf
 }
@@ -63,7 +63,7 @@ func (m *ObjectMessage) AppendDatagramStatus(buf []byte) []byte {
 
 func (m *ObjectMessage) AppendSubgroup(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.ObjectID)
-	buf = m.ObjectHeaderExtensions.append(buf)
+	buf = m.ObjectExtensionHeaders.append(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -78,7 +78,7 @@ func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.SubgroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
-	buf = m.ObjectHeaderExtensions.append(buf)
+	buf = m.ObjectExtensionHeaders.append(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -135,10 +135,10 @@ func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
 		return
 	}
 
-	if m.ObjectHeaderExtensions == nil {
-		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	if m.ObjectExtensionHeaders == nil {
+		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
 	}
-	n, err = m.ObjectHeaderExtensions.parse(data)
+	n, err = m.ObjectExtensionHeaders.parse(data)
 	parsed += n
 	if err != nil {
 		return parsed, err
@@ -158,10 +158,10 @@ func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
 		return
 	}
 
-	if m.ObjectHeaderExtensions == nil {
-		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	if m.ObjectExtensionHeaders == nil {
+		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
 	}
-	if err = m.ObjectHeaderExtensions.parseReader(br); err != nil {
+	if err = m.ObjectExtensionHeaders.parseReader(br); err != nil {
 		return err
 	}
 
@@ -201,10 +201,10 @@ func (m *ObjectMessage) readFetch(r io.Reader) (err error) {
 	if err != nil {
 		return
 	}
-	if m.ObjectHeaderExtensions == nil {
-		m.ObjectHeaderExtensions = ObjectHeaderExtensions{}
+	if m.ObjectExtensionHeaders == nil {
+		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
 	}
-	if err = m.ObjectHeaderExtensions.parseReader(br); err != nil {
+	if err = m.ObjectExtensionHeaders.parseReader(br); err != nil {
 		return err
 	}
 

@@ -80,7 +80,7 @@ func (p *localTrack) sendDatagram(o Object) error {
 		SubgroupID:             o.SubGroupID,
 		ObjectID:               o.ObjectID,
 		PublisherPriority:      0,
-		ObjectHeaderExtensions: []wire.ObjectHeaderExtension{},
+		ObjectExtensionHeaders: []wire.ObjectExtensionHeader{},
 		ObjectStatus:           0,
 		ObjectPayload:          o.Payload,
 	}
@@ -88,8 +88,8 @@ func (p *localTrack) sendDatagram(o Object) error {
 	buf = om.AppendDatagram(buf)
 	if p.qlogger != nil {
 		eth := slices.Collect(slices.Map(
-			om.ObjectHeaderExtensions,
-			func(e wire.ObjectHeaderExtension) moqt.ExtensionHeader {
+			om.ObjectExtensionHeaders,
+			func(e wire.ObjectExtensionHeader) moqt.ExtensionHeader {
 				return moqt.ExtensionHeader{
 					HeaderType:   0, // TODO
 					HeaderValue:  0, // TODO
@@ -108,7 +108,7 @@ func (p *localTrack) sendDatagram(o Object) error {
 			GroupID:                om.GroupID,
 			ObjectID:               om.ObjectID,
 			PublisherPriority:      om.PublisherPriority,
-			ExtensionHeadersLength: uint64(len(om.ObjectHeaderExtensions)),
+			ExtensionHeadersLength: uint64(len(om.ObjectExtensionHeaders)),
 			ExtensionHeaders:       eth,
 			ObjectStatus:           uint64(om.ObjectStatus),
 			Payload: qlog.RawInfo{

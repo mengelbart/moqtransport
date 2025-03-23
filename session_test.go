@@ -411,7 +411,7 @@ func TestSession(t *testing.T) {
 				SubgroupID:             0,
 				ObjectID:               0,
 				PublisherPriority:      0,
-				ObjectHeaderExtensions: []wire.ObjectHeaderExtension{},
+				ObjectExtensionHeaders: []wire.ObjectExtensionHeader{},
 				ObjectStatus:           0,
 				ObjectPayload:          []byte{},
 			}, nil) {
