@@ -6,20 +6,11 @@
 
 ## Overview
 
-This library implements the Media over QUIC Transport (MoQT) protocol as defined in [draft-ietf-moq-transport-08](https://www.ietf.org/archive/id/draft-ietf-moq-transport-08.txt). MoQT is designed to operate over QUIC and WebTransport for efficient media delivery with a publish/subscribe model.
-
-### Implemented Features
-
-- **Core Protocol Support**: Implements MoQT over both QUIC and WebTransport
-- **Session Management**: Full support for session establishment, initialization, and termination
-- **Control Messages**: Implementation of all control message types defined in the specification
-- **Data Streams**: Support for object delivery via streams and datagrams
-- **Announcement System**: Track announcement and discovery mechanisms
-- **Subscription Handling**: Support for subscribing to tracks and handling subscription updates
-- **Error Handling**: Comprehensive error handling as defined in the specification
+This library implements the Media over QUIC Transport (MoQT) protocol as defined in [draft-ietf-moq-transport-08](https://www.ietf.org/archive/id/draft-ietf-moq-transport-08.txt). MoQT is designed to operate over QUIC or WebTransport for efficient media delivery with a publish/subscribe model.
 
 ### Implementation Status
 
+This code, as well as the specification, is work in progress.
 The implementation currently covers most aspects of the MoQT specification (draft-08), including:
 
  Session establishment and initialization  
