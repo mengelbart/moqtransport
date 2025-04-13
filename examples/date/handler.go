@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/mengelbart/moqtransport"
@@ -29,7 +30,8 @@ type moqHandler struct {
 	trackname  string
 	publish    bool
 	subscribe  bool
-	publishers chan moqtransport.Publisher
+	publishers map[moqtransport.Publisher]struct{}
+	lock       sync.Mutex
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -126,7 +128,9 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 			if !ok {
 				log.Printf("subscription response writer does not implement publisher?")
 			}
-			h.publishers <- publisher
+			h.lock.Lock()
+			h.publishers[publisher] = struct{}{}
+			h.lock.Unlock()
 		}
 	})
 }
@@ -182,35 +186,32 @@ func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []strin
 }
 
 func (h *moqHandler) setupDateTrack() {
-	publishers := []moqtransport.Publisher{}
 	ticker := time.NewTicker(time.Second)
 	groupID := 0
-	for {
-		select {
-		case ts := <-ticker.C:
-			for _, p := range publishers {
-				sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
-				if err != nil {
-					log.Printf("failed to open new subgroup: %v", err)
-					return
-				}
-				if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
-					log.Printf("failed to write time to subgroup: %v", err)
-				}
-				sg.Close()
-				// if err := p.SendDatagram(moqtransport.Object{
-				// 	GroupID:    uint64(groupID),
-				// 	SubGroupID: 0,
-				// 	ObjectID:   0,
-				// 	Payload:    []byte(fmt.Sprintf("%v", ts)),
-				// }); err != nil {
-				// 	log.Printf("failed to write time to publisher: %v", err)
-				// }
+	for ts := range ticker.C {
+		h.lock.Lock()
+		for p := range h.publishers {
+			sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
+			if err != nil {
+				log.Printf("failed to open new subgroup: %v", err)
+				p.CloseWithError(moqtransport.ErrorCodeSubscribeDoneSubscriptionEnded, "")
+				delete(h.publishers, p)
+				continue
 			}
-		case publisher := <-h.publishers:
-			log.Printf("got subscriber")
-			publishers = append(publishers, publisher)
+			if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
+				log.Printf("failed to write time to subgroup: %v", err)
+			}
+			sg.Close()
+			// if err := p.SendDatagram(moqtransport.Object{
+			// 	GroupID:    uint64(groupID),
+			// 	SubGroupID: 0,
+			// 	ObjectID:   0,
+			// 	Payload:    []byte(fmt.Sprintf("%v", ts)),
+			// }); err != nil {
+			// 	log.Printf("failed to write time to publisher: %v", err)
+			// }
 		}
+		h.lock.Unlock()
 		groupID++
 	}
 }
