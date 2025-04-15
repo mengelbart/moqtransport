@@ -93,14 +93,27 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
 		switch r.Method {
 		case moqtransport.MessageAnnounce:
-			log.Printf("got unexpected announcement: %v", r.Namespace)
-			w.Reject(0, "date doesn't take announcements")
+			if !h.subscribe {
+				log.Printf("got unexpected announcement: %v", r.Namespace)
+				w.Reject(0, "date doesn't take announcements")
+				return
+			}
+			if !tupleEqual(r.Namespace, h.namespace) {
+				log.Printf("got unexpected announcement namespace: %v, expected %v", r.Namespace, h.namespace)
+				w.Reject(0, "non-matching namespace")
+				return
+			}
+			err := w.Accept()
+			if err != nil {
+				log.Printf("failed to accept announcement: %v", err)
+				return
+			}
 		case moqtransport.MessageSubscribe:
 			if !h.publish {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
 				return
 			}
-			if !tupleEuqal(r.Namespace, h.namespace) || (r.Track != h.trackname) {
+			if !tupleEqual(r.Namespace, h.namespace) || (r.Track != h.trackname) {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
 				return
 			}
@@ -202,33 +215,7 @@ func (h *moqHandler) setupDateTrack() {
 	}
 }
 
-func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error) {
-	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"moq-00"},
-	}, &quic.Config{
-		EnableDatagrams: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return quicmoq.NewClient(conn), nil
-}
-
-func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection, error) {
-	dialer := webtransport.Dialer{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-	_, session, err := dialer.Dial(ctx, addr, nil)
-	if err != nil {
-		return nil, err
-	}
-	return webtransportmoq.NewClient(session), nil
-}
-
-func tupleEuqal(a, b []string) bool {
+func tupleEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
