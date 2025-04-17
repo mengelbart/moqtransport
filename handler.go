@@ -3,6 +3,7 @@ package moqtransport
 // Common Message types. Handlers can react to any of these messages.
 const (
 	MessageSubscribe            = "SUBSCRIBE"
+	MessageUnsubscribe          = "UNSUBSCRIBE "
 	MessageFetch                = "FETCH"
 	MessageAnnounce             = "ANNOUNCE"
 	MessageAnnounceCancel       = "ANNOUNCE_CANCEL"
