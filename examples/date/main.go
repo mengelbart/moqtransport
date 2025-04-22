@@ -105,7 +105,7 @@ func runServer(opts *options) error {
 		trackname:  opts.trackname,
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
-		publishers: make(chan moqtransport.Publisher),
+		publishers: make(map[moqtransport.Publisher]struct{}),
 	}
 	return h.runServer(context.TODO())
 }
@@ -120,7 +120,7 @@ func runClient(opts *options) error {
 		trackname:  opts.trackname,
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
-		publishers: make(chan moqtransport.Publisher),
+		publishers: make(map[moqtransport.Publisher]struct{}),
 	}
 	return h.runClient(context.TODO(), opts.webtransport)
 }
