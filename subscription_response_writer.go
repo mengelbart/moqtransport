@@ -10,7 +10,7 @@ type subscriptionResponseWriter struct {
 
 // SubscriptionResponseWriter provides extra methods for handling subscription requests.
 type SubscriptionResponseWriter interface {
-	SubscriptionID() uint64
+	SubscribeID() uint64
 	TrackAlias() uint64
 	ResponseWriter
 }
@@ -20,8 +20,8 @@ func (w *subscriptionResponseWriter) Session() *Session {
 	return w.session
 }
 
-// SubscriptionID returns the subscription ID of the subscription request.
-func (w *subscriptionResponseWriter) SubscriptionID() uint64 {
+// SubscribeID returns the subscribeID of the subscription request.
+func (w *subscriptionResponseWriter) SubscribeID() uint64 {
 	return w.id
 }
 

@@ -299,6 +299,8 @@ func (s *Session) Subscribe(
 		}
 		return nil, err
 	}
+	rt.subscribeID = id
+	rt.trackAlias = alias
 	rt.onUnsubscribe(func() error {
 		return s.unsubscribe(id)
 	})
