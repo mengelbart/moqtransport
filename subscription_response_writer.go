@@ -8,6 +8,11 @@ type subscriptionResponseWriter struct {
 	handled    bool
 }
 
+// Session returns the session associated with this response writer.
+func (w *subscriptionResponseWriter) Session() *Session {
+	return w.session
+}
+
 func (w *subscriptionResponseWriter) Accept() error {
 	w.handled = true
 	if err := w.session.acceptSubscription(w.id); err != nil {

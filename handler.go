@@ -50,6 +50,9 @@ type ResponseWriter interface {
 
 	// Reject sends a negative response to a message.
 	Reject(code uint64, reason string) error
+
+	// Session returns the session associated with this response writer.
+	Session() *Session
 }
 
 // Publisher is the interface implemented by ResponseWriters of Subscribe

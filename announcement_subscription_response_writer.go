@@ -6,6 +6,11 @@ type announcementSubscriptionResponseWriter struct {
 	handled bool
 }
 
+// Session returns the session associated with this response writer
+func (a *announcementSubscriptionResponseWriter) Session() *Session {
+	return a.session
+}
+
 func (a *announcementSubscriptionResponseWriter) Accept() error {
 	a.handled = true
 	return a.session.acceptAnnouncementSubscription(a.prefix)
