@@ -8,6 +8,28 @@ type subscriptionResponseWriter struct {
 	handled    bool
 }
 
+// SubscriptionResponseWriter provides extra methods for handling subscription requests.
+type SubscriptionResponseWriter interface {
+	SubscribeID() uint64
+	TrackAlias() uint64
+	ResponseWriter
+}
+
+// Session returns the session associated with this response writer.
+func (w *subscriptionResponseWriter) Session() *Session {
+	return w.session
+}
+
+// SubscribeID returns the subscribeID of the subscription request.
+func (w *subscriptionResponseWriter) SubscribeID() uint64 {
+	return w.id
+}
+
+// TrackAlias returns the track alias of the subscription request.
+func (w *subscriptionResponseWriter) TrackAlias() uint64 {
+	return w.trackAlias
+}
+
 func (w *subscriptionResponseWriter) Accept() error {
 	w.handled = true
 	if err := w.session.acceptSubscription(w.id); err != nil {

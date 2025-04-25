@@ -36,6 +36,17 @@ type RemoteTrack struct {
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
 
 	responseChan chan error
+
+	subscribeID uint64
+	trackAlias  uint64
+}
+
+func (t *RemoteTrack) SubscribeID() uint64 {
+	return t.subscribeID
+}
+
+func (t *RemoteTrack) TrackAlias() uint64 {
+	return t.trackAlias
 }
 
 func newRemoteTrack() *RemoteTrack {

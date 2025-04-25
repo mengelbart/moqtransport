@@ -106,6 +106,7 @@ func runServer(opts *options) error {
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
 		publishers: make(map[moqtransport.Publisher]struct{}),
+		sessions:   make(map[*moqtransport.Session]uint32),
 	}
 	return h.runServer(context.TODO())
 }
@@ -121,6 +122,7 @@ func runClient(opts *options) error {
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
 		publishers: make(map[moqtransport.Publisher]struct{}),
+		sessions:   make(map[*moqtransport.Session]uint32),
 	}
 	return h.runClient(context.TODO(), opts.webtransport)
 }

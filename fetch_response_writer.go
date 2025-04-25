@@ -7,6 +7,10 @@ type fetchResponseWriter struct {
 	handled    bool
 }
 
+func (f *fetchResponseWriter) Session() *Session {
+	return f.session
+}
+
 // Accept implements ResponseWriter.
 func (f *fetchResponseWriter) Accept() error {
 	f.handled = true

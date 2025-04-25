@@ -6,6 +6,11 @@ type trackStatusResponseWriter struct {
 	status  TrackStatus
 }
 
+// Session returns the session associated with this response writer.
+func (w *trackStatusResponseWriter) Session() *Session {
+	return w.session
+}
+
 // Accept commits the status and sends a response to the peer.
 func (w *trackStatusResponseWriter) Accept() error {
 	w.handled = true

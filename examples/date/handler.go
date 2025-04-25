@@ -22,16 +22,27 @@ import (
 )
 
 type moqHandler struct {
-	server     bool
-	quic       bool
-	addr       string
-	tlsConfig  *tls.Config
-	namespace  []string
-	trackname  string
-	publish    bool
-	subscribe  bool
-	publishers map[moqtransport.Publisher]struct{}
-	lock       sync.Mutex
+	server        bool
+	quic          bool
+	addr          string
+	tlsConfig     *tls.Config
+	namespace     []string
+	trackname     string
+	sessions      map[*moqtransport.Session]uint32
+	nextSessionNr uint32
+	publish       bool
+	subscribe     bool
+	publishers    map[moqtransport.Publisher]struct{}
+	lock          sync.Mutex
+}
+
+func (h *moqHandler) addSession(s *moqtransport.Session) uint32 {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+	nr := h.nextSessionNr
+	h.nextSessionNr++
+	h.sessions[s] = nr
+	return nr
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -93,10 +104,11 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 
 func (h *moqHandler) getHandler() moqtransport.Handler {
 	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
+		sessionNr := h.sessions[w.Session()]
 		switch r.Method {
 		case moqtransport.MessageAnnounce:
 			if !h.subscribe {
-				log.Printf("got unexpected announcement: %v", r.Namespace)
+				log.Printf("sessionNr: %d got unexpected announcement: %v", sessionNr, r.Namespace)
 				w.Reject(0, "date doesn't take announcements")
 				return
 			}
@@ -149,9 +161,11 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 		conn.CloseWithError(0, "session initialization error")
 		return
 	}
+	nr := h.addSession(session)
+	log.Printf("MoQ Session nr %d initialized", nr)
 	if h.publish {
 		if err := session.Announce(context.Background(), h.namespace); err != nil {
-			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
+			log.Printf("failed to announce namespace '%v': %v", h.namespace, err)
 			return
 		}
 	}
@@ -179,7 +193,8 @@ func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []strin
 				}
 				return
 			}
-			log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
+			log.Printf("subscribeID %d, trackAlias: %d: got object %v/%v/%v of length %v: %v\n",
+				rs.SubscribeID(), rs.TrackAlias(), o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
 		}
 	}()
 	return nil
@@ -191,7 +206,14 @@ func (h *moqHandler) setupDateTrack() {
 	for ts := range ticker.C {
 		h.lock.Lock()
 		for p := range h.publishers {
+			rs := p.(moqtransport.SubscriptionResponseWriter)
+			session := rs.Session()
+			sessionNr := h.sessions[session]
+			subsciptionID := rs.SubscribeID()
+			trackAlias := rs.TrackAlias()
 			sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
+			log.Printf("sessionNr: %d, subscribeID: %d, trackAlias: %d, groupID: %d, subgroupID: 0",
+				sessionNr, subsciptionID, trackAlias, groupID)
 			if err != nil {
 				log.Printf("failed to open new subgroup: %v", err)
 				p.CloseWithError(moqtransport.ErrorCodeSubscribeDoneSubscriptionEnded, "")
