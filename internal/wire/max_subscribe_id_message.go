@@ -19,7 +19,7 @@ func (m *MaxSubscribeIDMessage) LogValue() slog.Value {
 }
 
 func (m MaxSubscribeIDMessage) Type() controlMessageType {
-	return messageTypeMaxSubscribeID
+	return messageTypeMaxRequestID
 }
 
 func (m *MaxSubscribeIDMessage) Append(buf []byte) []byte {

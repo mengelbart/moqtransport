@@ -18,7 +18,7 @@ func (m *SubscribesBlockedMessage) LogValue() slog.Value {
 }
 
 func (m SubscribesBlockedMessage) Type() controlMessageType {
-	return messageTypeSubscribesBlocked
+	return messageTypeRequestsBlocked
 }
 
 func (m *SubscribesBlockedMessage) Append(buf []byte) []byte {
