@@ -3,7 +3,6 @@ package wire
 import (
 	"log/slog"
 
-	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -20,11 +19,8 @@ func (m *SubscribeErrorMessage) LogValue() slog.Value {
 		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.Uint64("track_alias", m.TrackAlias),
-		slog.Any("reason_phrase", qlog.RawInfo{
-			Length:        uint64(len(m.ReasonPhrase)),
-			PayloadLength: uint64(len(m.ReasonPhrase)),
-			Data:          []byte(m.ReasonPhrase),
-		}),
+		slog.String("reason", m.ReasonPhrase),
+		slog.Any("reason_bytes", []byte(m.ReasonPhrase)),
 	)
 }
 
