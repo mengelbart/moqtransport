@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mengelbart/moqtransport"
@@ -22,16 +23,17 @@ import (
 )
 
 type moqHandler struct {
-	server     bool
-	quic       bool
-	addr       string
-	tlsConfig  *tls.Config
-	namespace  []string
-	trackname  string
-	publish    bool
-	subscribe  bool
-	publishers map[moqtransport.Publisher]struct{}
-	lock       sync.Mutex
+	server        bool
+	quic          bool
+	addr          string
+	tlsConfig     *tls.Config
+	namespace     []string
+	trackname     string
+	publish       bool
+	subscribe     bool
+	nextSessionID atomic.Uint64
+	publishers    map[moqtransport.Publisher]struct{}
+	lock          sync.Mutex
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -91,12 +93,12 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 	}
 }
 
-func (h *moqHandler) getHandler() moqtransport.Handler {
+func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session) moqtransport.Handler {
 	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
 		switch r.Method {
 		case moqtransport.MessageAnnounce:
 			if !h.subscribe {
-				log.Printf("got unexpected announcement: %v", r.Namespace)
+				log.Printf("sessionNr: %d got unexpected announcement: %v", sessionID, r.Namespace)
 				w.Reject(0, "date doesn't take announcements")
 				return
 			}
@@ -124,22 +126,30 @@ func (h *moqHandler) getHandler() moqtransport.Handler {
 				log.Printf("failed to accept subscription: %v", err)
 				return
 			}
-			publisher, ok := w.(moqtransport.Publisher)
+			p, ok := w.(moqtransport.Publisher)
 			if !ok {
 				log.Printf("subscription response writer does not implement publisher?")
 			}
+			datePublisher := &publisher{
+				p:           p,
+				sessionID:   sessionID,
+				subscribeID: r.SubscribeID,
+				trackAlias:  r.TrackAlias,
+				session:     session,
+			}
 			h.lock.Lock()
-			h.publishers[publisher] = struct{}{}
+			h.publishers[datePublisher] = struct{}{}
 			h.lock.Unlock()
 		}
 	})
 }
 
 func (h *moqHandler) handle(conn moqtransport.Connection) {
+	id := h.nextSessionID.Add(1)
 	session := moqtransport.NewSession(conn.Protocol(), conn.Perspective(), 100)
 	transport := &moqtransport.Transport{
 		Conn:    conn,
-		Handler: h.getHandler(),
+		Handler: h.getHandler(id, session),
 		Qlogger: qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
 		Session: session,
 	}
