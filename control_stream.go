@@ -99,7 +99,11 @@ func (s *controlStream) sendLoop(writer SendStream) {
 		case <-s.ctx.Done():
 			return
 		case msg := <-s.queue:
-			buf := compileMessage(msg)
+			buf, err := compileMessage(msg)
+			if err != nil {
+				s.logger.Error("control message dropped", "error", err)
+				continue
+			}
 			if s.qlogger != nil {
 				s.qlogger.Log(moqt.ControlMessageEvent{
 					EventName: moqt.ControlMessageEventCreated,
@@ -109,7 +113,7 @@ func (s *controlStream) sendLoop(writer SendStream) {
 				})
 			}
 			s.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
-			_, err := writer.Write(buf)
+			_, err = writer.Write(buf)
 			if err != nil {
 				s.logger.Error("failed to write control message", "error", err)
 				s.close(err)
