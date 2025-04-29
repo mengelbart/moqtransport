@@ -16,7 +16,7 @@ const (
 
 // TODO: Add tests
 type FetchMessage struct {
-	SubscribeID          uint64
+	RequestID            uint64
 	SubscriberPriority   uint8
 	GroupOrder           uint8
 	FetchType            uint64
@@ -35,7 +35,7 @@ type FetchMessage struct {
 func (m *FetchMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "fetch"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Uint64("fetch_type", m.FetchType),
@@ -79,7 +79,7 @@ func (m FetchMessage) Type() controlMessageType {
 }
 
 func (m *FetchMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = append(buf, m.SubscriberPriority)
 	buf = append(buf, m.GroupOrder)
 	buf = quicvarint.Append(buf, m.FetchType)
@@ -96,7 +96,7 @@ func (m *FetchMessage) Append(buf []byte) []byte {
 
 func (m *FetchMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

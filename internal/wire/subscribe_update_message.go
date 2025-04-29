@@ -9,7 +9,7 @@ import (
 )
 
 type SubscribeUpdateMessage struct {
-	SubscribeID        uint64
+	RequestID          uint64
 	StartGroup         uint64
 	StartObject        uint64
 	EndGroup           uint64
@@ -20,7 +20,7 @@ type SubscribeUpdateMessage struct {
 func (m *SubscribeUpdateMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_update"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Uint64("start_group", m.StartGroup),
 		slog.Uint64("start_object", m.StartObject),
 		slog.Uint64("end_group", m.EndGroup),
@@ -40,7 +40,7 @@ func (m SubscribeUpdateMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeUpdateMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.StartGroup)
 	buf = quicvarint.Append(buf, m.StartObject)
 	buf = quicvarint.Append(buf, m.EndGroup)
@@ -51,7 +51,7 @@ func (m *SubscribeUpdateMessage) Append(buf []byte) []byte {
 func (m *SubscribeUpdateMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

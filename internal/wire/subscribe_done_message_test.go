@@ -16,7 +16,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 	}{
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   0,
 				StreamCount:  0,
 				ReasonPhrase: "",
@@ -26,7 +26,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 		},
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   1,
 				StreamCount:  2,
 				ReasonPhrase: "reason",
@@ -41,7 +41,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 		},
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  17,
+				RequestID:    17,
 				StatusCode:   1,
 				StreamCount:  4,
 				ReasonPhrase: "reason",
@@ -57,7 +57,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 		},
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   0,
 				StreamCount:  0,
 				ReasonPhrase: "",
@@ -67,7 +67,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 		},
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   1,
 				StreamCount:  2,
 				ReasonPhrase: "reason",
@@ -82,7 +82,7 @@ func TestSubscribeDoneMessageAppend(t *testing.T) {
 		},
 		{
 			srm: SubscribeDoneMessage{
-				SubscribeID:  17,
+				RequestID:    17,
 				StatusCode:   1,
 				StreamCount:  2,
 				ReasonPhrase: "reason",
@@ -126,7 +126,7 @@ func TestParseSubscribeDoneMessage(t *testing.T) {
 				0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
 			},
 			expect: &SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   0,
 				StreamCount:  0,
 				ReasonPhrase: "",
@@ -144,7 +144,7 @@ func TestParseSubscribeDoneMessage(t *testing.T) {
 				0x03,
 			},
 			expect: &SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   1,
 				StreamCount:  2,
 				ReasonPhrase: "reason",
@@ -160,7 +160,7 @@ func TestParseSubscribeDoneMessage(t *testing.T) {
 				0x00,
 			},
 			expect: &SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   1,
 				StreamCount:  2,
 				ReasonPhrase: "reason",
@@ -172,7 +172,7 @@ func TestParseSubscribeDoneMessage(t *testing.T) {
 				0x00, 0x00, 0x00, 0x00,
 			},
 			expect: &SubscribeDoneMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				StatusCode:   0,
 				StreamCount:  0,
 				ReasonPhrase: "",

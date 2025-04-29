@@ -81,7 +81,7 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			streamID:          streamID,
 			reader:            br,
 			typ:               typ,
-			subscribeID:       fhm.SubscribeID,
+			subscribeID:       fhm.RequestID,
 			trackAlias:        0,
 			PublisherPriority: 0,
 			GroupID:           0,

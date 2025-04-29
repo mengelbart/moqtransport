@@ -169,7 +169,7 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
-			SubscribeID:        0,
+			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     wire.Tuple{"namespace"},
 			TrackName:          []byte("track1"),
@@ -188,7 +188,7 @@ func TestSession(t *testing.T) {
 			},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.onSubscribeOk(&wire.SubscribeOkMessage{
-				SubscribeID:     0,
+				RequestID:       0,
 				Expires:         0,
 				GroupOrder:      0,
 				ContentExists:   false,
@@ -199,8 +199,8 @@ func TestSession(t *testing.T) {
 			assert.NoError(t, err)
 			return nil
 		}).Times(1)
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribesBlockedMessage{
-			MaximumSubscribeID: 1,
+		cms.EXPECT().enqueue(context.Background(), &wire.RequestsBlockedMessage{
+			MaximumRequestID: 1,
 		}).Times(1)
 
 		s.remoteTracks.maxSubscribeID = 1
@@ -223,7 +223,7 @@ func TestSession(t *testing.T) {
 		close(s.handshakeDoneCh)
 		s.remoteTracks.maxSubscribeID = 1
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
-			SubscribeID:        0,
+			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
@@ -242,7 +242,7 @@ func TestSession(t *testing.T) {
 			},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.receive(&wire.SubscribeOkMessage{
-				SubscribeID:     0,
+				RequestID:       0,
 				Expires:         0,
 				GroupOrder:      0,
 				ContentExists:   false,
@@ -281,7 +281,7 @@ func TestSession(t *testing.T) {
 			return nil
 		})
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeOkMessage{
-			SubscribeID:     0,
+			RequestID:       0,
 			Expires:         0,
 			GroupOrder:      1,
 			ContentExists:   false,
@@ -290,7 +290,7 @@ func TestSession(t *testing.T) {
 			Parameters:      map[uint64]wire.Parameter{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
-			SubscribeID:        0,
+			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
@@ -328,13 +328,13 @@ func TestSession(t *testing.T) {
 			return nil
 		})
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeErrorMessage{
-			SubscribeID:  0,
+			RequestID:    0,
 			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
 			ReasonPhrase: "track not found",
 			TrackAlias:   0,
 		})
 		err := s.receive(&wire.SubscribeMessage{
-			SubscribeID:        0,
+			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{},
 			TrackName:          []byte{},
@@ -422,13 +422,13 @@ func TestSession(t *testing.T) {
 		})
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		err := s.onMaxSubscribeID(&wire.MaxSubscribeIDMessage{
-			SubscribeID: 100,
+		err := s.onMaxSubscribeID(&wire.MaxRequestIDMessage{
+			RequestID: 100,
 		})
 		assert.NoError(t, err)
 		close(s.handshakeDoneCh)
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
-			SubscribeID:        0,
+			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("trackname"),
@@ -448,7 +448,7 @@ func TestSession(t *testing.T) {
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			assert.NoError(t, s.handleUniStream(mp))
 			assert.NoError(t, s.onSubscribeOk(&wire.SubscribeOkMessage{
-				SubscribeID:     0,
+				RequestID:       0,
 				Expires:         0,
 				GroupOrder:      1,
 				ContentExists:   false,

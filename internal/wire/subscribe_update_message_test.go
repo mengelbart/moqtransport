@@ -16,7 +16,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 	}{
 		{
 			sum: SubscribeUpdateMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				StartGroup:         0,
 				StartObject:        0,
 				EndGroup:           0,
@@ -30,7 +30,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 		},
 		{
 			sum: SubscribeUpdateMessage{
-				SubscribeID:        1,
+				RequestID:          1,
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,
@@ -42,7 +42,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 		},
 		{
 			sum: SubscribeUpdateMessage{
-				SubscribeID:        1,
+				RequestID:          1,
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,
@@ -80,7 +80,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 		{
 			data: []byte{0x00, 0x01, 0x02},
 			expect: &SubscribeUpdateMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				StartGroup:         1,
 				StartObject:        2,
 				EndGroup:           0,
@@ -92,7 +92,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x01, 'P'},
 			expect: &SubscribeUpdateMessage{
-				SubscribeID:        1,
+				RequestID:          1,
 				StartGroup:         2,
 				StartObject:        3,
 				EndGroup:           4,

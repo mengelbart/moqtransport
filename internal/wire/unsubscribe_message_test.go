@@ -16,7 +16,7 @@ func TestUnsubscribeMessageAppend(t *testing.T) {
 	}{
 		{
 			usm: UnsubscribeMessage{
-				SubscribeID: 17,
+				RequestID: 17,
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -25,7 +25,7 @@ func TestUnsubscribeMessageAppend(t *testing.T) {
 		},
 		{
 			usm: UnsubscribeMessage{
-				SubscribeID: 17,
+				RequestID: 17,
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x11},
@@ -53,7 +53,7 @@ func TestParseUnsubscribeMessage(t *testing.T) {
 		{
 			data: []byte{17},
 			expect: &UnsubscribeMessage{
-				SubscribeID: 17,
+				RequestID: 17,
 			},
 			err: nil,
 		},

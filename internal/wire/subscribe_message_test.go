@@ -16,7 +16,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 	}{
 		{
 			sm: SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{""},
 				TrackName:          []byte(""),
@@ -35,7 +35,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 		},
 		{
 			sm: SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -52,7 +52,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 		},
 		{
 			sm: SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -69,7 +69,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 		},
 		{
 			sm: SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -112,7 +112,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append([]byte{0x09, 0x00, 0x01, byte(len("trackname"))}, "trackname"...),
 			expect: &SubscribeMessage{
-				SubscribeID:    9,
+				RequestID:      9,
 				TrackAlias:     0,
 				TrackNamespace: []string{"trackname"},
 				TrackName:      []byte{},
@@ -122,7 +122,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00),
 			expect: &SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -134,7 +134,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x01, 0x00),
 			expect: &SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -151,7 +151,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x03, 0x01, 0x01),
 			expect: &SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -168,7 +168,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 'A'),
 			expect: &SubscribeMessage{
-				SubscribeID:        17,
+				RequestID:          17,
 				TrackAlias:         18,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -189,7 +189,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x04, 0x01, 0x02, 0x03, 0x01, 0x02, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
@@ -210,7 +210,7 @@ func TestParseSubscribeMessage(t *testing.T) {
 		{
 			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x03, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
-				SubscribeID:        0,
+				RequestID:          0,
 				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),

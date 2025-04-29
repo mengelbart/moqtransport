@@ -7,13 +7,13 @@ import (
 )
 
 type UnsubscribeMessage struct {
-	SubscribeID uint64
+	RequestID uint64
 }
 
 func (m *UnsubscribeMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "unsubscribe"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 	)
 }
 
@@ -22,11 +22,11 @@ func (m UnsubscribeMessage) Type() controlMessageType {
 }
 
 func (m *UnsubscribeMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	return buf
 }
 
 func (m *UnsubscribeMessage) parse(_ Version, data []byte) (err error) {
-	m.SubscribeID, _, err = quicvarint.Parse(data)
+	m.RequestID, _, err = quicvarint.Parse(data)
 	return err
 }
