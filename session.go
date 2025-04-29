@@ -310,10 +310,12 @@ func (s *Session) Subscribe(
 		SubscriberPriority: 0,
 		GroupOrder:         0,
 		FilterType:         0,
-		StartGroup:         0,
-		StartObject:        0,
-		EndGroup:           0,
-		Parameters:         map[uint64]wire.Parameter{},
+		StartLocation: wire.Location{
+			Group:  0,
+			Object: 0,
+		},
+		EndGroup:   0,
+		Parameters: map[uint64]wire.Parameter{},
 	}
 	if len(auth) > 0 {
 		cm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
