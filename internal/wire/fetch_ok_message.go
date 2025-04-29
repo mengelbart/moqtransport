@@ -10,7 +10,7 @@ import (
 
 // TODO: Add tests
 type FetchOkMessage struct {
-	SubscribeID         uint64
+	RequestID           uint64
 	GroupOrder          uint8
 	EndOfTrack          uint8
 	LargestGroupID      uint64
@@ -21,7 +21,7 @@ type FetchOkMessage struct {
 func (m *FetchOkMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "fetch_ok"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Any("end_of_track", m.EndOfTrack),
 		slog.Uint64("largest_group_id", m.LargestGroupID),
@@ -41,7 +41,7 @@ func (m FetchOkMessage) Type() controlMessageType {
 }
 
 func (m *FetchOkMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = append(buf, m.GroupOrder)
 	buf = append(buf, m.EndOfTrack)
 	buf = quicvarint.Append(buf, m.LargestGroupID)
@@ -51,7 +51,7 @@ func (m *FetchOkMessage) Append(buf []byte) []byte {
 
 func (m *FetchOkMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

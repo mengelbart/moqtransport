@@ -13,7 +13,7 @@ type FetchStream struct {
 
 func newFetchStream(stream SendStream, subscribeID uint64, qlogger *qlog.Logger) (*FetchStream, error) {
 	fhm := &wire.FetchHeaderMessage{
-		SubscribeID: subscribeID,
+		RequestID: subscribeID,
 	}
 	buf := make([]byte, 0, 24)
 	buf = fhm.Append(buf)

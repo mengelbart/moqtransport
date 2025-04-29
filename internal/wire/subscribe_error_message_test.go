@@ -16,7 +16,7 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 	}{
 		{
 			sem: SubscribeErrorMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				ErrorCode:    0,
 				ReasonPhrase: "",
 				TrackAlias:   0,
@@ -28,7 +28,7 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 		},
 		{
 			sem: SubscribeErrorMessage{
-				SubscribeID:  17,
+				RequestID:    17,
 				ErrorCode:    12,
 				ReasonPhrase: "reason",
 				TrackAlias:   0,
@@ -59,7 +59,7 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x02, 0x03, 0x04},
 			expect: &SubscribeErrorMessage{
-				SubscribeID:  1,
+				RequestID:    1,
 				ErrorCode:    2,
 				ReasonPhrase: "",
 				TrackAlias:   0,
@@ -69,7 +69,7 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 		{
 			data: []byte{0x00, 0x01, 0x05, 'e', 'r', 'r', 'o', 'r', 0x11},
 			expect: &SubscribeErrorMessage{
-				SubscribeID:  0,
+				RequestID:    0,
 				ErrorCode:    1,
 				ReasonPhrase: "error",
 				TrackAlias:   17,

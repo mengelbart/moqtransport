@@ -74,7 +74,7 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	case messageTypeUnsubscribeAnnounces:
 		m = &UnsubscribeAnnouncesMessage{}
 	case messageTypeMaxRequestID:
-		m = &MaxSubscribeIDMessage{}
+		m = &MaxRequestIDMessage{}
 	case messageTypeFetch:
 		m = &FetchMessage{}
 	case messageTypeFetchCancel:

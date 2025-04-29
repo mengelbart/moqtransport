@@ -5,16 +5,16 @@ import (
 )
 
 type FetchHeaderMessage struct {
-	SubscribeID uint64
+	RequestID uint64
 }
 
 func (m *FetchHeaderMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, uint64(StreamTypeFetch))
-	return quicvarint.Append(buf, m.SubscribeID)
+	return quicvarint.Append(buf, m.RequestID)
 }
 
 func (m *FetchHeaderMessage) parse(reader messageReader) (err error) {
-	m.SubscribeID, err = quicvarint.Read(reader)
+	m.RequestID, err = quicvarint.Read(reader)
 	if err != nil {
 		return
 	}

@@ -17,7 +17,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 	}{
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     0,
+				RequestID:       0,
 				Expires:         0,
 				GroupOrder:      1,
 				ContentExists:   true,
@@ -32,7 +32,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 		},
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     17,
+				RequestID:       17,
 				Expires:         1000,
 				GroupOrder:      1,
 				ContentExists:   true,
@@ -45,7 +45,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 		},
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     17,
+				RequestID:       17,
 				Expires:         1000,
 				GroupOrder:      2,
 				ContentExists:   true,
@@ -58,7 +58,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 		},
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     0,
+				RequestID:       0,
 				Expires:         0,
 				GroupOrder:      2,
 				ContentExists:   false,
@@ -73,7 +73,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 		},
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     17,
+				RequestID:       17,
 				Expires:         1000,
 				GroupOrder:      1,
 				ContentExists:   false,
@@ -86,7 +86,7 @@ func TestSubscribeOkMessageAppend(t *testing.T) {
 		},
 		{
 			som: SubscribeOkMessage{
-				SubscribeID:     17,
+				RequestID:       17,
 				Expires:         1000,
 				GroupOrder:      2,
 				ContentExists:   false,
@@ -125,7 +125,7 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x10, 0x01, 0x00, 0x00},
 			expect: &SubscribeOkMessage{
-				SubscribeID:     1,
+				RequestID:       1,
 				Expires:         0x10 * time.Millisecond,
 				GroupOrder:      1,
 				ContentExists:   false,
@@ -138,7 +138,7 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x10, 0x02, 0x01, 0x01, 0x02, 0x00},
 			expect: &SubscribeOkMessage{
-				SubscribeID:     1,
+				RequestID:       1,
 				Expires:         0x10 * time.Millisecond,
 				GroupOrder:      2,
 				ContentExists:   true,
@@ -151,7 +151,7 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x10, 0x02, 0x08, 0x01, 0x02, 0x00},
 			expect: &SubscribeOkMessage{
-				SubscribeID:     1,
+				RequestID:       1,
 				Expires:         0x10 * time.Millisecond,
 				GroupOrder:      2,
 				ContentExists:   false,
@@ -164,18 +164,18 @@ func TestParseSubscribeOkMessage(t *testing.T) {
 		{
 			data: []byte{0x01, 0x10, 0x09, 0x08, 0x01, 0x02, 0x00},
 			expect: &SubscribeOkMessage{
-				SubscribeID: 1,
-				Expires:     0x10 * time.Millisecond,
-				GroupOrder:  9,
+				RequestID:  1,
+				Expires:    0x10 * time.Millisecond,
+				GroupOrder: 9,
 			},
 			err: errInvalidGroupOrder,
 		},
 		{
 			data: []byte{0x01, 0x10, 0x03, 0x08, 0x01, 0x02, 0x00},
 			expect: &SubscribeOkMessage{
-				SubscribeID: 1,
-				Expires:     0x10 * time.Millisecond,
-				GroupOrder:  3,
+				RequestID:  1,
+				Expires:    0x10 * time.Millisecond,
+				GroupOrder: 3,
 			},
 			err: errInvalidGroupOrder,
 		},

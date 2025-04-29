@@ -10,7 +10,7 @@ import (
 )
 
 type SubscribeOkMessage struct {
-	SubscribeID     uint64
+	RequestID       uint64
 	Expires         time.Duration
 	GroupOrder      uint8
 	ContentExists   bool
@@ -26,7 +26,7 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_ok"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Uint64("expires", uint64(m.Expires.Milliseconds())),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Int("content_exists", ce),
@@ -50,7 +50,7 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 }
 
 func (m SubscribeOkMessage) GetSubscribeID() uint64 {
-	return m.SubscribeID
+	return m.RequestID
 }
 
 func (m SubscribeOkMessage) Type() controlMessageType {
@@ -58,7 +58,7 @@ func (m SubscribeOkMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeOkMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, uint64(m.Expires))
 	buf = append(buf, m.GroupOrder)
 	if m.ContentExists {
@@ -73,7 +73,7 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 
 func (m *SubscribeOkMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}

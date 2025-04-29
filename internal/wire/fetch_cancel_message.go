@@ -8,13 +8,13 @@ import (
 
 // TODO: Add tests
 type FetchCancelMessage struct {
-	SubscribeID uint64
+	RequestID uint64
 }
 
 func (m *FetchCancelMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "fetch_cancel"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 	)
 }
 
@@ -23,10 +23,10 @@ func (m FetchCancelMessage) Type() controlMessageType {
 }
 
 func (m *FetchCancelMessage) Append(buf []byte) []byte {
-	return quicvarint.Append(buf, m.SubscribeID)
+	return quicvarint.Append(buf, m.RequestID)
 }
 
 func (m *FetchCancelMessage) parse(_ Version, data []byte) (err error) {
-	m.SubscribeID, _, err = quicvarint.Parse(data)
+	m.RequestID, _, err = quicvarint.Parse(data)
 	return err
 }

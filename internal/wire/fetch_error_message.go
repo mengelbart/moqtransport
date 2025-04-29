@@ -8,7 +8,7 @@ import (
 
 // TODO: Add tests
 type FetchErrorMessage struct {
-	SubscribeID  uint64
+	RequestID    uint64
 	ErrorCode    uint64
 	ReasonPhrase string
 }
@@ -16,7 +16,7 @@ type FetchErrorMessage struct {
 func (m *FetchErrorMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "fetch_error"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.String("reason", m.ReasonPhrase),
 	)
@@ -27,14 +27,14 @@ func (m FetchErrorMessage) Type() controlMessageType {
 }
 
 func (m *FetchErrorMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.ErrorCode)
 	return appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 }
 
 func (m *FetchErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

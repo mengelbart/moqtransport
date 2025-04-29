@@ -27,7 +27,7 @@ func (f FilterType) append(buf []byte) []byte {
 }
 
 type SubscribeMessage struct {
-	SubscribeID        uint64
+	RequestID          uint64
 	TrackAlias         uint64
 	TrackNamespace     Tuple
 	TrackName          []byte
@@ -43,7 +43,7 @@ type SubscribeMessage struct {
 func (m *SubscribeMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe"),
-		slog.Uint64("subscribe_id", m.SubscribeID),
+		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Uint64("track_alias", m.TrackAlias),
 		slog.Any("track_namespace", m.TrackNamespace),
 		slog.Any("track_name", qlog.RawInfo{
@@ -78,7 +78,7 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 }
 
 func (m SubscribeMessage) GetSubscribeID() uint64 {
-	return m.SubscribeID
+	return m.RequestID
 }
 
 func (m SubscribeMessage) Type() controlMessageType {
@@ -86,7 +86,7 @@ func (m SubscribeMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeMessage) Append(buf []byte) []byte {
-	buf = quicvarint.Append(buf, m.SubscribeID)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, m.TrackName)
@@ -105,7 +105,7 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 
 func (m *SubscribeMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.SubscribeID, n, err = quicvarint.Parse(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
