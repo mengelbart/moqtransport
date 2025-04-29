@@ -349,13 +349,15 @@ func (s *Session) acceptSubscription(id uint64) error {
 		return errUnknownSubscribeID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeOkMessage{
-		RequestID:       id,
-		Expires:         0,
-		GroupOrder:      1,
-		ContentExists:   false,
-		LargestGroupID:  id,
-		LargestObjectID: id,
-		Parameters:      wire.Parameters{},
+		RequestID:     id,
+		Expires:       0,
+		GroupOrder:    1,
+		ContentExists: false,
+		LargestLocation: wire.Location{
+			Group:  0,
+			Object: 0,
+		},
+		Parameters: wire.Parameters{},
 	})
 }
 
