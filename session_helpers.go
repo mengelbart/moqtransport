@@ -1,22 +1,30 @@
 package moqtransport
 
 import (
+	"encoding/binary"
+	"errors"
+	"log"
+	"math"
+
 	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-func compileMessage(msg wire.ControlMessage) []byte {
-	buf := make([]byte, 16, 1500)
-	buf = append(buf, msg.Append(buf[16:])...)
-	length := len(buf[16:])
+var errControlMessageTooLarge = errors.New("control message too large")
 
-	typeLenBuf := quicvarint.Append(buf[:0], uint64(msg.Type()))
-	typeLenBuf = quicvarint.Append(typeLenBuf, uint64(length))
-
-	n := copy(buf[0:16], typeLenBuf)
-	buf = append(buf[:n], buf[16:]...)
-
-	return buf
+func compileMessage(msg wire.ControlMessage) ([]byte, error) {
+	buf := make([]byte, 0, 4096)
+	buf = quicvarint.Append(buf, uint64(msg.Type()))
+	tl := len(buf)
+	buf = append(buf, 0x00, 0x00) // length placeholder
+	buf = msg.Append(buf)
+	length := len(buf[tl+2:])
+	if length > math.MaxUint16 {
+		return nil, errControlMessageTooLarge
+	}
+	binary.BigEndian.PutUint16(buf[tl:tl+2], uint16(length))
+	log.Printf("tl=%v, length=%v, buf=%v", tl, length, buf)
+	return buf, nil
 }
 
 func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool) (string, error) {

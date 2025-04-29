@@ -22,10 +22,16 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	length, err := quicvarint.Read(p.reader)
+	hi, err := p.reader.ReadByte()
 	if err != nil {
 		return nil, err
 	}
+	lo, err := p.reader.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	length := uint16(hi)<<8 | uint16(lo)
+
 	msg := make([]byte, length)
 	n, err := p.reader.Read(msg)
 	if err != nil {
