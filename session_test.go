@@ -194,8 +194,7 @@ func TestSession(t *testing.T) {
 				Expires:         0,
 				GroupOrder:      0,
 				ContentExists:   false,
-				LargestGroupID:  0,
-				LargestObjectID: 0,
+				LargestLocation: wire.Location{},
 				Parameters:      wire.Parameters{},
 			})
 			assert.NoError(t, err)
@@ -250,8 +249,7 @@ func TestSession(t *testing.T) {
 				Expires:         0,
 				GroupOrder:      0,
 				ContentExists:   false,
-				LargestGroupID:  0,
-				LargestObjectID: 0,
+				LargestLocation: wire.Location{},
 				Parameters:      map[uint64]wire.Parameter{},
 			})
 			assert.NoError(t, err)
@@ -289,8 +287,7 @@ func TestSession(t *testing.T) {
 			Expires:         0,
 			GroupOrder:      1,
 			ContentExists:   false,
-			LargestGroupID:  0,
-			LargestObjectID: 0,
+			LargestLocation: wire.Location{},
 			Parameters:      map[uint64]wire.Parameter{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
@@ -462,8 +459,7 @@ func TestSession(t *testing.T) {
 				Expires:         0,
 				GroupOrder:      1,
 				ContentExists:   false,
-				LargestGroupID:  0,
-				LargestObjectID: 0,
+				LargestLocation: wire.Location{},
 				Parameters:      map[uint64]wire.Parameter{},
 			}))
 			return nil

@@ -14,8 +14,7 @@ type SubscribeOkMessage struct {
 	Expires         time.Duration
 	GroupOrder      uint8
 	ContentExists   bool
-	LargestGroupID  uint64
-	LargestObjectID uint64
+	LargestLocation Location
 	Parameters      Parameters
 }
 
@@ -33,8 +32,8 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 	}
 	if m.ContentExists {
 		attrs = append(attrs,
-			slog.Uint64("largest_group_id", m.LargestGroupID),
-			slog.Uint64("largest_object_id", m.LargestObjectID),
+			slog.Uint64("largest_group_id", m.LargestLocation.Group),
+			slog.Uint64("largest_object_id", m.LargestLocation.Object),
 		)
 	}
 	attrs = append(attrs,
@@ -63,15 +62,14 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	buf = append(buf, m.GroupOrder)
 	if m.ContentExists {
 		buf = append(buf, 1) // ContentExists=true
-		buf = quicvarint.Append(buf, m.LargestGroupID)
-		buf = quicvarint.Append(buf, m.LargestObjectID)
+		buf = m.LargestLocation.append(buf)
 		return m.Parameters.append(buf)
 	}
 	buf = append(buf, 0) // ContentExists=false
 	return m.Parameters.append(buf)
 }
 
-func (m *SubscribeOkMessage) parse(_ Version, data []byte) (err error) {
+func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
@@ -104,15 +102,9 @@ func (m *SubscribeOkMessage) parse(_ Version, data []byte) (err error) {
 		return m.Parameters.parseVersionSpecificParameters(data)
 	}
 
-	m.LargestGroupID, n, err = quicvarint.Parse(data)
+	n, err = m.LargestLocation.parse(v, data)
 	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	m.LargestObjectID, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return
+		return err
 	}
 	data = data[n:]
 
