@@ -176,9 +176,11 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
+			StartLocation: wire.Location{
+				Group:  0,
+				Object: 0,
+			},
+			EndGroup: 0,
 			Parameters: wire.Parameters{
 				wire.AuthorizationParameterKey: &wire.StringParameter{
 					Type:  wire.AuthorizationParameterKey,
@@ -230,9 +232,11 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
+			StartLocation: wire.Location{
+				Group:  0,
+				Object: 0,
+			},
+			EndGroup: 0,
 			Parameters: map[uint64]wire.Parameter{
 				2: &wire.StringParameter{
 					Type:  2,
@@ -297,10 +301,12 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			Parameters:         map[uint64]wire.Parameter{},
+			StartLocation: wire.Location{
+				Group:  0,
+				Object: 0,
+			},
+			EndGroup:   0,
+			Parameters: map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
 	})
@@ -341,10 +347,12 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
-			Parameters:         map[uint64]wire.Parameter{},
+			StartLocation: wire.Location{
+				Group:  0,
+				Object: 0,
+			},
+			EndGroup:   0,
+			Parameters: map[uint64]wire.Parameter{},
 		})
 		assert.NoError(t, err)
 	})
@@ -435,9 +443,11 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			FilterType:         0,
-			StartGroup:         0,
-			StartObject:        0,
-			EndGroup:           0,
+			StartLocation: wire.Location{
+				Group:  0,
+				Object: 0,
+			},
+			EndGroup: 0,
 			Parameters: map[uint64]wire.Parameter{
 				wire.AuthorizationParameterKey: &wire.StringParameter{
 					Type:  wire.AuthorizationParameterKey,

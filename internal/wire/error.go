@@ -8,6 +8,7 @@ var (
 	errDuplicateParameter       = errors.New("duplicated parameter")
 	errInvalidContentExistsByte = errors.New("invalid use of ContentExists byte")
 	errInvalidGroupOrder        = errors.New("invalid GroupOrder")
+	errInvalidForwardFlag       = errors.New("invalid Forward flag")
 	errLengthMismatch           = errors.New("length mismatch")
 	errInvalidFetchType         = errors.New("invalid fetch type")
 )

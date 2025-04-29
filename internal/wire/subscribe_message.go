@@ -12,18 +12,19 @@ import (
 type FilterType uint64
 
 const (
-	FilterTypeLatestGroup FilterType = iota + 1
-	FilterTypeLatestObject
-	FilterTypeAbsoluteStart
-	FilterTypeAbsoluteRange
+	FilterTypeLatestObject   FilterType = 0x02
+	FilterTypeNextGroupStart FilterType = 0x01
+	FilterTypeAbsoluteStart  FilterType = 0x03
+	FilterTypeAbsoluteRange  FilterType = 0x04
 )
 
+// make sure we always set a valid value instead of the zero value (0)
 func (f FilterType) append(buf []byte) []byte {
 	switch f {
-	case FilterTypeLatestGroup, FilterTypeLatestObject, FilterTypeAbsoluteStart, FilterTypeAbsoluteRange:
+	case FilterTypeLatestObject, FilterTypeNextGroupStart, FilterTypeAbsoluteStart, FilterTypeAbsoluteRange:
 		return quicvarint.Append(buf, uint64(f))
 	}
-	return quicvarint.Append(buf, uint64(FilterTypeLatestGroup))
+	return quicvarint.Append(buf, uint64(FilterTypeNextGroupStart))
 }
 
 type SubscribeMessage struct {
@@ -33,9 +34,9 @@ type SubscribeMessage struct {
 	TrackName          []byte
 	SubscriberPriority uint8
 	GroupOrder         uint8
+	Forward            uint8
 	FilterType         FilterType
-	StartGroup         uint64
-	StartObject        uint64
+	StartLocation      Location
 	EndGroup           uint64
 	Parameters         Parameters
 }
@@ -57,8 +58,8 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 	}
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
 		attrs = append(attrs,
-			slog.Uint64("start_group", m.StartGroup),
-			slog.Uint64("start_object", m.StartObject),
+			slog.Uint64("start_group", m.StartLocation.Group),
+			slog.Uint64("start_object", m.StartLocation.Object),
 		)
 	}
 	if m.FilterType == FilterTypeAbsoluteRange {
@@ -92,10 +93,10 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	buf = appendVarIntBytes(buf, m.TrackName)
 	buf = append(buf, m.SubscriberPriority)
 	buf = append(buf, m.GroupOrder)
+	buf = append(buf, m.Forward)
 	buf = m.FilterType.append(buf)
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
-		buf = quicvarint.Append(buf, m.StartGroup)
-		buf = quicvarint.Append(buf, m.StartObject)
+		buf = m.StartLocation.append(buf)
 	}
 	if m.FilterType == FilterTypeAbsoluteRange {
 		buf = quicvarint.Append(buf, m.EndGroup)
@@ -103,7 +104,7 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	return m.Parameters.append(buf)
 }
 
-func (m *SubscribeMessage) parse(_ Version, data []byte) (err error) {
+func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
@@ -129,7 +130,7 @@ func (m *SubscribeMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	if len(data) < 2 {
+	if len(data) < 3 {
 		return errLengthMismatch
 	}
 	m.SubscriberPriority = data[0]
@@ -137,7 +138,11 @@ func (m *SubscribeMessage) parse(_ Version, data []byte) (err error) {
 	if m.GroupOrder > 2 {
 		return errInvalidGroupOrder
 	}
-	data = data[2:]
+	m.Forward = data[2]
+	if m.Forward > 2 {
+		return errInvalidForwardFlag
+	}
+	data = data[3:]
 
 	filterType, n, err := quicvarint.Parse(data)
 	if err != nil {
@@ -150,13 +155,7 @@ func (m *SubscribeMessage) parse(_ Version, data []byte) (err error) {
 	data = data[n:]
 
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
-		m.StartGroup, n, err = quicvarint.Parse(data)
-		if err != nil {
-			return err
-		}
-		data = data[n:]
-
-		m.StartObject, n, err = quicvarint.Parse(data)
+		n, err = m.StartLocation.parse(v, data)
 		if err != nil {
 			return err
 		}
