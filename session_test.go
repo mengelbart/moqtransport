@@ -22,6 +22,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Perspective:                              perspective,
 		path:                                     "/path",
 		MaxSubscribeID:                           100,
+		rid:                                      newRequestID(perspective),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -362,11 +363,12 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceMessage{
+			RequestID:      2,
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
-				TrackNamespace: []string{"namespace"},
+				RequestID: 2,
 			})
 			assert.NoError(t, err)
 			return nil
@@ -383,16 +385,18 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		mh.EXPECT().enqueue(context.Background(), &Message{
-			Method:    MessageAnnounce,
-			Namespace: []string{"namespace"},
+			SubscribeID: 2,
+			Method:      MessageAnnounce,
+			Namespace:   []string{"namespace"},
 		}).DoAndReturn(func(_ context.Context, req *Message) error {
-			assert.NoError(t, s.acceptAnnouncement(req.Namespace))
+			assert.NoError(t, s.acceptAnnouncement(req.SubscribeID))
 			return nil
 		})
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceOkMessage{
-			TrackNamespace: []string{"namespace"},
+			RequestID: 2,
 		})
 		err := s.receive(&wire.AnnounceMessage{
+			RequestID:      2,
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		})

@@ -16,21 +16,23 @@ func TestAnnounceMessageAppend(t *testing.T) {
 	}{
 		{
 			am: AnnounceMessage{
+				RequestID:      0,
 				TrackNamespace: []string{""},
 				Parameters:     Parameters{},
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x01, 0x00, 0x00,
+				0x00, 0x01, 0x00, 0x00,
 			},
 		},
 		{
 			am: AnnounceMessage{
+				RequestID:      1,
 				TrackNamespace: []string{"tracknamespace"},
 				Parameters:     Parameters{},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -58,8 +60,9 @@ func TestParseAnnounceMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: append(append([]byte{0x01, 0x09}, "trackname"...), 0x00),
+			data: append(append([]byte{0x00, 0x01, 0x09}, "trackname"...), 0x00),
 			expect: &AnnounceMessage{
+				RequestID:      0,
 				TrackNamespace: []string{"trackname"},
 				Parameters:     Parameters{},
 			},

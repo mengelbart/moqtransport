@@ -2,21 +2,18 @@ package wire
 
 import (
 	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type AnnounceOkMessage struct {
-	TrackNamespace Tuple
+	RequestID uint64
 }
 
 func (m *AnnounceOkMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "announce_ok"),
-		slog.Any("track_namespace", m.TrackNamespace),
 	)
-}
-
-func (m AnnounceOkMessage) GetTrackNamespace() string {
-	return m.TrackNamespace.String()
 }
 
 func (m AnnounceOkMessage) Type() controlMessageType {
@@ -24,11 +21,10 @@ func (m AnnounceOkMessage) Type() controlMessageType {
 }
 
 func (m *AnnounceOkMessage) Append(buf []byte) []byte {
-	buf = m.TrackNamespace.append(buf)
-	return buf
+	return quicvarint.Append(buf, m.RequestID)
 }
 
 func (m *AnnounceOkMessage) parse(_ Version, data []byte) (err error) {
-	m.TrackNamespace, _, err = parseTuple(data)
+	m.RequestID, _, err = quicvarint.Parse(data)
 	return err
 }

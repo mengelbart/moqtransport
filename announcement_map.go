@@ -5,96 +5,71 @@ import (
 	"sync"
 )
 
+func findAnnouncement(as map[uint64]*announcement, namespace []string) *announcement {
+	for _, v := range as {
+		if slices.Equal(namespace, v.namespace) {
+			return v
+		}
+	}
+	return nil
+}
+
 type announcementMap struct {
 	lock          sync.Mutex
-	pending       []*announcement
-	announcements []*announcement
+	pending       map[uint64]*announcement
+	announcements map[uint64]*announcement
 }
 
 func newAnnouncementMap() *announcementMap {
 	return &announcementMap{
-		lock:    sync.Mutex{},
-		pending: []*announcement{},
+		lock:          sync.Mutex{},
+		pending:       map[uint64]*announcement{},
+		announcements: map[uint64]*announcement{},
 	}
-}
-
-func findAnnouncement(as []*announcement, namespace []string) int {
-	return slices.IndexFunc(as, func(x *announcement) bool {
-		return slices.Equal(namespace, x.namespace)
-	})
 }
 
 func (m *announcementMap) add(a *announcement) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncement(m.pending, a.namespace)
-	if i >= 0 {
-		return errDuplicateAnnouncementNamespace
-	}
-	m.pending = append(m.pending, a)
+	m.pending[a.requestID] = a
 	return nil
 }
 
-func (m *announcementMap) confirmAndGet(namespace []string) (*announcement, error) {
+func (m *announcementMap) confirmAndGet(rid uint64) (*announcement, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncement(m.pending, namespace)
-	if i < 0 {
+	a, ok := m.pending[rid]
+	if !ok {
 		return nil, errUnknownAnnouncement
 	}
-	e := m.pending[i]
-	m.pending = slices.Delete(m.pending, i, i+1)
-	i = findAnnouncement(m.announcements, e.namespace)
-	if i > 0 {
-		return nil, errDuplicateAnnouncementNamespace
-	}
-	m.announcements = append(m.announcements, e)
-	return e, nil
+	delete(m.pending, rid)
+	m.announcements[rid] = a
+	return a, nil
 }
 
-func (m *announcementMap) confirm(namespace []string) error {
+func (m *announcementMap) reject(rid uint64) (*announcement, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncement(m.pending, namespace)
-	if i < 0 {
-		return errUnknownAnnouncement
-	}
-	e := m.pending[i]
-	m.pending = slices.Delete(m.pending, i, i+1)
-
-	i = findAnnouncement(m.announcements, e.namespace)
-	if i > 0 {
-		return errDuplicateAnnouncementNamespace
-	}
-	m.announcements = append(m.announcements, e)
-	return nil
-}
-
-func (m *announcementMap) reject(namespace []string) (*announcement, bool) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	i := findAnnouncement(m.pending, namespace)
-	if i < 0 {
+	a, ok := m.pending[rid]
+	if !ok {
 		return nil, false
 	}
-	e := m.pending[i]
-	m.pending = slices.Delete(m.pending, i, i+1)
-	return e, true
+	delete(m.pending, rid)
+	return a, true
 }
 
 func (m *announcementMap) delete(namespace []string) bool {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	deleted := false
-	i := findAnnouncement(m.pending, namespace)
-	if i >= 0 {
-		m.pending = slices.Delete(m.pending, i, i+1)
-		deleted = true
+	a := findAnnouncement(m.pending, namespace)
+	if a != nil {
+		delete(m.pending, a.requestID)
+		return true
 	}
-	i = findAnnouncement(m.announcements, namespace)
-	if i < 0 {
-		m.announcements = slices.Delete(m.announcements, i, i+1)
-		deleted = true
+	a = findAnnouncement(m.announcements, namespace)
+	if a != nil {
+		delete(m.announcements, a.requestID)
+		return true
 	}
-	return deleted
+	return false
 }

@@ -16,32 +16,32 @@ func TestAnnounceErrorMessageAppend(t *testing.T) {
 	}{
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: []string{""},
-				ErrorCode:      0,
-				ReasonPhrase:   "",
+				RequestID:    0,
+				ErrorCode:    0,
+				ReasonPhrase: "",
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x01, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00,
 			},
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: []string{"trackname"},
-				ErrorCode:      1,
-				ReasonPhrase:   "reason",
+				RequestID:    1,
+				ErrorCode:    1,
+				ReasonPhrase: "reason",
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{0x01, 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
+			expect: append([]byte{0x01, 0x01, 0x06}, "reason"...),
 		},
 		{
 			aem: AnnounceErrorMessage{
-				TrackNamespace: []string{"trackname"},
-				ErrorCode:      1,
-				ReasonPhrase:   "reason",
+				RequestID:    1,
+				ErrorCode:    1,
+				ReasonPhrase: "reason",
 			},
 			buf:    []byte{0x0a, 0x0b, 0x0c, 0x0d},
-			expect: append(append([]byte{0x0a, 0x0b, 0x0c, 0x0d, 0x01, 0x09}, "trackname"...), append([]byte{0x01, 0x06}, "reason"...)...),
+			expect: append([]byte{0x0a, 0x0b, 0x0c, 0x0d, 0x01, 0x01, 0x06}, "reason"...),
 		},
 	}
 	for i, tc := range cases {
@@ -64,20 +64,20 @@ func TestParseAnnounceErrorMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x02, 'n', 's', 0x03},
+			data: []byte{0x01, 0x03, 0x03, 'e', 'r'},
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: []string{"ns"},
-				ErrorCode:      3,
-				ReasonPhrase:   "",
+				RequestID:    1,
+				ErrorCode:    3,
+				ReasonPhrase: "",
 			},
-			err: io.EOF,
+			err: io.ErrUnexpectedEOF,
 		},
 		{
-			data: append(append(append([]byte{0x01, 0x0e}, "tracknamespace"...), 0x01, 0x0d), "reason phrase"...),
+			data: append([]byte{0x00, 0x01, 0x0d}, "reason phrase"...),
 			expect: &AnnounceErrorMessage{
-				TrackNamespace: []string{"tracknamespace"},
-				ErrorCode:      1,
-				ReasonPhrase:   "reason phrase",
+				RequestID:    0,
+				ErrorCode:    1,
+				ReasonPhrase: "reason phrase",
 			},
 			err: nil,
 		},
