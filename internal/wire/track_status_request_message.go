@@ -4,11 +4,14 @@ import (
 	"log/slog"
 
 	"github.com/mengelbart/qlog"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type TrackStatusRequestMessage struct {
+	RequestID      uint64
 	TrackNamespace Tuple
-	TrackName      string
+	TrackName      []byte
+	Parameters     Parameters
 }
 
 func (m *TrackStatusRequestMessage) LogValue() slog.Value {
@@ -28,19 +31,32 @@ func (m TrackStatusRequestMessage) Type() controlMessageType {
 }
 
 func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespace.append(buf)
-	return appendVarIntBytes(buf, []byte(m.TrackName))
+	buf = appendVarIntBytes(buf, []byte(m.TrackName))
+	return m.Parameters.append(buf)
 }
 
 func (m *TrackStatusRequestMessage) parse(_ Version, data []byte) (err error) {
 	var n int
+	m.RequestID, n, err = quicvarint.Parse(data)
+	if err != nil {
+		return
+	}
+	data = data[n:]
+
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {
 		return
 	}
 	data = data[n:]
 
-	trackName, _, err := parseVarIntBytes(data)
-	m.TrackName = string(trackName)
-	return err
+	m.TrackName, n, err = parseVarIntBytes(data)
+	if err != nil {
+		return err
+	}
+	data = data[n:]
+
+	m.Parameters = Parameters{}
+	return m.Parameters.parseVersionSpecificParameters(data)
 }
