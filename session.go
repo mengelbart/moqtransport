@@ -507,10 +507,10 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 	}
 	tsrm := &wire.TrackStatusRequestMessage{
 		TrackNamespace: namespace,
-		TrackName:      track,
+		TrackName:      []byte(track),
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, tsrm); err != nil {
-		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.TrackNamespace, tsrm.TrackName)
+		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.TrackNamespace, string(tsrm.TrackName))
 		return nil, err
 	}
 	select {
@@ -955,7 +955,7 @@ func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) erro
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		Method:    MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
-		Track:     msg.TrackName,
+		Track:     string(msg.TrackName),
 	})
 }
 
