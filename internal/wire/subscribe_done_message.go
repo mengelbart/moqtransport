@@ -16,7 +16,7 @@ type SubscribeDoneMessage struct {
 func (m *SubscribeDoneMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "subscribe_done"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("status_code", m.StatusCode),
 		slog.Uint64("stream_count", m.StreamCount),
 		slog.String("reason", m.ReasonPhrase),

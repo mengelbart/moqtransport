@@ -20,7 +20,7 @@ type FetchOkMessage struct {
 func (m *FetchOkMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "fetch_ok"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Any("end_of_track", m.EndOfTrack),
 		slog.Uint64("largest_group_id", m.EndLocation.Group),

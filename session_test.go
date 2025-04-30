@@ -21,7 +21,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Protocol:                                 protocol,
 		Perspective:                              perspective,
 		path:                                     "/path",
-		MaxSubscribeID:                           100,
+		MaxRequestID:                             100,
 		rid:                                      newRequestID(perspective),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
@@ -49,9 +49,9 @@ func TestSession(t *testing.T) {
 						Name:  "path",
 						Value: "/path",
 					},
-					wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-						Type:  wire.MaxSubscribeIDParameterKey,
-						Name:  "max_subscribe_id",
+					wire.MaxRequestIDParameterKey: wire.VarintParameter{
+						Type:  wire.MaxRequestIDParameterKey,
+						Name:  "max_request_id",
 						Value: 100,
 					},
 				},
@@ -72,9 +72,9 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(), &wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Name:  "max_subscribe_id",
+				wire.MaxRequestIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxRequestIDParameterKey,
+					Name:  "max_request_id",
 					Value: 100,
 				},
 			},
@@ -97,9 +97,9 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Name:  "max_subscribe_id",
+				wire.MaxRequestIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxRequestIDParameterKey,
+					Name:  "max_request_id",
 					Value: 100,
 				},
 			},
@@ -128,9 +128,9 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Name:  "max_subscribe_id",
+				wire.MaxRequestIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxRequestIDParameterKey,
+					Name:  "max_request_id",
 					Value: 100,
 				},
 			},
@@ -139,9 +139,9 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxSubscribeIDParameterKey,
-					Name:  "max_subscribe_id",
+				wire.MaxRequestIDParameterKey: wire.VarintParameter{
+					Type:  wire.MaxRequestIDParameterKey,
+					Name:  "max_request_id",
 					Value: 100,
 				},
 			},
@@ -162,7 +162,7 @@ func TestSession(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects_subscribe_on_max_subscribe_id", func(t *testing.T) {
+	t.Run("rejects_subscribe_on_max_request_id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
 		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
@@ -205,7 +205,7 @@ func TestSession(t *testing.T) {
 			MaximumRequestID: 1,
 		}).Times(1)
 
-		s.remoteTracks.maxSubscribeID = 1
+		s.remoteTracks.maxRequestID = 1
 		close(s.handshakeDoneCh)
 		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
 		assert.NoError(t, err)
@@ -223,7 +223,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		s.remoteTracks.maxSubscribeID = 1
+		s.remoteTracks.maxRequestID = 1
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
@@ -410,7 +410,7 @@ func TestSession(t *testing.T) {
 		mp := NewMockObjectMessageParser(ctrl)
 
 		mp.EXPECT().Type().Return(wire.StreamTypeSubgroup).AnyTimes()
-		mp.EXPECT().SubscribeID().Return(uint64(0), nil).AnyTimes()
+		mp.EXPECT().RequestID().Return(uint64(0), nil).AnyTimes()
 		mp.EXPECT().TrackAlias().Return(uint64(0), nil).AnyTimes()
 
 		mp.EXPECT().Messages().Return(func(yield func(*wire.ObjectMessage, error) bool) {
@@ -431,7 +431,7 @@ func TestSession(t *testing.T) {
 		})
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		err := s.onMaxSubscribeID(&wire.MaxRequestIDMessage{
+		err := s.onMaxRequestID(&wire.MaxRequestIDMessage{
 			RequestID: 100,
 		})
 		assert.NoError(t, err)

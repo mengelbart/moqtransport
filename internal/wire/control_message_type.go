@@ -55,9 +55,9 @@ func (mt controlMessageType) String() string {
 		return "GoAwayMessage"
 
 	case messageTypeMaxRequestID:
-		return "MaxSubscribeIDMessage"
+		return "MaxRequestIDMessage"
 	case messageTypeRequestsBlocked:
-		return "SubscribesBlockedMessage"
+		return "RequestsBlockedMessage"
 
 	case messageTypeSubscribe:
 		return "SubscribeMessage"

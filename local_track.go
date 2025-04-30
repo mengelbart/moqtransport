@@ -22,7 +22,7 @@ type localTrack struct {
 	qlogger *qlog.Logger
 
 	conn            Connection
-	subscribeID     uint64
+	requestID       uint64
 	trackAlias      uint64
 	subgroupCount   uint64
 	fetchStreamLock sync.Mutex
@@ -32,12 +32,12 @@ type localTrack struct {
 	subscribeDone   subscribeDoneCallback
 }
 
-func newLocalTrack(conn Connection, subscribeID, trackAlias uint64, onSubscribeDone subscribeDoneCallback, qlogger *qlog.Logger) *localTrack {
+func newLocalTrack(conn Connection, requestID, trackAlias uint64, onSubscribeDone subscribeDoneCallback, qlogger *qlog.Logger) *localTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	lt := &localTrack{
 		qlogger:         qlogger,
 		conn:            conn,
-		subscribeID:     subscribeID,
+		requestID:       requestID,
 		trackAlias:      trackAlias,
 		subgroupCount:   0,
 		fetchStreamLock: sync.Mutex{},
@@ -63,7 +63,7 @@ func (p *localTrack) getFetchStream() (*FetchStream, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.fetchStream, err = newFetchStream(stream, p.subscribeID, p.qlogger)
+	p.fetchStream, err = newFetchStream(stream, p.requestID, p.qlogger)
 	if err != nil {
 		return nil, err
 	}

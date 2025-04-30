@@ -13,7 +13,7 @@ type UnsubscribeMessage struct {
 func (m *UnsubscribeMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "unsubscribe"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 	)
 }
 

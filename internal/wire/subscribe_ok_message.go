@@ -25,7 +25,7 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_ok"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("expires", uint64(m.Expires.Milliseconds())),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Int("content_exists", ce),
@@ -46,10 +46,6 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 
 	}
 	return slog.GroupValue(attrs...)
-}
-
-func (m SubscribeOkMessage) GetSubscribeID() uint64 {
-	return m.RequestID
 }
 
 func (m SubscribeOkMessage) Type() controlMessageType {

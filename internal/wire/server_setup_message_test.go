@@ -38,8 +38,8 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: Parameters{
-					MaxSubscribeIDParameterKey: VarintParameter{
-						Type:  MaxSubscribeIDParameterKey,
+					MaxRequestIDParameterKey: VarintParameter{
+						Type:  MaxRequestIDParameterKey,
 						Value: 2,
 					},
 				},

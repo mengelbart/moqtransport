@@ -35,7 +35,7 @@ type FetchMessage struct {
 func (m *FetchMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "fetch"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Uint64("fetch_type", m.FetchType),

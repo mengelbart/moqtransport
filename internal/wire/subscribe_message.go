@@ -44,7 +44,7 @@ type SubscribeMessage struct {
 func (m *SubscribeMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("track_alias", m.TrackAlias),
 		slog.Any("track_namespace", m.TrackNamespace),
 		slog.Any("track_name", qlog.RawInfo{
@@ -76,10 +76,6 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 		)
 	}
 	return slog.GroupValue(attrs...)
-}
-
-func (m SubscribeMessage) GetSubscribeID() uint64 {
-	return m.RequestID
 }
 
 func (m SubscribeMessage) Type() controlMessageType {

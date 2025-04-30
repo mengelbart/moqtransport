@@ -13,7 +13,7 @@ type RequestsBlockedMessage struct {
 func (m *RequestsBlockedMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "subscribes_blocked"),
-		slog.Uint64("max_subscribe_id", m.MaximumRequestID),
+		slog.Uint64("max_request_id", m.MaximumRequestID),
 	)
 }
 

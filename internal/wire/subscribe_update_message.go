@@ -20,7 +20,7 @@ type SubscribeUpdateMessage struct {
 func (m *SubscribeUpdateMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_update"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("start_group", m.StartLocation.Group),
 		slog.Uint64("start_object", m.StartLocation.Object),
 		slog.Uint64("end_group", m.EndGroup),

@@ -21,13 +21,13 @@ func newLocalTrackMap() *localTrackMap {
 func (m *localTrackMap) addPending(lt *localTrack) bool {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	if _, ok := m.pending[lt.subscribeID]; ok {
+	if _, ok := m.pending[lt.requestID]; ok {
 		return false
 	}
-	if _, ok := m.open[lt.subscribeID]; ok {
+	if _, ok := m.open[lt.requestID]; ok {
 		return false
 	}
-	m.pending[lt.subscribeID] = lt
+	m.pending[lt.requestID] = lt
 	return true
 }
 

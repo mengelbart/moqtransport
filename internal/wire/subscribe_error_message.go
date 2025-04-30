@@ -17,7 +17,7 @@ type SubscribeErrorMessage struct {
 func (m *SubscribeErrorMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "subscribe_error"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.Uint64("track_alias", m.TrackAlias),
 		slog.Any("reason_phrase", qlog.RawInfo{
@@ -26,10 +26,6 @@ func (m *SubscribeErrorMessage) LogValue() slog.Value {
 			Data:          []byte(m.ReasonPhrase),
 		}),
 	)
-}
-
-func (m SubscribeErrorMessage) GetSubscribeID() uint64 {
-	return m.RequestID
 }
 
 func (m SubscribeErrorMessage) Type() controlMessageType {
