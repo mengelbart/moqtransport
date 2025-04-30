@@ -95,7 +95,8 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	requestID *requestID
+	requestID              *requestID
+	highestRequestsBlocked atomic.Uint64
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
@@ -103,9 +104,8 @@ type Session struct {
 	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
 	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
 
-	highestSubscribesBlocked atomic.Uint64
-	remoteTracks             *remoteTrackMap
-	localTracks              *localTrackMap
+	remoteTracks *remoteTrackMap
+	localTracks  *localTrackMap
 
 	outgoingTrackStatusRequests *trackStatusRequestMap
 }
@@ -126,7 +126,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		highestSubscribesBlocked:                 atomic.Uint64{},
+		highestRequestsBlocked:                   atomic.Uint64{},
 		remoteTracks:                             newRemoteTrackMap(0),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
@@ -291,7 +291,7 @@ func (s *Session) Subscribe(
 	if err != nil {
 		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxRequestID)
+			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
 			if previous < tooManySubscribes.maxRequestID {
 				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
 					MaximumRequestID: tooManySubscribes.maxRequestID,
@@ -411,7 +411,7 @@ func (s *Session) Fetch(
 	if err != nil {
 		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxRequestID)
+			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
 			if previous < tooManySubscribes.maxRequestID {
 				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
 					MaximumRequestID: tooManySubscribes.maxRequestID,
