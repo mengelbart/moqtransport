@@ -19,8 +19,9 @@ const (
 	Draft_ietf_moq_transport_07 Version = 0xff000007
 	Draft_ietf_moq_transport_08 Version = 0xff000008
 	Draft_ietf_moq_transport_10 Version = 0xff00000a
+	Draft_ietf_moq_transport_11 Version = 0xff00000b
 
-	CurrentVersion = Draft_ietf_moq_transport_10
+	CurrentVersion = Draft_ietf_moq_transport_11
 )
 
 var SupportedVersions = []Version{CurrentVersion}
