@@ -15,41 +15,26 @@ func (e errRequestsBlocked) Error() string {
 }
 
 var (
-	errMaxTrackAliasReached   = errors.New("max track alias reached")
 	errDuplicateRequestIDBug  = errors.New("internal error: duplicate request ID")
 	errDuplicateTrackAliasBug = errors.New("internal error: duplicate track alias")
 )
 
 type remoteTrackMap struct {
 	lock                  sync.Mutex
-	maxRequestID          uint64
-	nextRequestID         uint64
 	nextTrackAlias        uint64
 	pending               map[uint64]*RemoteTrack
 	open                  map[uint64]*RemoteTrack
 	trackAliasToRequestID map[uint64]uint64
 }
 
-func newRemoteTrackMap(maxID uint64) *remoteTrackMap {
+func newRemoteTrackMap() *remoteTrackMap {
 	return &remoteTrackMap{
 		lock:                  sync.Mutex{},
-		maxRequestID:          maxID,
-		nextRequestID:         0,
 		nextTrackAlias:        0,
 		pending:               map[uint64]*RemoteTrack{},
 		open:                  map[uint64]*RemoteTrack{},
 		trackAliasToRequestID: map[uint64]uint64{},
 	}
-}
-
-func (m *remoteTrackMap) updateMaxRequestID(next uint64) error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-	if m.maxRequestID > 0 && next <= m.maxRequestID {
-		return errMaxRequestIDDecreased
-	}
-	m.maxRequestID = next
-	return nil
 }
 
 func (m *remoteTrackMap) findByRequestID(id uint64) (*RemoteTrack, bool) {
@@ -65,75 +50,36 @@ func (m *remoteTrackMap) findByRequestID(id uint64) (*RemoteTrack, bool) {
 	return sub, true
 }
 
-// newID generates the next request ID. It must be called while holding the
-// lock.
-func (m *remoteTrackMap) newID() (uint64, error) {
-	if m.nextRequestID >= m.maxRequestID {
-		return 0, errRequestsBlocked{
-			maxRequestID: m.maxRequestID,
-		}
-	}
-	id := m.nextRequestID
-	m.nextRequestID++
-	return id, nil
-}
-
-// newAlias generates the next track alias. It must be called while holding the
-// lock.
-func (m *remoteTrackMap) newAlias() (uint64, error) {
-	if m.nextTrackAlias >= maxVarint {
-		return 0, errMaxTrackAliasReached
-	}
-	alias := m.nextTrackAlias
-	m.nextTrackAlias++
-	return alias, nil
-}
-
-func (m *remoteTrackMap) addPending(rt *RemoteTrack) (id uint64, err error) {
+func (m *remoteTrackMap) addPending(requestID uint64, rt *RemoteTrack) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	id, err = m.newID()
-	if err != nil {
-		return 0, err
-	}
-	if _, ok := m.pending[id]; ok {
+	if _, ok := m.pending[requestID]; ok {
 		// Should never happen
-		return 0, errDuplicateRequestIDBug
+		return errDuplicateRequestIDBug
 	}
-	if _, ok := m.open[id]; ok {
+	if _, ok := m.open[requestID]; ok {
 		// Should never happen
-		return 0, errDuplicateRequestIDBug
+		return errDuplicateRequestIDBug
 	}
-	m.pending[id] = rt
-	return id, nil
+	m.pending[requestID] = rt
+	return nil
 }
 
-func (m *remoteTrackMap) addPendingWithAlias(rt *RemoteTrack) (id, alias uint64, err error) {
+func (m *remoteTrackMap) addPendingWithAlias(requestID, alias uint64, rt *RemoteTrack) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	id, err = m.newID()
-	if err != nil {
-		return 0, 0, err
+	if _, ok := m.pending[requestID]; ok {
+		return errDuplicateRequestIDBug
 	}
-	alias, err = m.newAlias()
-	if err != nil {
-		return 0, 0, err
-	}
-	if _, ok := m.pending[id]; ok {
-		// Should never happen
-		return 0, 0, errDuplicateRequestIDBug
-	}
-	if _, ok := m.open[id]; ok {
-		// Should never happen
-		return 0, 0, errDuplicateRequestIDBug
+	if _, ok := m.open[requestID]; ok {
+		return errDuplicateRequestIDBug
 	}
 	if _, ok := m.trackAliasToRequestID[alias]; ok {
-		// Should never happen
-		return 0, 0, errDuplicateTrackAliasBug
+		return errDuplicateTrackAliasBug
 	}
-	m.pending[id] = rt
-	m.trackAliasToRequestID[alias] = id
-	return id, alias, nil
+	m.pending[requestID] = rt
+	m.trackAliasToRequestID[alias] = requestID
+	return nil
 }
 
 func (m *remoteTrackMap) confirm(id uint64) (*RemoteTrack, bool) {

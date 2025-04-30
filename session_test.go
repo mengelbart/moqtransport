@@ -12,7 +12,7 @@ import (
 )
 
 func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlMessageQueue[*Message], protocol Protocol, perspective Perspective) *Session {
-	return &Session{
+	s := &Session{
 		logger:                                   defaultLogger,
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         queue,
@@ -21,17 +21,21 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Protocol:                                 protocol,
 		Perspective:                              perspective,
 		path:                                     "/path",
-		MaxRequestID:                             100,
-		requestID:                                newRequestID(perspective),
+		requestID:                                newSequence(uint64(perspective), 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestRequestsBlocked:                   atomic.Uint64{},
-		remoteTracks:                             newRemoteTrackMap(0),
+		remoteTracks:                             newRemoteTrackMap(),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
+		localMaxRequestID:                        atomic.Uint64{},
+		remoteMaxRequestID:                       atomic.Uint64{},
+		trackAlias:                               newSequence(0, 1),
 	}
+	s.localMaxRequestID.Store(100)
+	return s
 }
 
 func TestSession(t *testing.T) {
@@ -205,7 +209,7 @@ func TestSession(t *testing.T) {
 			MaximumRequestID: 1,
 		}).Times(1)
 
-		s.remoteTracks.maxRequestID = 1
+		s.remoteMaxRequestID.Store(1)
 		close(s.handshakeDoneCh)
 		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
 		assert.NoError(t, err)
@@ -223,7 +227,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		s.remoteTracks.maxRequestID = 1
+		s.remoteMaxRequestID.Store(1)
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
@@ -363,12 +367,12 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceMessage{
-			RequestID:      2,
+			RequestID:      0,
 			TrackNamespace: []string{"namespace"},
 			Parameters:     map[uint64]wire.Parameter{},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
-				RequestID: 2,
+				RequestID: 0,
 			})
 			assert.NoError(t, err)
 			return nil

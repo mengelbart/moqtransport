@@ -81,9 +81,8 @@ func (q *queue[T]) dequeue(ctx context.Context) (T, error) {
 
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
-	Protocol     Protocol
-	Perspective  Perspective
-	MaxRequestID uint64
+	Protocol    Protocol
+	Perspective Perspective
 
 	logger *slog.Logger
 
@@ -95,7 +94,10 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	requestID              *requestID
+	localMaxRequestID  atomic.Uint64
+	remoteMaxRequestID atomic.Uint64
+
+	requestID              *sequence
 	highestRequestsBlocked atomic.Uint64
 
 	outgoingAnnouncements *announcementMap
@@ -104,6 +106,7 @@ type Session struct {
 	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
 	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
 
+	trackAlias   *sequence
 	remoteTracks *remoteTrackMap
 	localTracks  *localTrackMap
 
@@ -111,26 +114,30 @@ type Session struct {
 }
 
 func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64) *Session {
-	return &Session{
+	s := &Session{
 		Protocol:                                 proto,
 		Perspective:                              perspective,
-		MaxRequestID:                             initMaxRequestID,
 		logger:                                   defaultLogger.With("perspective", perspective),
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
 		path:                                     "",
-		requestID:                                newRequestID(perspective),
+		requestID:                                newSequence(uint64(perspective), 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestRequestsBlocked:                   atomic.Uint64{},
-		remoteTracks:                             newRemoteTrackMap(0),
+		trackAlias:                               newSequence(0, 1),
+		remoteTracks:                             newRemoteTrackMap(),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
+		localMaxRequestID:                        atomic.Uint64{},
+		remoteMaxRequestID:                       atomic.Uint64{},
 	}
+	s.localMaxRequestID.Store(initMaxRequestID)
+	return s
 }
 
 func (s *Session) sendControlMessage(ctx context.Context) (wire.ControlMessage, error) {
@@ -198,14 +205,16 @@ func (s *Session) receiveDatagram(msg *wire.ObjectMessage) error {
 }
 
 func (s *Session) addLocalTrack(lt *localTrack) error {
-	if lt.requestID >= s.MaxRequestID {
+	if lt.requestID >= s.localMaxRequestID.Load() {
 		return errMaxRequestIDViolated
 	}
 	// Update max request ID for peer
-	if lt.requestID >= s.MaxRequestID/2 {
-		s.MaxRequestID *= 2
+	oldMax := s.localMaxRequestID.Load()
+	if lt.requestID >= oldMax/2 {
+		newMax := 2 * oldMax
+		s.localMaxRequestID.CompareAndSwap(oldMax, newMax)
 		if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.MaxRequestIDMessage{
-			RequestID: s.MaxRequestID,
+			RequestID: newMax,
 		}); err != nil {
 			s.logger.Warn("skipping sending of max_request_id due to control message queue overflow")
 		}
@@ -258,7 +267,7 @@ func (s *Session) sendClientSetup() error {
 		wire.MaxRequestIDParameterKey: wire.VarintParameter{
 			Type:  wire.MaxRequestIDParameterKey,
 			Name:  "max_request_id",
-			Value: s.MaxRequestID,
+			Value: s.localMaxRequestID.Load(),
 		},
 	}
 	if s.Protocol == ProtocolQUIC {
@@ -286,28 +295,35 @@ func (s *Session) Subscribe(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	rt := newRemoteTrack()
-	id, alias, err := s.remoteTracks.addPendingWithAlias(rt)
-	if err != nil {
-		var tooManySubscribes errRequestsBlocked
-		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
-			if previous < tooManySubscribes.maxRequestID {
-				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
-					MaximumRequestID: tooManySubscribes.maxRequestID,
-				}); queueErr != nil {
-					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
-				}
+	requestID := s.requestID.next()
+
+	// TODO: Verify this logic works correctly (or just use mutex for
+	// highestRequestsBlocked?)
+	remoteMax := s.remoteMaxRequestID.Load()
+	if requestID > remoteMax {
+		highestBlocked := s.highestRequestsBlocked.Load()
+		if highestBlocked < remoteMax && s.highestRequestsBlocked.CompareAndSwap(highestBlocked, remoteMax) {
+			if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
+				MaximumRequestID: remoteMax,
+			}); queueErr != nil {
+				s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
 			}
 		}
+		return nil, errRequestsBlocked{
+			maxRequestID: remoteMax,
+		}
+	}
+
+	rt := newRemoteTrack(requestID, func() error {
+		return s.unsubscribe(requestID)
+	})
+	trackAlias := s.trackAlias.next()
+	if err := s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
-	rt.onUnsubscribe(func() error {
-		return s.unsubscribe(id)
-	})
 	cm := &wire.SubscribeMessage{
-		RequestID:          id,
-		TrackAlias:         alias,
+		RequestID:          requestID,
+		TrackAlias:         trackAlias,
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
 		SubscriberPriority: 0,
@@ -327,17 +343,18 @@ func (s *Session) Subscribe(
 			Value: auth,
 		}
 	}
-	if err = s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		return nil, err
 	}
 
+	var err error
 	select {
 	case <-ctx.Done():
 		err = context.Cause(ctx)
 	case err = <-rt.responseChan:
 	}
 	if err != nil {
-		s.remoteTracks.reject(id)
+		s.remoteTracks.reject(requestID)
 		if closeErr := rt.Close(); closeErr != nil {
 			return nil, errors.Join(err, closeErr)
 		}
@@ -406,9 +423,11 @@ func (s *Session) Fetch(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	rt := newRemoteTrack()
-	id, err := s.remoteTracks.addPending(rt)
-	if err != nil {
+	requestID := s.requestID.next()
+	rt := newRemoteTrack(requestID, func() error {
+		return s.fetchCancel(requestID)
+	})
+	if err := s.remoteTracks.addPending(requestID, rt); err != nil {
 		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
@@ -422,11 +441,8 @@ func (s *Session) Fetch(
 		}
 		return nil, err
 	}
-	rt.onUnsubscribe(func() error {
-		return s.fetchCancel(id)
-	})
 	cm := &wire.FetchMessage{
-		RequestID:            id,
+		RequestID:            requestID,
 		SubscriberPriority:   0,
 		GroupOrder:           0,
 		FetchType:            wire.FetchTypeStandalone,
@@ -440,17 +456,18 @@ func (s *Session) Fetch(
 		PrecedingGroupOffset: 0,
 		Parameters:           map[uint64]wire.Parameter{},
 	}
-	if err = s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
-		_, _ = s.remoteTracks.reject(id)
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+		_, _ = s.remoteTracks.reject(requestID)
 		return nil, err
 	}
+	var err error
 	select {
 	case <-ctx.Done():
 		err = context.Cause(ctx)
 	case err = <-rt.responseChan:
 	}
 	if err != nil {
-		s.remoteTracks.reject(id)
+		s.remoteTracks.reject(requestID)
 		if closeErr := rt.Close(); closeErr != nil {
 			return nil, errors.Join(err, closeErr)
 		}
@@ -766,9 +783,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		return err
 	}
 	if remoteMaxRequestID > 0 {
-		if err = s.remoteTracks.updateMaxRequestID(remoteMaxRequestID); err != nil {
-			return err
-		}
+		s.remoteMaxRequestID.Store(remoteMaxRequestID)
 	}
 
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
@@ -801,9 +816,7 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	if err != nil {
 		return err
 	}
-	if err = s.remoteTracks.updateMaxRequestID(remoteMaxRequestID); err != nil {
-		return err
-	}
+	s.remoteMaxRequestID.Store(remoteMaxRequestID)
 	close(s.handshakeDoneCh)
 	return nil
 }
@@ -816,7 +829,11 @@ func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
 }
 
 func (s *Session) onMaxRequestID(msg *wire.MaxRequestIDMessage) error {
-	return s.remoteTracks.updateMaxRequestID(msg.RequestID)
+	old := s.remoteMaxRequestID.Swap(msg.RequestID)
+	if old >= msg.RequestID {
+		return errMaxRequestIDDecreased
+	}
+	return nil
 }
 
 func (s *Session) onRequestsBlocked(msg *wire.RequestsBlockedMessage) error {
