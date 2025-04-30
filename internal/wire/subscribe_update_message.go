@@ -10,10 +10,10 @@ import (
 
 type SubscribeUpdateMessage struct {
 	RequestID          uint64
-	StartGroup         uint64
-	StartObject        uint64
+	StartLocation      Location
 	EndGroup           uint64
 	SubscriberPriority uint8
+	Forward            uint8
 	Parameters         Parameters
 }
 
@@ -21,8 +21,8 @@ func (m *SubscribeUpdateMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_update"),
 		slog.Uint64("subscribe_id", m.RequestID),
-		slog.Uint64("start_group", m.StartGroup),
-		slog.Uint64("start_object", m.StartObject),
+		slog.Uint64("start_group", m.StartLocation.Group),
+		slog.Uint64("start_object", m.StartLocation.Object),
 		slog.Uint64("end_group", m.EndGroup),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
 		slog.Uint64("number_of_parameters", uint64(len(m.Parameters))),
@@ -41,14 +41,14 @@ func (m SubscribeUpdateMessage) Type() controlMessageType {
 
 func (m *SubscribeUpdateMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
-	buf = quicvarint.Append(buf, m.StartGroup)
-	buf = quicvarint.Append(buf, m.StartObject)
+	buf = m.StartLocation.append(buf)
 	buf = quicvarint.Append(buf, m.EndGroup)
 	buf = append(buf, m.SubscriberPriority)
+	buf = append(buf, m.Forward)
 	return m.Parameters.append(buf)
 }
 
-func (m *SubscribeUpdateMessage) parse(_ Version, data []byte) (err error) {
+func (m *SubscribeUpdateMessage) parse(v Version, data []byte) (err error) {
 	var n int
 
 	m.RequestID, n, err = quicvarint.Parse(data)
@@ -57,13 +57,7 @@ func (m *SubscribeUpdateMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.StartGroup, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.StartObject, n, err = quicvarint.Parse(data)
+	n, err = m.StartLocation.parse(v, data)
 	if err != nil {
 		return err
 	}
@@ -75,11 +69,15 @@ func (m *SubscribeUpdateMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	if len(data) == 0 {
+	if len(data) < 2 {
 		return errLengthMismatch
 	}
 	m.SubscriberPriority = data[0]
-	data = data[1:]
+	m.Forward = data[1]
+	if m.Forward > 2 {
+		return errInvalidForwardFlag
+	}
+	data = data[2:]
 
 	m.Parameters = Parameters{}
 	return m.Parameters.parseVersionSpecificParameters(data)
