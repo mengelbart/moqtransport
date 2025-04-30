@@ -95,7 +95,7 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	rid *requestID
+	requestID *requestID
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
@@ -121,7 +121,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
 		path:                                     "",
-		rid:                                      newRequestID(perspective),
+		requestID:                                newRequestID(perspective),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -500,7 +500,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		return nil, err
 	}
 	tsr := &trackStatusRequest{
-		requestID: s.rid.next(),
+		requestID: s.requestID.next(),
 		namespace: namespace,
 		trackname: track,
 		response:  make(chan *TrackStatus, 1),
@@ -542,7 +542,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	a := &announcement{
-		requestID:  s.rid.next(),
+		requestID:  s.requestID.next(),
 		namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 		response:   make(chan error, 1),
@@ -622,7 +622,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		return err
 	}
 	as := &announcementSubscription{
-		requestID: s.rid.next(),
+		requestID: s.requestID.next(),
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
 	}

@@ -47,10 +47,10 @@ func (m *announcementSubscriptionMap) delete(namespace []string) (*announcementS
 	return nil, false
 }
 
-func (m *announcementSubscriptionMap) deleteByID(rid uint64) (*announcementSubscription, bool) {
+func (m *announcementSubscriptionMap) deleteByID(requestID uint64) (*announcementSubscription, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	as, ok := m.as[rid]
-	delete(m.as, rid)
+	as, ok := m.as[requestID]
+	delete(m.as, requestID)
 	return as, ok
 }

@@ -22,7 +22,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Perspective:                              perspective,
 		path:                                     "/path",
 		MaxRequestID:                             100,
-		rid:                                      newRequestID(perspective),
+		requestID:                                newRequestID(perspective),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
