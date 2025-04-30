@@ -23,8 +23,8 @@ type announcementMap struct {
 func newAnnouncementMap() *announcementMap {
 	return &announcementMap{
 		lock:          sync.Mutex{},
-		pending:       map[uint64]*announcement{},
-		announcements: map[uint64]*announcement{},
+		pending:       make(map[uint64]*announcement),
+		announcements: make(map[uint64]*announcement),
 	}
 }
 
