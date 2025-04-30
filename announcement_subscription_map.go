@@ -7,31 +7,30 @@ import (
 
 type announcementSubscriptionMap struct {
 	lock sync.Mutex
-	as   []*announcementSubscription
+	as   map[uint64]*announcementSubscription
 }
 
 func newAnnouncementSubscriptionMap() *announcementSubscriptionMap {
 	return &announcementSubscriptionMap{
 		lock: sync.Mutex{},
-		as:   []*announcementSubscription{},
+		as:   make(map[uint64]*announcementSubscription),
 	}
 }
 
-func findAnnouncementSubscription(as []*announcementSubscription, namespace []string) int {
-	return slices.IndexFunc(as, func(x *announcementSubscription) bool {
-		return slices.Equal(namespace, x.namespace)
-	})
+func findAnnouncementSubscription(as map[uint64]*announcementSubscription, namespace []string) *announcementSubscription {
+	for _, v := range as {
+		if slices.Equal(namespace, v.namespace) {
+			return v
+		}
+	}
+	return nil
 }
 
 // add returns an error if the entry is already present
 func (m *announcementSubscriptionMap) add(a *announcementSubscription) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncementSubscription(m.as, a.namespace)
-	if i >= 0 {
-		return errDuplicateAnnouncementNamespace
-	}
-	m.as = append(m.as, a)
+	m.as[a.requestID] = a
 	return nil
 }
 
@@ -40,11 +39,18 @@ func (m *announcementSubscriptionMap) add(a *announcementSubscription) error {
 func (m *announcementSubscriptionMap) delete(namespace []string) (*announcementSubscription, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	i := findAnnouncementSubscription(m.as, namespace)
-	if i < 0 {
-		return nil, false
+	as := findAnnouncementSubscription(m.as, namespace)
+	if as != nil {
+		delete(m.as, as.requestID)
+		return as, true
 	}
-	e := m.as[i]
-	m.as = slices.Delete(m.as, i, i+1)
-	return e, true
+	return nil, false
+}
+
+func (m *announcementSubscriptionMap) deleteByID(rid uint64) (*announcementSubscription, bool) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	as, ok := m.as[rid]
+	delete(m.as, rid)
+	return as, ok
 }

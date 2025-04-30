@@ -2,17 +2,18 @@ package wire
 
 import (
 	"log/slog"
+
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 // TODO: Add tests
 type SubscribeAnnouncesOkMessage struct {
-	TrackNamespacePrefix Tuple
+	RequestID uint64
 }
 
 func (m *SubscribeAnnouncesOkMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "subscribe_announces_ok"),
-		slog.Any("track_namespace_prefix", m.TrackNamespacePrefix),
 	)
 }
 
@@ -21,10 +22,10 @@ func (m SubscribeAnnouncesOkMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeAnnouncesOkMessage) Append(buf []byte) []byte {
-	return m.TrackNamespacePrefix.append(buf)
+	return quicvarint.Append(buf, m.RequestID)
 }
 
 func (m *SubscribeAnnouncesOkMessage) parse(_ Version, data []byte) (err error) {
-	m.TrackNamespacePrefix, _, err = parseTuple(data)
+	m.RequestID, _, err = quicvarint.Parse(data)
 	return err
 }

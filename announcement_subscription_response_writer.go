@@ -1,17 +1,17 @@
 package moqtransport
 
 type announcementSubscriptionResponseWriter struct {
-	prefix  []string
-	session *Session
-	handled bool
+	requestID uint64
+	session   *Session
+	handled   bool
 }
 
 func (a *announcementSubscriptionResponseWriter) Accept() error {
 	a.handled = true
-	return a.session.acceptAnnouncementSubscription(a.prefix)
+	return a.session.acceptAnnouncementSubscription(a.requestID)
 }
 
 func (a *announcementSubscriptionResponseWriter) Reject(code uint64, reason string) error {
 	a.handled = true
-	return a.session.rejectAnnouncementSubscription(a.prefix, code, reason)
+	return a.session.rejectAnnouncementSubscription(a.requestID, code, reason)
 }

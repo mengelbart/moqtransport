@@ -8,15 +8,14 @@ import (
 
 // TODO: Add tests
 type SubscribeAnnouncesErrorMessage struct {
-	TrackNamespacePrefix Tuple
-	ErrorCode            uint64
-	ReasonPhrase         string
+	RequestID    uint64
+	ErrorCode    uint64
+	ReasonPhrase string
 }
 
 func (m *SubscribeAnnouncesErrorMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "subscribe_announces_error"),
-		slog.Any("track_namespace_prefix", m.TrackNamespacePrefix),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.String("reason", m.ReasonPhrase),
 	)
@@ -27,14 +26,14 @@ func (m SubscribeAnnouncesErrorMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeAnnouncesErrorMessage) Append(buf []byte) []byte {
-	buf = m.TrackNamespacePrefix.append(buf)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.ErrorCode)
 	return appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 }
 
 func (m *SubscribeAnnouncesErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.TrackNamespacePrefix, n, err = parseTuple(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
