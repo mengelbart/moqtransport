@@ -82,21 +82,17 @@ func (e ProtocolError) Code() uint64 {
 }
 
 var (
-	errDuplicateSubscribeID = ProtocolError{
+	errDuplicateRequestID = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
-		message: "duplicate subscribe ID",
+		message: "duplicate request ID",
 	}
-	errMaxSubscribeIDDecreased = ProtocolError{
+	errMaxRequestIDDecreased = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
-		message: "max subscribe ID decreased",
+		message: "max request ID decreased",
 	}
-	errUnknownSubscribeID = ProtocolError{
+	errUnknownRequestID = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
-		message: "unknown subscribe ID",
-	}
-	errDuplicateAnnouncementNamespace = ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: "duplicate announcement namespace",
+		message: "unknown request ID",
 	}
 	errUnknownAnnouncement = ProtocolError{
 		code:    ErrorCodeProtocolViolation,

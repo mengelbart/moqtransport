@@ -65,7 +65,7 @@ func (t *Transport) handleSubscription(m *Message) {
 	}, t.Qlogger)
 
 	if err := t.Session.addLocalTrack(lt); err != nil {
-		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
+		if err == errMaxRequestIDViolated || err == errDuplicateRequestID {
 			t.handleProtocolViolation(err)
 			return
 		}
@@ -94,7 +94,7 @@ func (t *Transport) handleSubscription(m *Message) {
 func (t *Transport) handleFetch(m *Message) {
 	lt := newLocalTrack(t.Conn, m.RequestID, m.TrackAlias, nil, t.Qlogger)
 	if err := t.Session.addLocalTrack(lt); err != nil {
-		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
+		if err == errMaxRequestIDViolated || err == errDuplicateRequestID {
 			t.handleProtocolViolation(err)
 			return
 		}

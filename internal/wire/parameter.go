@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	PathParameterKey           = 0x01
-	MaxSubscribeIDParameterKey = 0x02
+	PathParameterKey         = 0x01
+	MaxRequestIDParameterKey = 0x02
 )
 
 const (
@@ -32,9 +32,9 @@ var setupParameterParsers = map[uint64]parameterParser{
 		parse: parseStringParameter,
 		name:  "path",
 	},
-	MaxSubscribeIDParameterKey: {
+	MaxRequestIDParameterKey: {
 		parse: parseVarintParameter,
-		name:  "max_subscribe_id",
+		name:  "max_request_id",
 	},
 }
 

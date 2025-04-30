@@ -24,7 +24,7 @@ type ObjectStreamParser struct {
 	reader messageReader
 	typ    StreamType
 
-	subscribeID       uint64
+	requestID         uint64
 	trackAlias        uint64
 	PublisherPriority uint8
 	GroupID           uint64
@@ -42,11 +42,11 @@ func (p *ObjectStreamParser) TrackAlias() (uint64, error) {
 	return p.trackAlias, nil
 }
 
-func (p *ObjectStreamParser) SubscribeID() (uint64, error) {
+func (p *ObjectStreamParser) RequestID() (uint64, error) {
 	if p.typ != StreamTypeFetch {
-		return 0, errors.New("only fetch streams have a subscribe ID")
+		return 0, errors.New("only fetch streams have a request ID")
 	}
-	return p.subscribeID, nil
+	return p.requestID, nil
 }
 
 func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (*ObjectStreamParser, error) {
@@ -81,7 +81,7 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			streamID:          streamID,
 			reader:            br,
 			typ:               typ,
-			subscribeID:       fhm.RequestID,
+			requestID:         fhm.RequestID,
 			trackAlias:        0,
 			PublisherPriority: 0,
 			GroupID:           0,
@@ -98,7 +98,7 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			streamID:          streamID,
 			reader:            br,
 			typ:               typ,
-			subscribeID:       0,
+			requestID:         0,
 			trackAlias:        shsm.TrackAlias,
 			PublisherPriority: shsm.PublisherPriority,
 			GroupID:           shsm.GroupID,

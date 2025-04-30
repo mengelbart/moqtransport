@@ -14,7 +14,7 @@ type FetchCancelMessage struct {
 func (m *FetchCancelMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "fetch_cancel"),
-		slog.Uint64("subscribe_id", m.RequestID),
+		slog.Uint64("request_id", m.RequestID),
 	)
 }
 

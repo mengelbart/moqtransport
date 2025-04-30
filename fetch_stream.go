@@ -11,9 +11,9 @@ type FetchStream struct {
 	qlogger *qlog.Logger
 }
 
-func newFetchStream(stream SendStream, subscribeID uint64, qlogger *qlog.Logger) (*FetchStream, error) {
+func newFetchStream(stream SendStream, requestID uint64, qlogger *qlog.Logger) (*FetchStream, error) {
 	fhm := &wire.FetchHeaderMessage{
-		RequestID: subscribeID,
+		RequestID: requestID,
 	}
 	buf := make([]byte, 0, 24)
 	buf = fhm.Append(buf)

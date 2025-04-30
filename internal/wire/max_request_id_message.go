@@ -13,8 +13,8 @@ type MaxRequestIDMessage struct {
 
 func (m *MaxRequestIDMessage) LogValue() slog.Value {
 	return slog.GroupValue(
-		slog.String("type", "max_subscribe_id"),
-		slog.Uint64("max_subscribe_id", m.RequestID),
+		slog.String("type", "max_request_id"),
+		slog.Uint64("max_request_id", m.RequestID),
 	)
 }
 

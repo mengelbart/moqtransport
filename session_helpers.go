@@ -45,16 +45,16 @@ func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool)
 	return pathParamValue.Value, nil
 }
 
-func validateMaxSubscribeIDParameter(setupParameters wire.Parameters) (uint64, error) {
-	maxSubscribeIDParam, ok := setupParameters[wire.MaxSubscribeIDParameterKey]
+func validateMaxRequestIDParameter(setupParameters wire.Parameters) (uint64, error) {
+	maxRequestIDParam, ok := setupParameters[wire.MaxRequestIDParameterKey]
 	if !ok {
 		return 0, nil
 	}
-	maxSubscribeIDParamValue, ok := maxSubscribeIDParam.(wire.VarintParameter)
+	maxRequestIDParamValue, ok := maxRequestIDParam.(wire.VarintParameter)
 	if !ok {
-		return 0, errInvalidMaxSubscribeIDParameterType
+		return 0, errInvalidMaxRequestIDParameterType
 	}
-	return maxSubscribeIDParamValue.Value, nil
+	return maxRequestIDParamValue.Value, nil
 }
 
 func validateAuthParameter(subscribeParameters wire.Parameters) (string, error) {

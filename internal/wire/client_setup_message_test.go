@@ -138,8 +138,8 @@ func TestParseClientSetupMessage(t *testing.T) {
 				SupportedVersions: []Version{0x00},
 				SetupParameters: Parameters{
 					0x02: VarintParameter{
-						Type:  MaxSubscribeIDParameterKey,
-						Name:  "max_subscribe_id",
+						Type:  MaxRequestIDParameterKey,
+						Name:  "max_request_id",
 						Value: 2,
 					},
 					0x01: StringParameter{

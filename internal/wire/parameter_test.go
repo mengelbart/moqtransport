@@ -49,7 +49,7 @@ func TestParameterAppend(t *testing.T) {
 		},
 		{
 			p: VarintParameter{
-				Type:  MaxSubscribeIDParameterKey,
+				Type:  MaxRequestIDParameterKey,
 				Value: uint64(1),
 			},
 			buf:    nil,
@@ -57,7 +57,7 @@ func TestParameterAppend(t *testing.T) {
 		},
 		{
 			p: VarintParameter{
-				Type:  MaxSubscribeIDParameterKey,
+				Type:  MaxRequestIDParameterKey,
 				Value: uint64(2),
 			},
 			buf:    []byte{},
@@ -65,7 +65,7 @@ func TestParameterAppend(t *testing.T) {
 		},
 		{
 			p: VarintParameter{
-				Type:  MaxSubscribeIDParameterKey,
+				Type:  MaxRequestIDParameterKey,
 				Value: uint64(3),
 			},
 			buf:    []byte{0x01, 0x02},
@@ -89,10 +89,10 @@ func TestParseParameter(t *testing.T) {
 		n      int
 	}{
 		{
-			data: []byte{byte(MaxSubscribeIDParameterKey), 0x01, 0x01},
+			data: []byte{byte(MaxRequestIDParameterKey), 0x01, 0x01},
 			expect: VarintParameter{
-				Type:  MaxSubscribeIDParameterKey,
-				Name:  "max_subscribe_id",
+				Type:  MaxRequestIDParameterKey,
+				Name:  "max_request_id",
 				Value: uint64(1),
 			},
 			pm:  setupParameterParsers,
@@ -186,9 +186,9 @@ func TestParseParameters(t *testing.T) {
 		{
 			data: []byte{0x02, 0x02, 0x01, 0x03, 0x01, 0x01, 'A'},
 			expect: Parameters{
-				MaxSubscribeIDParameterKey: VarintParameter{
+				MaxRequestIDParameterKey: VarintParameter{
 					Type:  2,
-					Name:  "max_subscribe_id",
+					Name:  "max_request_id",
 					Value: uint64(3),
 				},
 				PathParameterKey: StringParameter{
@@ -232,7 +232,7 @@ func TestParseParameters(t *testing.T) {
 			data: []byte{0x02, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02},
 			expect: Parameters{0x02: VarintParameter{
 				Type:  2,
-				Name:  "max_subscribe_id",
+				Name:  "max_request_id",
 				Value: 1,
 			}},
 			err: errDuplicateParameter,

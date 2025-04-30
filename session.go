@@ -12,23 +12,23 @@ import (
 )
 
 var (
-	errControlMessageQueueOverflow        = errors.New("control message overflow, message not queued")
-	errUnknownAnnouncementNamespace       = errors.New("unknown announcement namespace")
-	errMaxSubscribeIDViolated             = errors.New("max subscribe ID violated")
-	errClientReceivedClientSetup          = errors.New("client received client setup message")
-	errServerReceveidServerSetup          = errors.New("server received server setup message")
-	errIncompatibleVersions               = errors.New("incompatible versions")
-	errUnexpectedMessageType              = errors.New("unexpected message type")
-	errUnexpectedMessageTypeBeforeSetup   = errors.New("unexpected message type before setup")
-	errUnknownSubscribeAnnouncesPrefix    = errors.New("unknown subscribe_announces prefix")
-	errUnknownTrackAlias                  = errors.New("unknown track alias")
-	errMissingPathParameter               = errors.New("missing path parameter")
-	errUnexpectedPathParameter            = errors.New("unexpected path parameter on QUIC connection")
-	errInvalidPathParameterType           = errors.New("invalid path parameter type")
-	errInvalidMaxSubscribeIDParameterType = errors.New("invalid max subscribe ID parameter type")
-	errInvalidAuthParameterType           = errors.New("invalid auth parameter type")
-	errDuplicateTrackStatusRequest        = errors.New("track status already requested")
-	errUnknownTrackStatusRequest          = errors.New("got unexpected track status requrest")
+	errControlMessageQueueOverflow      = errors.New("control message overflow, message not queued")
+	errUnknownAnnouncementNamespace     = errors.New("unknown announcement namespace")
+	errMaxRequestIDViolated             = errors.New("max request ID violated")
+	errClientReceivedClientSetup        = errors.New("client received client setup message")
+	errServerReceveidServerSetup        = errors.New("server received server setup message")
+	errIncompatibleVersions             = errors.New("incompatible versions")
+	errUnexpectedMessageType            = errors.New("unexpected message type")
+	errUnexpectedMessageTypeBeforeSetup = errors.New("unexpected message type before setup")
+	errUnknownSubscribeAnnouncesPrefix  = errors.New("unknown subscribe_announces prefix")
+	errUnknownTrackAlias                = errors.New("unknown track alias")
+	errMissingPathParameter             = errors.New("missing path parameter")
+	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
+	errInvalidPathParameterType         = errors.New("invalid path parameter type")
+	errInvalidMaxRequestIDParameterType = errors.New("invalid max request ID parameter type")
+	errInvalidAuthParameterType         = errors.New("invalid auth parameter type")
+	errDuplicateTrackStatusRequest      = errors.New("track status already requested")
+	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
 
 type controlMessageQueue[T any] interface {
@@ -38,7 +38,7 @@ type controlMessageQueue[T any] interface {
 
 type objectMessageParser interface {
 	Type() wire.StreamType
-	SubscribeID() (uint64, error)
+	RequestID() (uint64, error)
 	TrackAlias() (uint64, error)
 	Messages() iter.Seq2[*wire.ObjectMessage, error]
 }
@@ -81,9 +81,9 @@ func (q *queue[T]) dequeue(ctx context.Context) (T, error) {
 
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
-	Protocol       Protocol
-	Perspective    Perspective
-	MaxSubscribeID uint64
+	Protocol     Protocol
+	Perspective  Perspective
+	MaxRequestID uint64
 
 	logger *slog.Logger
 
@@ -110,11 +110,11 @@ type Session struct {
 	outgoingTrackStatusRequests *trackStatusRequestMap
 }
 
-func NewSession(proto Protocol, perspective Perspective, initMaxSubscribeID uint64) *Session {
+func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64) *Session {
 	return &Session{
 		Protocol:                                 proto,
 		Perspective:                              perspective,
-		MaxSubscribeID:                           initMaxSubscribeID,
+		MaxRequestID:                             initMaxRequestID,
 		logger:                                   defaultLogger.With("perspective", perspective),
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
@@ -157,14 +157,14 @@ func (s *Session) handleUniStream(parser objectMessageParser) error {
 
 func (s *Session) readFetchStream(parser objectMessageParser) error {
 	s.logger.Info("reading fetch stream")
-	sid, err := parser.SubscribeID()
+	sid, err := parser.RequestID()
 	if err != nil {
-		s.logger.Info("failed to parse subscribe ID", "error", err)
+		s.logger.Info("failed to parse request ID", "error", err)
 		return err
 	}
-	rt, ok := s.remoteTrackBySubscribeID(sid)
+	rt, ok := s.remoteTrackByRequestID(sid)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return rt.readFetchStream(parser)
 }
@@ -173,12 +173,12 @@ func (s *Session) readSubgroupStream(parser objectMessageParser) error {
 	s.logger.Info("reading subgroup")
 	sid, err := parser.TrackAlias()
 	if err != nil {
-		s.logger.Info("failed to parse subscribe ID", "error", err)
+		s.logger.Info("failed to parse request ID", "error", err)
 		return err
 	}
 	rt, ok := s.remoteTrackByTrackAlias(sid)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return rt.readSubgroupStream(parser)
 }
@@ -198,27 +198,27 @@ func (s *Session) receiveDatagram(msg *wire.ObjectMessage) error {
 }
 
 func (s *Session) addLocalTrack(lt *localTrack) error {
-	if lt.subscribeID >= s.MaxSubscribeID {
-		return errMaxSubscribeIDViolated
+	if lt.requestID >= s.MaxRequestID {
+		return errMaxRequestIDViolated
 	}
-	// Update max subscribe ID for peer
-	if lt.subscribeID >= s.MaxSubscribeID/2 {
-		s.MaxSubscribeID *= 2
+	// Update max request ID for peer
+	if lt.requestID >= s.MaxRequestID/2 {
+		s.MaxRequestID *= 2
 		if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.MaxRequestIDMessage{
-			RequestID: s.MaxSubscribeID,
+			RequestID: s.MaxRequestID,
 		}); err != nil {
-			s.logger.Warn("skipping sending of max_subscribe_id due to control message queue overflow")
+			s.logger.Warn("skipping sending of max_request_id due to control message queue overflow")
 		}
 	}
 	ok := s.localTracks.addPending(lt)
 	if !ok {
-		return errDuplicateSubscribeID
+		return errDuplicateRequestID
 	}
 	return nil
 }
 
-func (s *Session) remoteTrackBySubscribeID(id uint64) (*RemoteTrack, bool) {
-	sub, ok := s.remoteTracks.findBySubscribeID(id)
+func (s *Session) remoteTrackByRequestID(id uint64) (*RemoteTrack, bool) {
+	sub, ok := s.remoteTracks.findByRequestID(id)
 	return sub, ok
 }
 
@@ -255,10 +255,10 @@ func (s *Session) Path() string {
 
 func (s *Session) sendClientSetup() error {
 	params := map[uint64]wire.Parameter{
-		wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-			Type:  wire.MaxSubscribeIDParameterKey,
-			Name:  "max_subscribe_id",
-			Value: s.MaxSubscribeID,
+		wire.MaxRequestIDParameterKey: wire.VarintParameter{
+			Type:  wire.MaxRequestIDParameterKey,
+			Name:  "max_request_id",
+			Value: s.MaxRequestID,
 		},
 	}
 	if s.Protocol == ProtocolQUIC {
@@ -275,7 +275,7 @@ func (s *Session) sendClientSetup() error {
 	})
 }
 
-// Subscribe subscribes to track in namespace using id as the subscribe ID. It
+// Subscribe subscribes to track in namespace using id as the request ID. It
 // blocks until a response from the peer was received or ctx is cancelled.
 func (s *Session) Subscribe(
 	ctx context.Context,
@@ -289,12 +289,12 @@ func (s *Session) Subscribe(
 	rt := newRemoteTrack()
 	id, alias, err := s.remoteTracks.addPendingWithAlias(rt)
 	if err != nil {
-		var tooManySubscribes errSubscribesBlocked
+		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
-			if previous < tooManySubscribes.maxSubscribeID {
+			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxRequestID)
+			if previous < tooManySubscribes.maxRequestID {
 				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
-					MaximumRequestID: tooManySubscribes.maxSubscribeID,
+					MaximumRequestID: tooManySubscribes.maxRequestID,
 				}); queueErr != nil {
 					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
 				}
@@ -349,7 +349,7 @@ func (s *Session) Subscribe(
 func (s *Session) acceptSubscription(id uint64) error {
 	_, ok := s.localTracks.confirm(id)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeOkMessage{
 		RequestID:     id,
@@ -367,10 +367,10 @@ func (s *Session) acceptSubscription(id uint64) error {
 func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
 	lt, ok := s.localTracks.reject(id)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeErrorMessage{
-		RequestID:    lt.subscribeID,
+		RequestID:    lt.requestID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
 		TrackAlias:   lt.trackAlias,
@@ -386,17 +386,17 @@ func (s *Session) unsubscribe(id uint64) error {
 func (s *Session) subscriptionDone(id, code, count uint64, reason string) error {
 	lt, ok := s.localTracks.delete(id)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeDoneMessage{
-		RequestID:    lt.subscribeID,
+		RequestID:    lt.requestID,
 		StatusCode:   code,
 		StreamCount:  count,
 		ReasonPhrase: reason,
 	})
 }
 
-// Fetch fetches track in namespace from the peer using id as the subscribe ID.
+// Fetch fetches track in namespace from the peer using id as the request ID.
 // It blocks until a response from the peer was received or ctx is cancelled.
 func (s *Session) Fetch(
 	ctx context.Context,
@@ -409,12 +409,12 @@ func (s *Session) Fetch(
 	rt := newRemoteTrack()
 	id, err := s.remoteTracks.addPending(rt)
 	if err != nil {
-		var tooManySubscribes errSubscribesBlocked
+		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxSubscribeID)
-			if previous < tooManySubscribes.maxSubscribeID {
+			previous := s.highestSubscribesBlocked.Swap(tooManySubscribes.maxRequestID)
+			if previous < tooManySubscribes.maxRequestID {
 				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
-					MaximumRequestID: tooManySubscribes.maxSubscribeID,
+					MaximumRequestID: tooManySubscribes.maxRequestID,
 				}); queueErr != nil {
 					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
 				}
@@ -462,7 +462,7 @@ func (s *Session) Fetch(
 func (s *Session) acceptFetch(id uint64) error {
 	_, ok := s.localTracks.confirm(id)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchOkMessage{
 		RequestID:  id,
@@ -479,10 +479,10 @@ func (s *Session) acceptFetch(id uint64) error {
 func (s *Session) rejectFetch(id uint64, errorCode uint64, reason string) error {
 	lt, ok := s.localTracks.reject(id)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchErrorMessage{
-		RequestID:    lt.subscribeID,
+		RequestID:    lt.requestID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
 	})
@@ -688,9 +688,9 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	case *wire.GoAwayMessage:
 		err = s.onGoAway(m)
 	case *wire.MaxRequestIDMessage:
-		err = s.onMaxSubscribeID(m)
+		err = s.onMaxRequestID(m)
 	case *wire.RequestsBlockedMessage:
-		err = s.onSubscribesBlocked(m)
+		err = s.onRequestsBlocked(m)
 	case *wire.SubscribeMessage:
 		err = s.onSubscribe(m)
 	case *wire.SubscribeOkMessage:
@@ -761,12 +761,12 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	s.path = path
 
-	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
+	remoteMaxRequestID, err := validateMaxRequestIDParameter(m.SetupParameters)
 	if err != nil {
 		return err
 	}
-	if remoteMaxSubscribeID > 0 {
-		if err = s.remoteTracks.updateMaxSubscribeID(remoteMaxSubscribeID); err != nil {
+	if remoteMaxRequestID > 0 {
+		if err = s.remoteTracks.updateMaxRequestID(remoteMaxRequestID); err != nil {
 			return err
 		}
 	}
@@ -774,9 +774,9 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: map[uint64]wire.Parameter{
-			wire.MaxSubscribeIDParameterKey: wire.VarintParameter{
-				Type:  wire.MaxSubscribeIDParameterKey,
-				Name:  "max_subscribe_id",
+			wire.MaxRequestIDParameterKey: wire.VarintParameter{
+				Type:  wire.MaxRequestIDParameterKey,
+				Name:  "max_request_id",
 				Value: 100,
 			},
 		},
@@ -797,11 +797,11 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	}
 	s.version = m.SelectedVersion
 
-	remoteMaxSubscribeID, err := validateMaxSubscribeIDParameter(m.SetupParameters)
+	remoteMaxRequestID, err := validateMaxRequestIDParameter(m.SetupParameters)
 	if err != nil {
 		return err
 	}
-	if err = s.remoteTracks.updateMaxSubscribeID(remoteMaxSubscribeID); err != nil {
+	if err = s.remoteTracks.updateMaxRequestID(remoteMaxRequestID); err != nil {
 		return err
 	}
 	close(s.handshakeDoneCh)
@@ -815,12 +815,12 @@ func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
 	})
 }
 
-func (s *Session) onMaxSubscribeID(msg *wire.MaxRequestIDMessage) error {
-	return s.remoteTracks.updateMaxSubscribeID(msg.RequestID)
+func (s *Session) onMaxRequestID(msg *wire.MaxRequestIDMessage) error {
+	return s.remoteTracks.updateMaxRequestID(msg.RequestID)
 }
 
-func (s *Session) onSubscribesBlocked(msg *wire.RequestsBlockedMessage) error {
-	s.logger.Info("received subscribes blocked message", "max_subscribe_id", msg.MaximumRequestID)
+func (s *Session) onRequestsBlocked(msg *wire.RequestsBlockedMessage) error {
+	s.logger.Info("received subscribes blocked message", "max_request_id", msg.MaximumRequestID)
 	return nil
 }
 
@@ -846,7 +846,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	rt, ok := s.remoteTracks.confirm(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	select {
 	case rt.responseChan <- nil:
@@ -862,7 +862,7 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	sub, ok := s.remoteTracks.reject(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	select {
 	case sub.responseChan <- ProtocolError{
@@ -885,16 +885,16 @@ func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
 func (s *Session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	lt, ok := s.localTracks.findByID(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	lt.unsubscribe()
 	return nil
 }
 
 func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
-	sub, ok := s.remoteTracks.findBySubscribeID(msg.RequestID)
+	sub, ok := s.remoteTracks.findByRequestID(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	sub.done(msg.StatusCode, msg.ReasonPhrase)
 	// TODO: Remove subscription from outgoingSubscriptions map, but maybe only
@@ -920,7 +920,7 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
 	rt, ok := s.remoteTracks.confirm(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	select {
 	case rt.responseChan <- nil:
@@ -936,7 +936,7 @@ func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
 func (s *Session) onFetchError(msg *wire.FetchErrorMessage) error {
 	rt, ok := s.remoteTracks.reject(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	select {
 	case rt.responseChan <- ProtocolError{
@@ -952,7 +952,7 @@ func (s *Session) onFetchError(msg *wire.FetchErrorMessage) error {
 func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 	lt, ok := s.localTracks.delete(msg.RequestID)
 	if !ok {
-		return errUnknownSubscribeID
+		return errUnknownRequestID
 	}
 	lt.unsubscribe()
 	return nil
