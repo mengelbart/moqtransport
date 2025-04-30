@@ -13,8 +13,7 @@ type FetchOkMessage struct {
 	RequestID           uint64
 	GroupOrder          uint8
 	EndOfTrack          uint8
-	LargestGroupID      uint64
-	LargestObjectID     uint64
+	EndLocation         Location
 	SubscribeParameters Parameters
 }
 
@@ -24,8 +23,8 @@ func (m *FetchOkMessage) LogValue() slog.Value {
 		slog.Uint64("subscribe_id", m.RequestID),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Any("end_of_track", m.EndOfTrack),
-		slog.Uint64("largest_group_id", m.LargestGroupID),
-		slog.Uint64("largest_object_id", m.LargestObjectID),
+		slog.Uint64("largest_group_id", m.EndLocation.Group),
+		slog.Uint64("largest_object_id", m.EndLocation.Object),
 		slog.Uint64("number_of_parameters", uint64(len(m.SubscribeParameters))),
 	}
 	if len(m.SubscribeParameters) > 0 {
@@ -44,12 +43,11 @@ func (m *FetchOkMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
 	buf = append(buf, m.GroupOrder)
 	buf = append(buf, m.EndOfTrack)
-	buf = quicvarint.Append(buf, m.LargestGroupID)
-	buf = quicvarint.Append(buf, m.LargestObjectID)
+	buf = m.EndLocation.append(buf)
 	return m.SubscribeParameters.append(buf)
 }
 
-func (m *FetchOkMessage) parse(_ Version, data []byte) (err error) {
+func (m *FetchOkMessage) parse(v Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
@@ -67,13 +65,7 @@ func (m *FetchOkMessage) parse(_ Version, data []byte) (err error) {
 	m.EndOfTrack = data[1]
 	data = data[2:]
 
-	m.LargestGroupID, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.LargestObjectID, n, err = quicvarint.Parse(data)
+	n, err = m.EndLocation.parse(v, data)
 	if err != nil {
 		return err
 	}
