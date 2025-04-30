@@ -23,9 +23,9 @@ func (m *trackStatusRequestMap) add(tsr *trackStatusRequest) bool {
 	return true
 }
 
-func (m *trackStatusRequestMap) delete(rid uint64) (*trackStatusRequest, bool) {
+func (m *trackStatusRequestMap) delete(requestID uint64) (*trackStatusRequest, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	tsr, ok := m.requests[rid]
+	tsr, ok := m.requests[requestID]
 	return tsr, ok
 }

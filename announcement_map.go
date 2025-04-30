@@ -35,26 +35,26 @@ func (m *announcementMap) add(a *announcement) error {
 	return nil
 }
 
-func (m *announcementMap) confirmAndGet(rid uint64) (*announcement, error) {
+func (m *announcementMap) confirmAndGet(requestID uint64) (*announcement, error) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	a, ok := m.pending[rid]
+	a, ok := m.pending[requestID]
 	if !ok {
 		return nil, errUnknownAnnouncement
 	}
-	delete(m.pending, rid)
-	m.announcements[rid] = a
+	delete(m.pending, requestID)
+	m.announcements[requestID] = a
 	return a, nil
 }
 
-func (m *announcementMap) reject(rid uint64) (*announcement, bool) {
+func (m *announcementMap) reject(requestID uint64) (*announcement, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	a, ok := m.pending[rid]
+	a, ok := m.pending[requestID]
 	if !ok {
 		return nil, false
 	}
-	delete(m.pending, rid)
+	delete(m.pending, requestID)
 	return a, true
 }
 
