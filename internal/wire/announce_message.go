@@ -5,9 +5,11 @@ import (
 	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type AnnounceMessage struct {
+	RequestID      uint64
 	TrackNamespace Tuple
 	Parameters     Parameters
 }
@@ -35,12 +37,19 @@ func (m AnnounceMessage) Type() controlMessageType {
 }
 
 func (m *AnnounceMessage) Append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespace.append(buf)
 	return m.Parameters.append(buf)
 }
 
 func (m *AnnounceMessage) parse(_ Version, data []byte) (err error) {
 	var n int
+	m.RequestID, n, err = quicvarint.Parse(data)
+	if err != nil {
+		return err
+	}
+	data = data[n:]
+
 	m.TrackNamespace, n, err = parseTuple(data)
 	if err != nil {
 		return err

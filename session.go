@@ -95,7 +95,7 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	rid requestID
+	rid *requestID
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
@@ -112,15 +112,16 @@ type Session struct {
 
 func NewSession(proto Protocol, perspective Perspective, initMaxSubscribeID uint64) *Session {
 	return &Session{
+		Protocol:                                 proto,
+		Perspective:                              perspective,
+		MaxSubscribeID:                           initMaxSubscribeID,
 		logger:                                   defaultLogger.With("perspective", perspective),
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
-		Protocol:                                 proto,
-		Perspective:                              perspective,
 		path:                                     "",
-		MaxSubscribeID:                           initMaxSubscribeID,
+		rid:                                      newRequestID(perspective),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -541,6 +542,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	a := &announcement{
+		requestID:  s.rid.next(),
 		namespace:  namespace,
 		parameters: map[uint64]wire.Parameter{},
 		response:   make(chan error, 1),
@@ -549,11 +551,12 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	am := &wire.AnnounceMessage{
+		RequestID:      a.requestID,
 		TrackNamespace: a.namespace,
 		Parameters:     a.parameters,
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, am); err != nil {
-		_, _ = s.outgoingAnnouncements.reject(a.namespace)
+		_, _ = s.outgoingAnnouncements.reject(a.requestID)
 		return err
 	}
 	select {
@@ -564,23 +567,23 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 	}
 }
 
-func (s *Session) acceptAnnouncement(namespace []string) error {
-	if err := s.incomingAnnouncements.confirm(namespace); err != nil {
+func (s *Session) acceptAnnouncement(requestID uint64) error {
+	if _, err := s.incomingAnnouncements.confirmAndGet(requestID); err != nil {
 		return err
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceOkMessage{
-		TrackNamespace: namespace,
+		RequestID: requestID,
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Session) rejectAnnouncement(ns []string, c uint64, r string) error {
+func (s *Session) rejectAnnouncement(requestID uint64, c uint64, r string) error {
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceErrorMessage{
-		TrackNamespace: ns,
-		ErrorCode:      c,
-		ReasonPhrase:   r,
+		RequestID:    requestID,
+		ErrorCode:    c,
+		ReasonPhrase: r,
 	})
 }
 
@@ -982,8 +985,10 @@ func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 
 func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 	a := &announcement{
+		requestID:  msg.RequestID,
 		namespace:  msg.TrackNamespace,
 		parameters: msg.Parameters,
+		response:   make(chan error),
 	}
 	if err := s.incomingAnnouncements.add(a); err != nil {
 		return ProtocolError{
@@ -992,14 +997,15 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		}
 	}
 	message := &Message{
-		Method:    MessageAnnounce,
-		Namespace: a.namespace,
+		SubscribeID: msg.RequestID,
+		Method:      MessageAnnounce,
+		Namespace:   a.namespace,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
 }
 
 func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
-	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.TrackNamespace)
+	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.RequestID)
 	if err != nil {
 		return errUnknownAnnouncement
 	}
@@ -1012,7 +1018,7 @@ func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
 }
 
 func (s *Session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
-	announcement, ok := s.outgoingAnnouncements.reject(msg.TrackNamespace)
+	announcement, ok := s.outgoingAnnouncements.reject(msg.RequestID)
 	if !ok {
 		return errUnknownAnnouncement
 	}

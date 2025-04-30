@@ -7,22 +7,17 @@ import (
 )
 
 type AnnounceErrorMessage struct {
-	TrackNamespace Tuple
-	ErrorCode      uint64
-	ReasonPhrase   string
+	RequestID    uint64
+	ErrorCode    uint64
+	ReasonPhrase string
 }
 
 func (m *AnnounceErrorMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "announce_error"),
-		slog.Any("track_namespace", m.TrackNamespace),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.String("reason", m.ReasonPhrase),
 	)
-}
-
-func (m AnnounceErrorMessage) GetTrackNamespace() string {
-	return m.TrackNamespace.String()
 }
 
 func (m AnnounceErrorMessage) Type() controlMessageType {
@@ -30,7 +25,7 @@ func (m AnnounceErrorMessage) Type() controlMessageType {
 }
 
 func (m *AnnounceErrorMessage) Append(buf []byte) []byte {
-	buf = m.TrackNamespace.append(buf)
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.ErrorCode)
 	buf = appendVarIntBytes(buf, []byte(m.ReasonPhrase))
 	return buf
@@ -38,7 +33,7 @@ func (m *AnnounceErrorMessage) Append(buf []byte) []byte {
 
 func (m *AnnounceErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
-	m.TrackNamespace, n, err = parseTuple(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}

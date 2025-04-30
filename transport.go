@@ -127,7 +127,7 @@ func (t *Transport) handle(m *Message) {
 			t.handleFetch(m)
 		case MessageAnnounce:
 			arw := &announcementResponseWriter{
-				namespace: m.Namespace,
+				requestID: m.SubscribeID,
 				session:   t.Session,
 				handled:   false,
 			}
