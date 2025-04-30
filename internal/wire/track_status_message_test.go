@@ -16,25 +16,28 @@ func TestTrackStatusMessageAppend(t *testing.T) {
 	}{
 		{
 			tsm: TrackStatusMessage{
-				TrackNamespace: []string{""},
-				TrackName:      "",
-				StatusCode:     0,
-				LastGroupID:    0,
-				LastObjectID:   0,
+				RequestID:  0,
+				StatusCode: 0,
+				LargestLocation: Location{
+					Group:  0,
+					Object: 0,
+				},
 			},
 			buf:    []byte{},
-			expect: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{0x00, 0x00, 0x00, 0x00, 0x00},
 		},
 		{
 			tsm: TrackStatusMessage{
-				TrackNamespace: []string{"tracknamespace"},
-				TrackName:      "track",
-				StatusCode:     1,
-				LastGroupID:    2,
-				LastObjectID:   3,
+				RequestID:  1,
+				StatusCode: 2,
+				LargestLocation: Location{
+					Group:  1,
+					Object: 2,
+				},
+				Parameters: Parameters{},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x05, 't', 'r', 'a', 'c', 'k', 0x01, 0x02, 0x03},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x01, 0x02, 0x00},
 		},
 	}
 	for i, tc := range cases {
@@ -62,13 +65,15 @@ func TestParseTrackStatusMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x09, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 0x05, 't', 'r', 'a', 'c', 'k', 0x01, 0x02, 0x03},
+			data: []byte{0x01, 0x02, 0x03, 0x04, 0x00},
 			expect: &TrackStatusMessage{
-				TrackNamespace: []string{"trackname"},
-				TrackName:      "track",
-				StatusCode:     1,
-				LastGroupID:    2,
-				LastObjectID:   3,
+				RequestID:  1,
+				StatusCode: 2,
+				LargestLocation: Location{
+					Group:  3,
+					Object: 4,
+				},
+				Parameters: Parameters{},
 			},
 			err: nil,
 		},
