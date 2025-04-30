@@ -20,8 +20,8 @@ type Message struct {
 	// Method describes the type of the message.
 	Method string
 
-	// SubscribeID is set if the message references a subscription.
-	SubscribeID uint64
+	// RequestID is set if the message references a request.
+	RequestID uint64
 	// TrackAlias corresponding to the subscription.
 	TrackAlias uint64
 

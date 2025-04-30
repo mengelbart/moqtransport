@@ -829,7 +829,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	}
 	m := &Message{
 		Method:        MessageSubscribe,
-		SubscribeID:   msg.RequestID,
+		RequestID:     msg.RequestID,
 		TrackAlias:    msg.TrackAlias,
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
@@ -905,7 +905,7 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		Method:        MessageFetch,
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
-		SubscribeID:   msg.RequestID,
+		RequestID:     msg.RequestID,
 		TrackAlias:    0,
 		Authorization: "",
 		NewSessionURI: "",
@@ -997,9 +997,9 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		}
 	}
 	message := &Message{
-		SubscribeID: msg.RequestID,
-		Method:      MessageAnnounce,
-		Namespace:   a.namespace,
+		RequestID: msg.RequestID,
+		Method:    MessageAnnounce,
+		Namespace: a.namespace,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
 }

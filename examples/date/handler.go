@@ -133,7 +133,7 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 			datePublisher := &publisher{
 				p:           p,
 				sessionID:   sessionID,
-				subscribeID: r.SubscribeID,
+				subscribeID: r.RequestID,
 				trackAlias:  r.TrackAlias,
 				session:     session,
 			}

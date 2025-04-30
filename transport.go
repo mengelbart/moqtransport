@@ -60,8 +60,8 @@ func (t *Transport) Run() error {
 }
 
 func (t *Transport) handleSubscription(m *Message) {
-	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, func(code, count uint64, reason string) error {
-		return t.Session.subscriptionDone(m.SubscribeID, code, count, reason)
+	lt := newLocalTrack(t.Conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
+		return t.Session.subscriptionDone(m.RequestID, code, count, reason)
 	}, t.Qlogger)
 
 	if err := t.Session.addLocalTrack(lt); err != nil {
@@ -69,14 +69,14 @@ func (t *Transport) handleSubscription(m *Message) {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.Session.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectSubscription(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject subscription", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
 		return
 	}
 	srw := &subscriptionResponseWriter{
-		id:         m.SubscribeID,
+		id:         m.RequestID,
 		trackAlias: m.TrackAlias,
 		session:    t.Session,
 		localTrack: lt,
@@ -92,20 +92,20 @@ func (t *Transport) handleSubscription(m *Message) {
 }
 
 func (t *Transport) handleFetch(m *Message) {
-	lt := newLocalTrack(t.Conn, m.SubscribeID, m.TrackAlias, nil, t.Qlogger)
+	lt := newLocalTrack(t.Conn, m.RequestID, m.TrackAlias, nil, t.Qlogger)
 	if err := t.Session.addLocalTrack(lt); err != nil {
 		if err == errMaxSubscribeIDViolated || err == errDuplicateSubscribeID {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.Session.rejectFetch(m.SubscribeID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectFetch(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject fetch", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
 		return
 	}
 	frw := &fetchResponseWriter{
-		id:         m.SubscribeID,
+		id:         m.RequestID,
 		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
@@ -127,7 +127,7 @@ func (t *Transport) handle(m *Message) {
 			t.handleFetch(m)
 		case MessageAnnounce:
 			arw := &announcementResponseWriter{
-				requestID: m.SubscribeID,
+				requestID: m.RequestID,
 				session:   t.Session,
 				handled:   false,
 			}

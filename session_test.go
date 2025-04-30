@@ -270,7 +270,7 @@ func TestSession(t *testing.T) {
 		close(s.handshakeDoneCh)
 		mh.EXPECT().enqueue(context.Background(), &Message{
 			Method:        MessageSubscribe,
-			SubscribeID:   0,
+			RequestID:     0,
 			TrackAlias:    0,
 			Namespace:     []string{"namespace"},
 			Track:         "track",
@@ -328,7 +328,7 @@ func TestSession(t *testing.T) {
 			},
 		).DoAndReturn(func(_ context.Context, m *Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
-			assert.NoError(t, s.rejectSubscription(m.SubscribeID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
+			assert.NoError(t, s.rejectSubscription(m.RequestID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 			return nil
 		})
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeErrorMessage{
@@ -385,11 +385,11 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		mh.EXPECT().enqueue(context.Background(), &Message{
-			SubscribeID: 2,
-			Method:      MessageAnnounce,
-			Namespace:   []string{"namespace"},
+			RequestID: 2,
+			Method:    MessageAnnounce,
+			Namespace: []string{"namespace"},
 		}).DoAndReturn(func(_ context.Context, req *Message) error {
-			assert.NoError(t, s.acceptAnnouncement(req.SubscribeID))
+			assert.NoError(t, s.acceptAnnouncement(req.RequestID))
 			return nil
 		})
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceOkMessage{
