@@ -3,30 +3,22 @@ package wire
 import (
 	"log/slog"
 
-	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
 type TrackStatusMessage struct {
-	TrackNamespace Tuple
-	TrackName      string
-	StatusCode     uint64
-	LastGroupID    uint64
-	LastObjectID   uint64
+	RequestID       uint64
+	StatusCode      uint64
+	LargestLocation Location
+	Parameters      Parameters
 }
 
 func (m *TrackStatusMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "track_status"),
-		slog.Any("track_namespace", m.TrackNamespace),
-		slog.Any("track_name", qlog.RawInfo{
-			Length:        uint64(len(m.TrackName)),
-			PayloadLength: uint64(len(m.TrackName)),
-			Data:          []byte(m.TrackName),
-		}),
 		slog.Uint64("status_code", m.StatusCode),
-		slog.Uint64("last_group_id", m.LastGroupID),
-		slog.Uint64("last_object_id", m.LastObjectID),
+		slog.Uint64("last_group_id", m.LargestLocation.Group),
+		slog.Uint64("last_object_id", m.LargestLocation.Object),
 	)
 }
 
@@ -35,26 +27,18 @@ func (m TrackStatusMessage) Type() controlMessageType {
 }
 
 func (m *TrackStatusMessage) Append(buf []byte) []byte {
-	buf = m.TrackNamespace.append(buf)
-	buf = appendVarIntBytes(buf, []byte(m.TrackName))
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.StatusCode)
-	buf = quicvarint.Append(buf, m.LastGroupID)
-	return quicvarint.Append(buf, m.LastObjectID)
+	buf = m.LargestLocation.append(buf)
+	return m.Parameters.append(buf)
 }
 
-func (m *TrackStatusMessage) parse(_ Version, data []byte) (err error) {
+func (m *TrackStatusMessage) parse(v Version, data []byte) (err error) {
 	var n int
-	m.TrackNamespace, n, err = parseTuple(data)
+	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}
-	data = data[n:]
-
-	trackName, n, err := parseVarIntBytes(data)
-	if err != nil {
-		return
-	}
-	m.TrackName = string(trackName)
 	data = data[n:]
 
 	m.StatusCode, n, err = quicvarint.Parse(data)
@@ -63,12 +47,12 @@ func (m *TrackStatusMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.LastGroupID, n, err = quicvarint.Parse(data)
+	n, err = m.LargestLocation.parse(v, data)
 	if err != nil {
 		return
 	}
 	data = data[n:]
 
-	m.LastObjectID, _, err = quicvarint.Parse(data)
-	return err
+	m.Parameters = Parameters{}
+	return m.Parameters.parseVersionSpecificParameters(data)
 }

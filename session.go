@@ -95,6 +95,8 @@ type Session struct {
 	version wire.Version
 	path    string
 
+	rid requestID
+
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
 
@@ -497,6 +499,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		return nil, err
 	}
 	tsr := &trackStatusRequest{
+		requestID: s.rid.next(),
 		namespace: namespace,
 		trackname: track,
 		response:  make(chan *TrackStatus, 1),
@@ -510,7 +513,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		TrackName:      []byte(track),
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, tsrm); err != nil {
-		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.TrackNamespace, string(tsrm.TrackName))
+		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.RequestID)
 		return nil, err
 	}
 	select {
@@ -523,11 +526,10 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 
 func (s *Session) sendTrackStatus(ts TrackStatus) error {
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.TrackStatusMessage{
-		TrackNamespace: ts.Namespace,
-		TrackName:      ts.Trackname,
-		StatusCode:     ts.StatusCode,
-		LastGroupID:    ts.LastGroupID,
-		LastObjectID:   ts.LastObjectID,
+		StatusCode:      ts.StatusCode,
+		RequestID:       0,
+		LargestLocation: wire.Location{},
+		Parameters:      wire.Parameters{},
 	})
 }
 
@@ -960,7 +962,7 @@ func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) erro
 }
 
 func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
-	tsr, ok := s.outgoingTrackStatusRequests.delete(msg.TrackNamespace, msg.TrackName)
+	tsr, ok := s.outgoingTrackStatusRequests.delete(msg.RequestID)
 	if !ok {
 		return errUnknownTrackStatusRequest
 	}
@@ -969,8 +971,8 @@ func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 		Namespace:    tsr.namespace,
 		Trackname:    tsr.trackname,
 		StatusCode:   msg.StatusCode,
-		LastGroupID:  msg.LastGroupID,
-		LastObjectID: msg.LastObjectID,
+		LastGroupID:  msg.LargestLocation.Group,
+		LastObjectID: msg.LargestLocation.Object,
 	}:
 	default:
 		s.logger.Info("dropping unhandled track status")

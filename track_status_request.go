@@ -9,6 +9,7 @@ type TrackStatus struct {
 }
 
 type trackStatusRequest struct {
+	requestID uint64
 	namespace []string
 	trackname string
 
