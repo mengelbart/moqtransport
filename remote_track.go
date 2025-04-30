@@ -25,6 +25,8 @@ func (e ErrSubscribeDone) Error() string {
 
 // RemoteTrack is a track provided by the remote peer.
 type RemoteTrack struct {
+	requestID uint64
+
 	logger          *slog.Logger
 	unsubscribeFunc func() error
 	buffer          chan *Object
@@ -38,25 +40,20 @@ type RemoteTrack struct {
 	responseChan chan error
 }
 
-func newRemoteTrack() *RemoteTrack {
+func newRemoteTrack(requestID uint64, unsubscribeFunc func() error) *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
+		requestID:       requestID,
 		logger:          defaultLogger,
+		unsubscribeFunc: unsubscribeFunc,
 		buffer:          make(chan *Object, 100),
 		doneCtx:         ctx,
 		doneCtxCancel:   cancel,
 		subGroupCount:   atomic.Uint64{},
 		fetchCount:      atomic.Uint64{},
-		unsubscribeFunc: nil,
 		responseChan:    make(chan error, 1),
 	}
 	return t
-}
-
-// onUnsubscribe func sets the callback to be called when the user wants to
-// unsubscribe from the track. MUST be called before the track is used.
-func (t *RemoteTrack) onUnsubscribe(cb func() error) {
-	t.unsubscribeFunc = cb
 }
 
 // ReadObject returns the next object received from the peer.

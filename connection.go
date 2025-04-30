@@ -31,8 +31,8 @@ type Perspective int
 
 // The perspectives
 const (
-	PerspectiveServer Perspective = iota
-	PerspectiveClient
+	PerspectiveClient Perspective = iota
+	PerspectiveServer
 )
 
 func (p Perspective) String() string {

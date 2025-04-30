@@ -17,7 +17,3 @@ const (
 	TrackStatusFinished     = 0x03
 	TrackStatusUnavailable  = 0x04
 )
-
-const (
-	maxVarint uint64 = 1<<62 - 1
-)
