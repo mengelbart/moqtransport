@@ -27,7 +27,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		highestSubscribesBlocked:                 atomic.Uint64{},
+		highestRequestsBlocked:                   atomic.Uint64{},
 		remoteTracks:                             newRemoteTrackMap(0),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
