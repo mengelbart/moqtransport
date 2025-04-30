@@ -6,10 +6,12 @@ import (
 	"maps"
 
 	"github.com/mengelbart/moqtransport/internal/slices"
+	"github.com/quic-go/quic-go/quicvarint"
 )
 
 // TODO: Add tests
 type SubscribeAnnouncesMessage struct {
+	RequestID            uint64
 	TrackNamespacePrefix Tuple
 	Parameters           Parameters
 }
@@ -33,12 +35,19 @@ func (m SubscribeAnnouncesMessage) Type() controlMessageType {
 }
 
 func (m *SubscribeAnnouncesMessage) Append(buf []byte) []byte {
+	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespacePrefix.append(buf)
 	return m.Parameters.append(buf)
 }
 
 func (m *SubscribeAnnouncesMessage) parse(_ Version, data []byte) (err error) {
 	var n int
+	m.RequestID, n, err = quicvarint.Parse(data)
+	if err != nil {
+		return err
+	}
+	data = data[n:]
+
 	m.TrackNamespacePrefix, n, err = parseTuple(data)
 	if err != nil {
 		return err

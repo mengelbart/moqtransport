@@ -139,9 +139,9 @@ func (t *Transport) handle(m *Message) {
 			}
 		case MessageSubscribeAnnounces:
 			asrw := &announcementSubscriptionResponseWriter{
-				prefix:  m.Namespace,
-				session: t.Session,
-				handled: false,
+				requestID: m.RequestID,
+				session:   t.Session,
+				handled:   false,
 			}
 			t.Handler.Handle(asrw, m)
 			if !asrw.handled {

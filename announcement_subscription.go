@@ -5,6 +5,7 @@ type announcementSubscriptionResponse struct {
 }
 
 type announcementSubscription struct {
+	requestID uint64
 	namespace []string
 	response  chan announcementSubscriptionResponse
 }

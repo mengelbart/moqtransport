@@ -622,6 +622,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		return err
 	}
 	as := &announcementSubscription{
+		requestID: s.rid.next(),
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
 	}
@@ -629,11 +630,12 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		return err
 	}
 	sam := &wire.SubscribeAnnouncesMessage{
+		RequestID:            as.requestID,
 		TrackNamespacePrefix: as.namespace,
 		Parameters:           map[uint64]wire.Parameter{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, sam); err != nil {
-		_, _ = s.pendingOutgointAnnouncementSubscriptions.delete(as.namespace)
+		_, _ = s.pendingOutgointAnnouncementSubscriptions.deleteByID(as.requestID)
 		return err
 	}
 	select {
@@ -644,17 +646,17 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 	}
 }
 
-func (s *Session) acceptAnnouncementSubscription(as []string) error {
+func (s *Session) acceptAnnouncementSubscription(requestID uint64) error {
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesOkMessage{
-		TrackNamespacePrefix: as,
+		RequestID: requestID,
 	})
 }
 
-func (s *Session) rejectAnnouncementSubscription(as []string, c uint64, r string) error {
+func (s *Session) rejectAnnouncementSubscription(requestID uint64, c uint64, r string) error {
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesErrorMessage{
-		TrackNamespacePrefix: as,
-		ErrorCode:            c,
-		ReasonPhrase:         r,
+		RequestID:    requestID,
+		ErrorCode:    c,
+		ReasonPhrase: r,
 	})
 }
 
@@ -1055,18 +1057,20 @@ func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 
 func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
 	if err := s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
+		requestID: msg.RequestID,
 		namespace: msg.TrackNamespacePrefix,
 	}); err != nil {
 		return err
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+		RequestID: msg.RequestID,
 		Method:    MessageSubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
 }
 
 func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.deleteByID(msg.RequestID)
 	if !ok {
 		return errUnknownSubscribeAnnouncesPrefix
 	}
@@ -1081,7 +1085,7 @@ func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) 
 }
 
 func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.delete(msg.TrackNamespacePrefix)
+	as, ok := s.pendingOutgointAnnouncementSubscriptions.deleteByID(msg.RequestID)
 	if !ok {
 		return errUnknownSubscribeAnnouncesPrefix
 	}
