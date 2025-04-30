@@ -462,11 +462,13 @@ func (s *Session) acceptFetch(id uint64) error {
 		return errUnknownSubscribeID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchOkMessage{
-		RequestID:           id,
-		GroupOrder:          1,
-		EndOfTrack:          0,
-		LargestGroupID:      id,
-		LargestObjectID:     id,
+		RequestID:  id,
+		GroupOrder: 1,
+		EndOfTrack: 0,
+		EndLocation: wire.Location{
+			Group:  0,
+			Object: 0,
+		},
 		SubscribeParameters: wire.Parameters{},
 	})
 }
