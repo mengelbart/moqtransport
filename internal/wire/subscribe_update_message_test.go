@@ -16,41 +16,50 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 	}{
 		{
 			sum: SubscribeUpdateMessage{
-				RequestID:          0,
-				StartGroup:         0,
-				StartObject:        0,
+				RequestID: 0,
+				StartLocation: Location{
+					Group:  0,
+					Object: 0,
+				},
 				EndGroup:           0,
 				SubscriberPriority: 0,
+				Forward:            0,
 				Parameters:         map[uint64]Parameter{},
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 			},
 		},
 		{
 			sum: SubscribeUpdateMessage{
-				RequestID:          1,
-				StartGroup:         2,
-				StartObject:        3,
+				RequestID: 1,
+				StartLocation: Location{
+					Group:  2,
+					Object: 3,
+				},
 				EndGroup:           4,
 				SubscriberPriority: 5,
+				Forward:            1,
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{},
-			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x01, 'A'},
 		},
 		{
 			sum: SubscribeUpdateMessage{
-				RequestID:          1,
-				StartGroup:         2,
-				StartObject:        3,
+				RequestID: 1,
+				StartLocation: Location{
+					Group:  2,
+					Object: 3,
+				},
 				EndGroup:           4,
 				SubscriberPriority: 5,
+				Forward:            1,
 				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 'A'},
+			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x01, 'A'},
 		},
 	}
 	for i, tc := range cases {
@@ -80,23 +89,29 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 		{
 			data: []byte{0x00, 0x01, 0x02},
 			expect: &SubscribeUpdateMessage{
-				RequestID:          0,
-				StartGroup:         1,
-				StartObject:        2,
+				RequestID: 0,
+				StartLocation: Location{
+					Group:  1,
+					Object: 2,
+				},
 				EndGroup:           0,
 				SubscriberPriority: 0,
+				Forward:            0,
 				Parameters:         nil,
 			},
 			err: io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x02, 0x01, 'P'},
+			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x02, 0x01, 'P'},
 			expect: &SubscribeUpdateMessage{
-				RequestID:          1,
-				StartGroup:         2,
-				StartObject:        3,
+				RequestID: 1,
+				StartLocation: Location{
+					Group:  2,
+					Object: 3,
+				},
 				EndGroup:           4,
 				SubscriberPriority: 5,
+				Forward:            1,
 				Parameters: Parameters{
 					AuthorizationParameterKey: StringParameter{
 						Type:  AuthorizationParameterKey,
