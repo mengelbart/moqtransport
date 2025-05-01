@@ -31,7 +31,7 @@ func TestAnnounce(t *testing.T) {
 		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
 			assert.Equal(t, moqtransport.MessageAnnounce, m.Method)
 			assert.NotNil(t, w)
-			assert.NoError(t, w.Reject(moqtransport.ErrorCodeAnnouncementInternalError, "expected error"))
+			assert.NoError(t, w.Reject(moqtransport.ErrorCodeAnnouncementInternal, "expected error"))
 		})
 		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
