@@ -38,23 +38,23 @@ func TestServerSetupMessageAppend(t *testing.T) {
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
 				SetupParameters: Parameters{
-					MaxRequestIDParameterKey: VarintParameter{
-						Type:  MaxRequestIDParameterKey,
-						Value: 2,
+					KeyValuePair{
+						Type:        MaxRequestIDParameterKey,
+						ValueVarInt: 2,
 					},
 				},
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x00, 0x01, 0x02, 0x01, 0x02,
+				0x00, 0x01, 0x02, 0x02,
 			},
 		},
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{PathParameterKey: StringParameter{
-					Type:  PathParameterKey,
-					Value: "A",
+				SetupParameters: Parameters{KeyValuePair{
+					Type:       PathParameterKey,
+					ValueBytes: []byte("A"),
 				}},
 			},
 			buf: []byte{0x01, 0x02},
@@ -93,7 +93,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: map[uint64]Parameter{},
+				SetupParameters: Parameters{},
 			},
 			err: io.EOF,
 		},
@@ -113,10 +113,9 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{PathParameterKey: StringParameter{
-					Type:  PathParameterKey,
-					Name:  "path",
-					Value: "A",
+				SetupParameters: Parameters{KeyValuePair{
+					Type:       PathParameterKey,
+					ValueBytes: []byte("A"),
 				}},
 			},
 			err: nil,
@@ -127,10 +126,9 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{PathParameterKey: StringParameter{
-					Type:  PathParameterKey,
-					Name:  "path",
-					Value: "A",
+				SetupParameters: Parameters{KeyValuePair{
+					Type:       PathParameterKey,
+					ValueBytes: []byte("A"),
 				}},
 			},
 			err: nil,

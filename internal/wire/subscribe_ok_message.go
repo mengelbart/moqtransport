@@ -2,10 +2,8 @@ package wire
 
 import (
 	"log/slog"
-	"maps"
 	"time"
 
-	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -41,7 +39,7 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 	)
 	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("subscribe_parameters", slices.Collect(maps.Values(m.Parameters))),
+			slog.Any("subscribe_parameters", m.Parameters),
 		)
 
 	}
@@ -95,7 +93,7 @@ func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 
 	if !m.ContentExists {
 		m.Parameters = Parameters{}
-		return m.Parameters.parseVersionSpecificParameters(data)
+		return m.Parameters.parse(data)
 	}
 
 	n, err = m.LargestLocation.parse(v, data)
@@ -105,5 +103,5 @@ func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parseVersionSpecificParameters(data)
+	return m.Parameters.parse(data)
 }

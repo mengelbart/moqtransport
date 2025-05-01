@@ -2,9 +2,7 @@ package wire
 
 import (
 	"log/slog"
-	"maps"
 
-	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -29,7 +27,7 @@ func (m *FetchOkMessage) LogValue() slog.Value {
 	}
 	if len(m.SubscribeParameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("subscribe_parameters", slices.Collect(maps.Values(m.SubscribeParameters))),
+			slog.Any("subscribe_parameters", m.SubscribeParameters),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -71,5 +69,5 @@ func (m *FetchOkMessage) parse(v Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	return m.SubscribeParameters.parseVersionSpecificParameters(data)
+	return m.SubscribeParameters.parse(data)
 }
