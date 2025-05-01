@@ -47,16 +47,14 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(),
 			&wire.ClientSetupMessage{
 				SupportedVersions: wire.SupportedVersions,
-				SetupParameters: map[uint64]wire.Parameter{
-					wire.PathParameterKey: wire.StringParameter{
-						Type:  wire.PathParameterKey,
-						Name:  "path",
-						Value: "/path",
+				SetupParameters: wire.Parameters{
+					wire.KeyValuePair{
+						Type:        wire.MaxRequestIDParameterKey,
+						ValueVarInt: 100,
 					},
-					wire.MaxRequestIDParameterKey: wire.VarintParameter{
-						Type:  wire.MaxRequestIDParameterKey,
-						Name:  "max_request_id",
-						Value: 100,
+					wire.KeyValuePair{
+						Type:       wire.PathParameterKey,
+						ValueBytes: []byte("/path"),
 					},
 				},
 			},
@@ -75,11 +73,10 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxRequestIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxRequestIDParameterKey,
-					Name:  "max_request_id",
-					Value: 100,
+			SetupParameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:        wire.MaxRequestIDParameterKey,
+					ValueVarInt: 100,
 				},
 			},
 		},
@@ -100,22 +97,20 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxRequestIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxRequestIDParameterKey,
-					Name:  "max_request_id",
-					Value: 100,
+			SetupParameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:        wire.MaxRequestIDParameterKey,
+					ValueVarInt: 100,
 				},
 			},
 		})
 
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.PathParameterKey: wire.StringParameter{
-					Type:  wire.PathParameterKey,
-					Name:  "path",
-					Value: "/path",
+			SetupParameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:       wire.PathParameterKey,
+					ValueBytes: []byte("/path"),
 				},
 			},
 		})
@@ -131,22 +126,20 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxRequestIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxRequestIDParameterKey,
-					Name:  "max_request_id",
-					Value: 100,
+			SetupParameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:        wire.MaxRequestIDParameterKey,
+					ValueVarInt: 100,
 				},
 			},
 		})
 
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: map[uint64]wire.Parameter{
-				wire.MaxRequestIDParameterKey: wire.VarintParameter{
-					Type:  wire.MaxRequestIDParameterKey,
-					Name:  "max_request_id",
-					Value: 100,
+			SetupParameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:        wire.MaxRequestIDParameterKey,
+					ValueVarInt: 100,
 				},
 			},
 		})
@@ -161,7 +154,7 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters:   map[uint64]wire.Parameter{},
+			SetupParameters:   wire.Parameters{},
 		})
 		assert.Error(t, err)
 	})
@@ -187,10 +180,9 @@ func TestSession(t *testing.T) {
 			},
 			EndGroup: 0,
 			Parameters: wire.Parameters{
-				wire.AuthorizationParameterKey: &wire.StringParameter{
-					Type:  wire.AuthorizationParameterKey,
-					Name:  "authorization_info",
-					Value: "auth",
+				wire.KeyValuePair{
+					Type:       wire.AuthorizationTokenParameterKey,
+					ValueBytes: []byte("auth"),
 				},
 			},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
@@ -241,11 +233,10 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup: 0,
-			Parameters: map[uint64]wire.Parameter{
-				2: &wire.StringParameter{
-					Type:  2,
-					Name:  "authorization_info",
-					Value: "auth",
+			Parameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:       wire.AuthorizationTokenParameterKey,
+					ValueBytes: []byte("auth"),
 				},
 			},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
@@ -255,7 +246,7 @@ func TestSession(t *testing.T) {
 				GroupOrder:      0,
 				ContentExists:   false,
 				LargestLocation: wire.Location{},
-				Parameters:      map[uint64]wire.Parameter{},
+				Parameters:      wire.Parameters{},
 			})
 			assert.NoError(t, err)
 			return nil
@@ -293,7 +284,7 @@ func TestSession(t *testing.T) {
 			GroupOrder:      1,
 			ContentExists:   false,
 			LargestLocation: wire.Location{},
-			Parameters:      map[uint64]wire.Parameter{},
+			Parameters:      wire.Parameters{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
 			RequestID:          0,
@@ -308,7 +299,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup:   0,
-			Parameters: map[uint64]wire.Parameter{},
+			Parameters: wire.Parameters{},
 		})
 		assert.NoError(t, err)
 	})
@@ -354,7 +345,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup:   0,
-			Parameters: map[uint64]wire.Parameter{},
+			Parameters: wire.Parameters{},
 		})
 		assert.NoError(t, err)
 	})
@@ -369,7 +360,7 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceMessage{
 			RequestID:      0,
 			TrackNamespace: []string{"namespace"},
-			Parameters:     map[uint64]wire.Parameter{},
+			Parameters:     wire.Parameters{},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
 				RequestID: 0,
@@ -402,7 +393,7 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.AnnounceMessage{
 			RequestID:      2,
 			TrackNamespace: []string{"namespace"},
-			Parameters:     map[uint64]wire.Parameter{},
+			Parameters:     wire.Parameters{},
 		})
 		assert.NoError(t, err)
 	})
@@ -453,11 +444,10 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup: 0,
-			Parameters: map[uint64]wire.Parameter{
-				wire.AuthorizationParameterKey: &wire.StringParameter{
-					Type:  wire.AuthorizationParameterKey,
-					Name:  "authorization_info",
-					Value: "auth",
+			Parameters: wire.Parameters{
+				wire.KeyValuePair{
+					Type:       wire.AuthorizationTokenParameterKey,
+					ValueBytes: []byte("auth"),
 				},
 			},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
@@ -468,7 +458,7 @@ func TestSession(t *testing.T) {
 				GroupOrder:      1,
 				ContentExists:   false,
 				LargestLocation: wire.Location{},
-				Parameters:      map[uint64]wire.Parameter{},
+				Parameters:      wire.Parameters{},
 			}))
 			return nil
 		})

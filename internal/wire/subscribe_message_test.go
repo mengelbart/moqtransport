@@ -71,10 +71,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 					Object: 2,
 				},
 				EndGroup:   3,
-				Parameters: Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
+				Parameters: Parameters{KeyValuePair{Type: AuthorizationTokenParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x02, 0x01, 'A'}...),
+			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 'A'}...),
 		},
 		{
 			sm: SubscribeMessage{
@@ -91,10 +91,10 @@ func TestSubscribeMessageAppend(t *testing.T) {
 					Object: 0,
 				},
 				EndGroup:   0,
-				Parameters: Parameters{AuthorizationParameterKey: StringParameter{Type: AuthorizationParameterKey, Value: "A"}},
+				Parameters: Parameters{KeyValuePair{Type: AuthorizationTokenParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
-			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x00, 0x01, 0x01, 0x02, 0x01, 'A'}...),
+			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'}...),
 		},
 	}
 	for i, tc := range cases {
@@ -175,12 +175,12 @@ func TestParseSubscribeMessage(t *testing.T) {
 					Object: 1,
 				},
 				EndGroup:   0,
-				Parameters: map[uint64]Parameter{},
+				Parameters: Parameters{},
 			},
 			err: io.EOF,
 		},
 		{
-			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x01, 0x01, 0x02, 0x01, 'A'),
+			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'),
 			expect: &SubscribeMessage{
 				RequestID:          17,
 				TrackAlias:         18,
@@ -195,16 +195,15 @@ func TestParseSubscribeMessage(t *testing.T) {
 					Object: 0,
 				},
 				EndGroup: 0,
-				Parameters: Parameters{AuthorizationParameterKey: StringParameter{
-					Type:  AuthorizationParameterKey,
-					Name:  "authorization_info",
-					Value: "A",
+				Parameters: Parameters{KeyValuePair{
+					Type:       AuthorizationTokenParameterKey,
+					ValueBytes: []byte("A"),
 				}},
 			},
 			err: nil,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x02, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
 				RequestID:          0,
 				TrackAlias:         0,
@@ -219,10 +218,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 					Object: 2,
 				},
 				EndGroup: 3,
-				Parameters: Parameters{AuthorizationParameterKey: StringParameter{
-					Type:  AuthorizationParameterKey,
-					Name:  "authorization_info",
-					Value: "A",
+				Parameters: Parameters{KeyValuePair{
+					Type:       AuthorizationTokenParameterKey,
+					ValueBytes: []byte("A"),
 				}},
 			},
 			err: nil,

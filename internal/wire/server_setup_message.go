@@ -2,8 +2,6 @@ package wire
 
 import (
 	"log/slog"
-	"maps"
-	"slices"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -21,7 +19,7 @@ func (m *ServerSetupMessage) LogValue() slog.Value {
 	}
 	if len(m.SetupParameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("setup_parameters", slices.Collect(maps.Values(m.SetupParameters))),
+			slog.Any("setup_parameters", m.SetupParameters),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -49,5 +47,5 @@ func (m *ServerSetupMessage) parse(_ Version, data []byte) error {
 
 	m.SelectedVersion = Version(sv)
 	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parseSetupParameters(data)
+	return m.SetupParameters.parse(data)
 }

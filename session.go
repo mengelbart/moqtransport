@@ -24,9 +24,6 @@ var (
 	errUnknownTrackAlias                = errors.New("unknown track alias")
 	errMissingPathParameter             = errors.New("missing path parameter")
 	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
-	errInvalidPathParameterType         = errors.New("invalid path parameter type")
-	errInvalidMaxRequestIDParameterType = errors.New("invalid max request ID parameter type")
-	errInvalidAuthParameterType         = errors.New("invalid auth parameter type")
 	errDuplicateTrackStatusRequest      = errors.New("track status already requested")
 	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
@@ -263,20 +260,18 @@ func (s *Session) Path() string {
 // Session message senders
 
 func (s *Session) sendClientSetup() error {
-	params := map[uint64]wire.Parameter{
-		wire.MaxRequestIDParameterKey: wire.VarintParameter{
-			Type:  wire.MaxRequestIDParameterKey,
-			Name:  "max_request_id",
-			Value: s.localMaxRequestID.Load(),
+	params := wire.Parameters{
+		wire.KeyValuePair{
+			Type:        wire.MaxRequestIDParameterKey,
+			ValueVarInt: s.localMaxRequestID.Load(),
 		},
 	}
 	if s.Protocol == ProtocolQUIC {
 		path := s.path
-		params[wire.PathParameterKey] = wire.StringParameter{
-			Type:  wire.PathParameterKey,
-			Name:  "path",
-			Value: path,
-		}
+		params = append(params, wire.KeyValuePair{
+			Type:       wire.PathParameterKey,
+			ValueBytes: []byte(path),
+		})
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ClientSetupMessage{
 		SupportedVersions: wire.SupportedVersions,
@@ -334,14 +329,13 @@ func (s *Session) Subscribe(
 			Object: 0,
 		},
 		EndGroup:   0,
-		Parameters: map[uint64]wire.Parameter{},
+		Parameters: wire.Parameters{},
 	}
 	if len(auth) > 0 {
-		cm.Parameters[wire.AuthorizationParameterKey] = &wire.StringParameter{
-			Type:  wire.AuthorizationParameterKey,
-			Name:  "authorization_info",
-			Value: auth,
-		}
+		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
+			Type:       wire.AuthorizationTokenParameterKey,
+			ValueBytes: []byte(auth),
+		})
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		return nil, err
@@ -454,7 +448,7 @@ func (s *Session) Fetch(
 		EndObject:            0,
 		JoiningSubscribeID:   0,
 		PrecedingGroupOffset: 0,
-		Parameters:           map[uint64]wire.Parameter{},
+		Parameters:           wire.Parameters{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		_, _ = s.remoteTracks.reject(requestID)
@@ -561,7 +555,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 	a := &announcement{
 		requestID:  s.requestID.next(),
 		namespace:  namespace,
-		parameters: map[uint64]wire.Parameter{},
+		parameters: wire.Parameters{},
 		response:   make(chan error, 1),
 	}
 	if err := s.outgoingAnnouncements.add(a); err != nil {
@@ -649,7 +643,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 	sam := &wire.SubscribeAnnouncesMessage{
 		RequestID:            as.requestID,
 		TrackNamespacePrefix: as.namespace,
-		Parameters:           map[uint64]wire.Parameter{},
+		Parameters:           wire.Parameters{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, sam); err != nil {
 		_, _ = s.pendingOutgointAnnouncementSubscriptions.deleteByID(as.requestID)
@@ -778,21 +772,17 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	s.path = path
 
-	remoteMaxRequestID, err := validateMaxRequestIDParameter(m.SetupParameters)
-	if err != nil {
-		return err
-	}
+	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
 	if remoteMaxRequestID > 0 {
 		s.remoteMaxRequestID.Store(remoteMaxRequestID)
 	}
 
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
-		SetupParameters: map[uint64]wire.Parameter{
-			wire.MaxRequestIDParameterKey: wire.VarintParameter{
-				Type:  wire.MaxRequestIDParameterKey,
-				Name:  "max_request_id",
-				Value: 100,
+		SetupParameters: wire.Parameters{
+			wire.KeyValuePair{
+				Type:        wire.MaxRequestIDParameterKey,
+				ValueVarInt: 100,
 			},
 		},
 	}); err != nil {
@@ -812,10 +802,7 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	}
 	s.version = m.SelectedVersion
 
-	remoteMaxRequestID, err := validateMaxRequestIDParameter(m.SetupParameters)
-	if err != nil {
-		return err
-	}
+	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
 	s.remoteMaxRequestID.Store(remoteMaxRequestID)
 	close(s.handshakeDoneCh)
 	return nil

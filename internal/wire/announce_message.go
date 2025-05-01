@@ -2,9 +2,7 @@ package wire
 
 import (
 	"log/slog"
-	"maps"
 
-	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -22,7 +20,7 @@ func (m *AnnounceMessage) LogValue() slog.Value {
 	}
 	if len(m.Parameters) > 0 {
 		attrs = append(attrs,
-			slog.Any("parameters", slices.Collect(maps.Values(m.Parameters))),
+			slog.Any("parameters", m.Parameters),
 		)
 	}
 	return slog.GroupValue(attrs...)
@@ -57,5 +55,5 @@ func (m *AnnounceMessage) parse(_ Version, data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parseVersionSpecificParameters(data)
+	return m.Parameters.parse(data)
 }

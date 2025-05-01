@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"slices"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/quic-go/quic-go/quicvarint"
@@ -28,43 +29,37 @@ func compileMessage(msg wire.ControlMessage) ([]byte, error) {
 }
 
 func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool) (string, error) {
-	pathParam, ok := setupParameters[wire.PathParameterKey]
-	if !ok {
-		if !protocolIsQUIC {
-			return "", nil
+	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
+		return p.Type == wire.PathParameterKey
+	})
+	if index < 0 {
+		if protocolIsQUIC {
+			return "", errMissingPathParameter
 		}
-		return "", errMissingPathParameter
+		return "", nil
 	}
-	if !protocolIsQUIC {
+	if index > 0 && !protocolIsQUIC {
 		return "", errUnexpectedPathParameter
 	}
-	pathParamValue, ok := pathParam.(wire.StringParameter)
-	if !ok {
-		return "", errInvalidPathParameterType
-	}
-	return pathParamValue.Value, nil
+	return string(setupParameters[index].ValueBytes), nil
 }
 
-func validateMaxRequestIDParameter(setupParameters wire.Parameters) (uint64, error) {
-	maxRequestIDParam, ok := setupParameters[wire.MaxRequestIDParameterKey]
-	if !ok {
-		return 0, nil
+func getMaxRequestIDParameter(setupParameters wire.Parameters) uint64 {
+	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
+		return p.Type == wire.MaxRequestIDParameterKey
+	})
+	if index < 0 {
+		return 0
 	}
-	maxRequestIDParamValue, ok := maxRequestIDParam.(wire.VarintParameter)
-	if !ok {
-		return 0, errInvalidMaxRequestIDParameterType
-	}
-	return maxRequestIDParamValue.Value, nil
+	return setupParameters[index].ValueVarInt
 }
 
 func validateAuthParameter(subscribeParameters wire.Parameters) (string, error) {
-	authParam, ok := subscribeParameters[wire.AuthorizationParameterKey]
-	if !ok {
+	index := slices.IndexFunc(subscribeParameters, func(p wire.KeyValuePair) bool {
+		return p.Type == wire.AuthorizationTokenParameterKey
+	})
+	if index < 0 {
 		return "", nil
 	}
-	authParamValue, ok := authParam.(wire.StringParameter)
-	if !ok {
-		return "", errInvalidAuthParameterType
-	}
-	return authParamValue.Value, nil
+	return string(subscribeParameters[index].ValueBytes), nil
 }

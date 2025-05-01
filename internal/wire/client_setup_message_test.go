@@ -37,10 +37,12 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		{
 			csm: ClientSetupMessage{
 				SupportedVersions: []Version{Draft_ietf_moq_transport_00},
-				SetupParameters: Parameters{PathParameterKey: StringParameter{
-					Type:  PathParameterKey,
-					Value: "A",
-				}},
+				SetupParameters: Parameters{
+					KeyValuePair{
+						Type:       PathParameterKey,
+						ValueBytes: []byte("A"),
+					},
+				},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -132,20 +134,18 @@ func TestParseClientSetupMessage(t *testing.T) {
 		{
 			data: []byte{
 				0x01, 0x00,
-				0x02, 0x02, 0x01, 0x02, 0x01, 0x01, 'a',
+				0x02, 0x02, 0x02, 0x01, 0x01, 'a',
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
 				SetupParameters: Parameters{
-					0x02: VarintParameter{
-						Type:  MaxRequestIDParameterKey,
-						Name:  "max_request_id",
-						Value: 2,
+					KeyValuePair{
+						Type:        MaxRequestIDParameterKey,
+						ValueVarInt: 2,
 					},
-					0x01: StringParameter{
-						Type:  1,
-						Name:  "path",
-						Value: "a",
+					KeyValuePair{
+						Type:       1,
+						ValueBytes: []byte("a"),
 					},
 				},
 			},

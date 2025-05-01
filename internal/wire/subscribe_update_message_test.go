@@ -24,7 +24,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				EndGroup:           0,
 				SubscriberPriority: 0,
 				Forward:            0,
-				Parameters:         map[uint64]Parameter{},
+				Parameters:         Parameters{},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -41,7 +41,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				EndGroup:           4,
 				SubscriberPriority: 5,
 				Forward:            1,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{KeyValuePair{Type: PathParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{},
 			expect: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x01, 'A'},
@@ -56,7 +56,7 @@ func TestSubscribeUpdateMessageAppend(t *testing.T) {
 				EndGroup:           4,
 				SubscriberPriority: 5,
 				Forward:            1,
-				Parameters:         Parameters{PathParameterKey: StringParameter{Type: PathParameterKey, Value: "A"}},
+				Parameters:         Parameters{KeyValuePair{Type: PathParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x01, 'A'},
@@ -102,7 +102,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 			err: io.EOF,
 		},
 		{
-			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x02, 0x01, 'P'},
+			data: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x01, 'P'},
 			expect: &SubscribeUpdateMessage{
 				RequestID: 1,
 				StartLocation: Location{
@@ -112,13 +112,7 @@ func TestParseSubscribeUpdateMessage(t *testing.T) {
 				EndGroup:           4,
 				SubscriberPriority: 5,
 				Forward:            1,
-				Parameters: Parameters{
-					AuthorizationParameterKey: StringParameter{
-						Type:  AuthorizationParameterKey,
-						Name:  "authorization_info",
-						Value: "P",
-					},
-				},
+				Parameters:         Parameters{KeyValuePair{Type: PathParameterKey, ValueBytes: []byte("P")}},
 			},
 			err: nil,
 		},

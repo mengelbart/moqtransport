@@ -54,5 +54,5 @@ func (m *TrackStatusMessage) parse(v Version, data []byte) (err error) {
 	data = data[n:]
 
 	m.Parameters = Parameters{}
-	return m.Parameters.parseVersionSpecificParameters(data)
+	return m.Parameters.parse(data)
 }
