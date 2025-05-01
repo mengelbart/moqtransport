@@ -1011,7 +1011,7 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 	}
 	if err := s.incomingAnnouncements.add(a); err != nil {
 		return ProtocolError{
-			code:    ErrorCodeAnnouncementInternalError,
+			code:    ErrorCodeAnnouncementInternal,
 			message: err.Error(),
 		}
 	}
