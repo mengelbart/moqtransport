@@ -27,7 +27,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		{
 			csm: ClientSetupMessage{
 				SupportedVersions: []Version{Draft_ietf_moq_transport_00},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -37,7 +37,7 @@ func TestClientSetupMessageAppend(t *testing.T) {
 		{
 			csm: ClientSetupMessage{
 				SupportedVersions: []Version{Draft_ietf_moq_transport_00},
-				SetupParameters: Parameters{
+				SetupParameters: KVPList{
 					KeyValuePair{
 						Type:       PathParameterKey,
 						ValueBytes: []byte("A"),
@@ -80,7 +80,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: io.EOF,
 		},
@@ -97,7 +97,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00, 0x01},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: io.EOF,
 		},
@@ -107,7 +107,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0, 0 + 1},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: nil,
 		},
@@ -117,7 +117,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: nil,
 		},
@@ -127,7 +127,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: io.EOF,
 		},
@@ -138,7 +138,7 @@ func TestParseClientSetupMessage(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
-				SetupParameters: Parameters{
+				SetupParameters: KVPList{
 					KeyValuePair{
 						Type:        MaxRequestIDParameterKey,
 						ValueVarInt: 2,

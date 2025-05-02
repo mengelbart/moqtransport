@@ -10,7 +10,7 @@ type TrackStatusMessage struct {
 	RequestID       uint64
 	StatusCode      uint64
 	LargestLocation Location
-	Parameters      Parameters
+	Parameters      KVPList
 }
 
 func (m *TrackStatusMessage) LogValue() slog.Value {
@@ -30,7 +30,7 @@ func (m *TrackStatusMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
 	buf = quicvarint.Append(buf, m.StatusCode)
 	buf = m.LargestLocation.append(buf)
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *TrackStatusMessage) parse(v Version, data []byte) (err error) {
@@ -53,6 +53,6 @@ func (m *TrackStatusMessage) parse(v Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

@@ -13,7 +13,7 @@ type SubscribeOkMessage struct {
 	GroupOrder      uint8
 	ContentExists   bool
 	LargestLocation Location
-	Parameters      Parameters
+	Parameters      KVPList
 }
 
 func (m *SubscribeOkMessage) LogValue() slog.Value {
@@ -57,10 +57,10 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	if m.ContentExists {
 		buf = append(buf, 1) // ContentExists=true
 		buf = m.LargestLocation.append(buf)
-		return m.Parameters.append(buf)
+		return m.Parameters.appendNum(buf)
 	}
 	buf = append(buf, 0) // ContentExists=false
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
@@ -92,8 +92,8 @@ func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 	data = data[2:]
 
 	if !m.ContentExists {
-		m.Parameters = Parameters{}
-		return m.Parameters.parse(data)
+		m.Parameters = KVPList{}
+		return m.Parameters.parseNum(data)
 	}
 
 	n, err = m.LargestLocation.parse(v, data)
@@ -102,6 +102,6 @@ func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

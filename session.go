@@ -187,16 +187,16 @@ func (s *Session) readSubgroupStream(parser objectMessageParser) error {
 	return rt.readSubgroupStream(parser)
 }
 
-func (s *Session) receiveDatagram(msg *wire.ObjectMessage) error {
+func (s *Session) receiveDatagram(msg *wire.ObjectDatagramMessage) error {
 	subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
 	if !ok {
 		return errUnknownTrackAlias
 	}
 	subscription.push(&Object{
-		GroupID:    msg.GroupID,
-		SubGroupID: msg.SubgroupID,
-		ObjectID:   msg.ObjectID,
-		Payload:    msg.ObjectPayload,
+		GroupID:              msg.GroupID,
+		ObjectID:             msg.ObjectID,
+		ForwardingPreference: ObjectForwardingPreferenceDatagarm,
+		Payload:              msg.ObjectPayload,
 	})
 	return nil
 }
@@ -260,7 +260,7 @@ func (s *Session) Path() string {
 // Session message senders
 
 func (s *Session) sendClientSetup() error {
-	params := wire.Parameters{
+	params := wire.KVPList{
 		wire.KeyValuePair{
 			Type:        wire.MaxRequestIDParameterKey,
 			ValueVarInt: s.localMaxRequestID.Load(),
@@ -329,7 +329,7 @@ func (s *Session) Subscribe(
 			Object: 0,
 		},
 		EndGroup:   0,
-		Parameters: wire.Parameters{},
+		Parameters: wire.KVPList{},
 	}
 	if len(auth) > 0 {
 		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
@@ -371,7 +371,7 @@ func (s *Session) acceptSubscription(id uint64) error {
 			Group:  0,
 			Object: 0,
 		},
-		Parameters: wire.Parameters{},
+		Parameters: wire.KVPList{},
 	})
 }
 
@@ -448,7 +448,7 @@ func (s *Session) Fetch(
 		EndObject:            0,
 		JoiningSubscribeID:   0,
 		PrecedingGroupOffset: 0,
-		Parameters:           wire.Parameters{},
+		Parameters:           wire.KVPList{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		_, _ = s.remoteTracks.reject(requestID)
@@ -483,7 +483,7 @@ func (s *Session) acceptFetch(id uint64) error {
 			Group:  0,
 			Object: 0,
 		},
-		SubscribeParameters: wire.Parameters{},
+		SubscribeParameters: wire.KVPList{},
 	})
 }
 
@@ -541,7 +541,7 @@ func (s *Session) sendTrackStatus(ts TrackStatus) error {
 		StatusCode:      ts.StatusCode,
 		RequestID:       0,
 		LargestLocation: wire.Location{},
-		Parameters:      wire.Parameters{},
+		Parameters:      wire.KVPList{},
 	})
 }
 
@@ -555,7 +555,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 	a := &announcement{
 		requestID:  s.requestID.next(),
 		namespace:  namespace,
-		parameters: wire.Parameters{},
+		parameters: wire.KVPList{},
 		response:   make(chan error, 1),
 	}
 	if err := s.outgoingAnnouncements.add(a); err != nil {
@@ -643,7 +643,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 	sam := &wire.SubscribeAnnouncesMessage{
 		RequestID:            as.requestID,
 		TrackNamespacePrefix: as.namespace,
-		Parameters:           wire.Parameters{},
+		Parameters:           wire.KVPList{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, sam); err != nil {
 		_, _ = s.pendingOutgointAnnouncementSubscriptions.deleteByID(as.requestID)
@@ -779,7 +779,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
-		SetupParameters: wire.Parameters{
+		SetupParameters: wire.KVPList{
 			wire.KeyValuePair{
 				Type:        wire.MaxRequestIDParameterKey,
 				ValueVarInt: 100,

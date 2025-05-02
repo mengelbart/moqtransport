@@ -232,8 +232,8 @@ func (t *Transport) readDatagrams() {
 			return
 		}
 		go func() {
-			msg := new(wire.ObjectMessage)
-			_, err := msg.ParseDatagram(dgram)
+			msg := new(wire.ObjectDatagramMessage)
+			_, err := msg.Parse(dgram)
 			if err != nil {
 				t.logger.Error("failed to parse datagram object", "error", err)
 				return
@@ -241,7 +241,7 @@ func (t *Transport) readDatagrams() {
 			if t.Qlogger != nil {
 				eth := slices.Collect(slices.Map(
 					msg.ObjectExtensionHeaders,
-					func(e wire.ObjectExtensionHeader) moqt.ExtensionHeader {
+					func(e wire.KeyValuePair) moqt.ExtensionHeader {
 						return moqt.ExtensionHeader{
 							HeaderType:   0, // TODO
 							HeaderValue:  0, // TODO

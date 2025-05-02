@@ -36,7 +36,7 @@ type SubscribeMessage struct {
 	FilterType         FilterType
 	StartLocation      Location
 	EndGroup           uint64
-	Parameters         Parameters
+	Parameters         KVPList
 }
 
 func (m *SubscribeMessage) LogValue() slog.Value {
@@ -95,7 +95,7 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	if m.FilterType == FilterTypeAbsoluteRange {
 		buf = quicvarint.Append(buf, m.EndGroup)
 	}
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
@@ -163,6 +163,6 @@ func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
 		}
 		data = data[n:]
 	}
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

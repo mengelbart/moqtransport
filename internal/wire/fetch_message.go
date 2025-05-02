@@ -26,7 +26,7 @@ type FetchMessage struct {
 	EndObject            uint64
 	JoiningSubscribeID   uint64
 	PrecedingGroupOffset uint64
-	Parameters           Parameters
+	Parameters           KVPList
 }
 
 // Attrs implements moqt.ControlMessage.
@@ -89,7 +89,7 @@ func (m *FetchMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.EndObject)
 	buf = quicvarint.Append(buf, m.JoiningSubscribeID)
 	buf = quicvarint.Append(buf, m.PrecedingGroupOffset)
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *FetchMessage) parse(_ Version, data []byte) (err error) {
@@ -171,6 +171,6 @@ func (m *FetchMessage) parse(_ Version, data []byte) (err error) {
 		data = data[n:]
 	}
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

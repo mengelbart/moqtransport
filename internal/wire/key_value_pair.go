@@ -1,7 +1,9 @@
 package wire
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -17,6 +19,17 @@ func (p *KeyValuePair) String() string {
 		return fmt.Sprintf("{key: %v, value: '%v'}", p.Type, p.ValueBytes)
 	}
 	return fmt.Sprintf("{key: %v, value: '%v'}", p.Type, p.ValueVarInt)
+}
+
+func (p KeyValuePair) length() uint64 {
+	length := uint64(quicvarint.Len(p.Type))
+	if p.Type%2 == 1 {
+		length += uint64(quicvarint.Len(uint64(len(p.ValueBytes))))
+		length += uint64(len(p.ValueBytes))
+		return length
+	}
+	length += uint64(quicvarint.Len(p.ValueVarInt))
+	return length
 }
 
 func (p KeyValuePair) append(buf []byte) []byte {
@@ -58,4 +71,29 @@ func (p *KeyValuePair) parse(data []byte) (int, error) {
 	p.ValueVarInt, n, err = quicvarint.Parse(data)
 	parsed += n
 	return parsed, err
+}
+
+func (p *KeyValuePair) parseReader(br *bufio.Reader) error {
+	var err error
+	p.Type, err = quicvarint.Read(br)
+	if err != nil {
+		return err
+	}
+	if p.Type%2 == 1 {
+		length, err := quicvarint.Read(br)
+		if err != nil {
+			return err
+		}
+		p.ValueBytes = make([]byte, length)
+		m, err := io.ReadFull(br, p.ValueBytes)
+		if err != nil {
+			return err
+		}
+		if uint64(m) != length {
+			return errLengthMismatch
+		}
+		return nil
+	}
+	p.ValueVarInt, err = quicvarint.Read(br)
+	return err
 }

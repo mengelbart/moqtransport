@@ -28,7 +28,7 @@ func compileMessage(msg wire.ControlMessage) ([]byte, error) {
 	return buf, nil
 }
 
-func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool) (string, error) {
+func validatePathParameter(setupParameters wire.KVPList, protocolIsQUIC bool) (string, error) {
 	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
 		return p.Type == wire.PathParameterKey
 	})
@@ -44,7 +44,7 @@ func validatePathParameter(setupParameters wire.Parameters, protocolIsQUIC bool)
 	return string(setupParameters[index].ValueBytes), nil
 }
 
-func getMaxRequestIDParameter(setupParameters wire.Parameters) uint64 {
+func getMaxRequestIDParameter(setupParameters wire.KVPList) uint64 {
 	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
 		return p.Type == wire.MaxRequestIDParameterKey
 	})
@@ -54,7 +54,7 @@ func getMaxRequestIDParameter(setupParameters wire.Parameters) uint64 {
 	return setupParameters[index].ValueVarInt
 }
 
-func validateAuthParameter(subscribeParameters wire.Parameters) (string, error) {
+func validateAuthParameter(subscribeParameters wire.KVPList) (string, error) {
 	index := slices.IndexFunc(subscribeParameters, func(p wire.KeyValuePair) bool {
 		return p.Type == wire.AuthorizationTokenParameterKey
 	})

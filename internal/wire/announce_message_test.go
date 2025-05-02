@@ -18,7 +18,7 @@ func TestAnnounceMessageAppend(t *testing.T) {
 			am: AnnounceMessage{
 				RequestID:      0,
 				TrackNamespace: []string{""},
-				Parameters:     Parameters{},
+				Parameters:     KVPList{},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -29,7 +29,7 @@ func TestAnnounceMessageAppend(t *testing.T) {
 			am: AnnounceMessage{
 				RequestID:      1,
 				TrackNamespace: []string{"tracknamespace"},
-				Parameters:     Parameters{},
+				Parameters:     KVPList{},
 			},
 			buf:    []byte{0x0a, 0x0b},
 			expect: []byte{0x0a, 0x0b, 0x01, 0x01, 0x0e, 't', 'r', 'a', 'c', 'k', 'n', 'a', 'm', 'e', 's', 'p', 'a', 'c', 'e', 0x00},
@@ -64,7 +64,7 @@ func TestParseAnnounceMessage(t *testing.T) {
 			expect: &AnnounceMessage{
 				RequestID:      0,
 				TrackNamespace: []string{"trackname"},
-				Parameters:     Parameters{},
+				Parameters:     KVPList{},
 			},
 			err: nil,
 		},

@@ -8,7 +8,7 @@ import (
 
 type ServerSetupMessage struct {
 	SelectedVersion Version
-	SetupParameters Parameters
+	SetupParameters KVPList
 }
 
 func (m *ServerSetupMessage) LogValue() slog.Value {
@@ -46,6 +46,6 @@ func (m *ServerSetupMessage) parse(_ Version, data []byte) error {
 	data = data[n:]
 
 	m.SelectedVersion = Version(sv)
-	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data)
+	m.SetupParameters = KVPList{}
+	return m.SetupParameters.parseNum(data)
 }

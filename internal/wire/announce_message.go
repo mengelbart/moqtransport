@@ -9,7 +9,7 @@ import (
 type AnnounceMessage struct {
 	RequestID      uint64
 	TrackNamespace Tuple
-	Parameters     Parameters
+	Parameters     KVPList
 }
 
 func (m *AnnounceMessage) LogValue() slog.Value {
@@ -37,7 +37,7 @@ func (m AnnounceMessage) Type() controlMessageType {
 func (m *AnnounceMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespace.append(buf)
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *AnnounceMessage) parse(_ Version, data []byte) (err error) {
@@ -54,6 +54,6 @@ func (m *AnnounceMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

@@ -27,7 +27,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{},
+				SetupParameters: KVPList{},
 			},
 			buf: []byte{},
 			expect: []byte{
@@ -37,7 +37,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{
+				SetupParameters: KVPList{
 					KeyValuePair{
 						Type:        MaxRequestIDParameterKey,
 						ValueVarInt: 2,
@@ -52,7 +52,7 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{KeyValuePair{
+				SetupParameters: KVPList{KeyValuePair{
 					Type:       PathParameterKey,
 					ValueBytes: []byte("A"),
 				}},
@@ -93,7 +93,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{},
+				SetupParameters: KVPList{},
 			},
 			err: io.EOF,
 		},
@@ -103,7 +103,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: Draft_ietf_moq_transport_00,
-				SetupParameters: Parameters{},
+				SetupParameters: KVPList{},
 			},
 			err: nil,
 		},
@@ -113,7 +113,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{KeyValuePair{
+				SetupParameters: KVPList{KeyValuePair{
 					Type:       PathParameterKey,
 					ValueBytes: []byte("A"),
 				}},
@@ -126,7 +126,7 @@ func TestParseServerSetupMessage(t *testing.T) {
 			},
 			expect: &ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: Parameters{KeyValuePair{
+				SetupParameters: KVPList{KeyValuePair{
 					Type:       PathParameterKey,
 					ValueBytes: []byte("A"),
 				}},

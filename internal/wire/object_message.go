@@ -7,11 +7,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-const (
-	objectTypeDatagram       uint64 = 0x01
-	objectTypeDatagramStatus uint64 = 0x02
-)
-
 type StreamType uint64
 
 const (
@@ -35,35 +30,14 @@ type ObjectMessage struct {
 	SubgroupID             uint64
 	ObjectID               uint64
 	PublisherPriority      uint8
-	ObjectExtensionHeaders ObjectExtensionHeaders
+	ObjectExtensionHeaders KVPList
 	ObjectStatus           ObjectStatus
 	ObjectPayload          []byte
 }
 
-func (m *ObjectMessage) AppendDatagram(buf []byte) []byte {
-	buf = quicvarint.Append(buf, objectTypeDatagram)
-	buf = quicvarint.Append(buf, m.TrackAlias)
-	buf = quicvarint.Append(buf, m.GroupID)
-	buf = quicvarint.Append(buf, m.ObjectID)
-	buf = append(buf, m.PublisherPriority)
-	buf = m.ObjectExtensionHeaders.append(buf)
-	buf = append(buf, m.ObjectPayload...)
-	return buf
-}
-
-func (m *ObjectMessage) AppendDatagramStatus(buf []byte) []byte {
-	buf = quicvarint.Append(buf, objectTypeDatagramStatus)
-	buf = quicvarint.Append(buf, m.TrackAlias)
-	buf = quicvarint.Append(buf, m.GroupID)
-	buf = quicvarint.Append(buf, m.ObjectID)
-	buf = append(buf, m.PublisherPriority)
-	buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
-	return buf
-}
-
 func (m *ObjectMessage) AppendSubgroup(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.ObjectID)
-	buf = m.ObjectExtensionHeaders.append(buf)
+	buf = m.ObjectExtensionHeaders.appendLength(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -78,7 +52,7 @@ func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.SubgroupID)
 	buf = quicvarint.Append(buf, m.ObjectID)
 	buf = append(buf, m.PublisherPriority)
-	buf = m.ObjectExtensionHeaders.append(buf)
+	buf = m.ObjectExtensionHeaders.appendLength(buf)
 	buf = quicvarint.Append(buf, uint64(len(m.ObjectPayload)))
 	if len(m.ObjectPayload) == 0 {
 		buf = quicvarint.Append(buf, uint64(m.ObjectStatus))
@@ -86,69 +60,6 @@ func (m *ObjectMessage) AppendFetch(buf []byte) []byte {
 		buf = append(buf, m.ObjectPayload...)
 	}
 	return buf
-}
-
-func (m *ObjectMessage) ParseDatagram(data []byte) (parsed int, err error) {
-	typ, n, err := quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	m.TrackAlias, n, err = quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	m.GroupID, n, err = quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	m.ObjectID, n, err = quicvarint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	if len(data) == 0 {
-		return parsed, io.ErrUnexpectedEOF
-	}
-	m.PublisherPriority = data[0]
-	parsed += 1
-	data = data[1:]
-
-	if typ == objectTypeDatagramStatus {
-		var status uint64
-		status, n, err = quicvarint.Parse(data)
-		parsed += n
-		if err != nil {
-			return
-		}
-		m.ObjectStatus = ObjectStatus(status)
-		return
-	}
-
-	if m.ObjectExtensionHeaders == nil {
-		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
-	}
-	n, err = m.ObjectExtensionHeaders.parse(data)
-	parsed += n
-	if err != nil {
-		return parsed, err
-	}
-	data = data[n:]
-
-	m.ObjectPayload = make([]byte, len(data))
-	n = copy(m.ObjectPayload, data)
-	parsed += n
-	return
 }
 
 func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
@@ -159,9 +70,9 @@ func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
 	}
 
 	if m.ObjectExtensionHeaders == nil {
-		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
+		m.ObjectExtensionHeaders = KVPList{}
 	}
-	if err = m.ObjectExtensionHeaders.parseReader(br); err != nil {
+	if err = m.ObjectExtensionHeaders.parseLengthReader(br); err != nil {
 		return err
 	}
 
@@ -202,9 +113,9 @@ func (m *ObjectMessage) readFetch(r io.Reader) (err error) {
 		return
 	}
 	if m.ObjectExtensionHeaders == nil {
-		m.ObjectExtensionHeaders = ObjectExtensionHeaders{}
+		m.ObjectExtensionHeaders = KVPList{}
 	}
-	if err = m.ObjectExtensionHeaders.parseReader(br); err != nil {
+	if err = m.ObjectExtensionHeaders.parseLengthReader(br); err != nil {
 		return err
 	}
 

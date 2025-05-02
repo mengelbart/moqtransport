@@ -47,7 +47,7 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(),
 			&wire.ClientSetupMessage{
 				SupportedVersions: wire.SupportedVersions,
-				SetupParameters: wire.Parameters{
+				SetupParameters: wire.KVPList{
 					wire.KeyValuePair{
 						Type:        wire.MaxRequestIDParameterKey,
 						ValueVarInt: 100,
@@ -73,7 +73,7 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: wire.Parameters{
+			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:        wire.MaxRequestIDParameterKey,
 					ValueVarInt: 100,
@@ -97,7 +97,7 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: wire.Parameters{
+			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:        wire.MaxRequestIDParameterKey,
 					ValueVarInt: 100,
@@ -107,7 +107,7 @@ func TestSession(t *testing.T) {
 
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: wire.Parameters{
+			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.PathParameterKey,
 					ValueBytes: []byte("/path"),
@@ -126,7 +126,7 @@ func TestSession(t *testing.T) {
 
 		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: wire.Parameters{
+			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:        wire.MaxRequestIDParameterKey,
 					ValueVarInt: 100,
@@ -136,7 +136,7 @@ func TestSession(t *testing.T) {
 
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: wire.Parameters{
+			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:        wire.MaxRequestIDParameterKey,
 					ValueVarInt: 100,
@@ -154,7 +154,7 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters:   wire.Parameters{},
+			SetupParameters:   wire.KVPList{},
 		})
 		assert.Error(t, err)
 	})
@@ -179,7 +179,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup: 0,
-			Parameters: wire.Parameters{
+			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
 					ValueBytes: []byte("auth"),
@@ -192,7 +192,7 @@ func TestSession(t *testing.T) {
 				GroupOrder:      0,
 				ContentExists:   false,
 				LargestLocation: wire.Location{},
-				Parameters:      wire.Parameters{},
+				Parameters:      wire.KVPList{},
 			})
 			assert.NoError(t, err)
 			return nil
@@ -233,7 +233,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup: 0,
-			Parameters: wire.Parameters{
+			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
 					ValueBytes: []byte("auth"),
@@ -246,7 +246,7 @@ func TestSession(t *testing.T) {
 				GroupOrder:      0,
 				ContentExists:   false,
 				LargestLocation: wire.Location{},
-				Parameters:      wire.Parameters{},
+				Parameters:      wire.KVPList{},
 			})
 			assert.NoError(t, err)
 			return nil
@@ -284,7 +284,7 @@ func TestSession(t *testing.T) {
 			GroupOrder:      1,
 			ContentExists:   false,
 			LargestLocation: wire.Location{},
-			Parameters:      wire.Parameters{},
+			Parameters:      wire.KVPList{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
 			RequestID:          0,
@@ -299,7 +299,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup:   0,
-			Parameters: wire.Parameters{},
+			Parameters: wire.KVPList{},
 		})
 		assert.NoError(t, err)
 	})
@@ -345,7 +345,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup:   0,
-			Parameters: wire.Parameters{},
+			Parameters: wire.KVPList{},
 		})
 		assert.NoError(t, err)
 	})
@@ -360,7 +360,7 @@ func TestSession(t *testing.T) {
 		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceMessage{
 			RequestID:      0,
 			TrackNamespace: []string{"namespace"},
-			Parameters:     wire.Parameters{},
+			Parameters:     wire.KVPList{},
 		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
 				RequestID: 0,
@@ -393,7 +393,7 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.AnnounceMessage{
 			RequestID:      2,
 			TrackNamespace: []string{"namespace"},
-			Parameters:     wire.Parameters{},
+			Parameters:     wire.KVPList{},
 		})
 		assert.NoError(t, err)
 	})
@@ -415,7 +415,7 @@ func TestSession(t *testing.T) {
 				SubgroupID:             0,
 				ObjectID:               0,
 				PublisherPriority:      0,
-				ObjectExtensionHeaders: []wire.ObjectExtensionHeader{},
+				ObjectExtensionHeaders: wire.KVPList{},
 				ObjectStatus:           0,
 				ObjectPayload:          []byte{},
 			}, nil) {
@@ -444,7 +444,7 @@ func TestSession(t *testing.T) {
 				Object: 0,
 			},
 			EndGroup: 0,
-			Parameters: wire.Parameters{
+			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
 					ValueBytes: []byte("auth"),
@@ -458,7 +458,7 @@ func TestSession(t *testing.T) {
 				GroupOrder:      1,
 				ContentExists:   false,
 				LargestLocation: wire.Location{},
-				Parameters:      wire.Parameters{},
+				Parameters:      wire.KVPList{},
 			}))
 			return nil
 		})

@@ -10,7 +10,7 @@ import (
 type SubscribeAnnouncesMessage struct {
 	RequestID            uint64
 	TrackNamespacePrefix Tuple
-	Parameters           Parameters
+	Parameters           KVPList
 }
 
 func (m *SubscribeAnnouncesMessage) LogValue() slog.Value {
@@ -34,7 +34,7 @@ func (m SubscribeAnnouncesMessage) Type() controlMessageType {
 func (m *SubscribeAnnouncesMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespacePrefix.append(buf)
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *SubscribeAnnouncesMessage) parse(_ Version, data []byte) (err error) {
@@ -51,6 +51,6 @@ func (m *SubscribeAnnouncesMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }
