@@ -8,30 +8,30 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseParameters(t *testing.T) {
+func TestParseKVPList(t *testing.T) {
 	cases := []struct {
 		data   []byte
-		expect Parameters
+		expect KVPList
 		err    error
 	}{
 		{
 			data:   nil,
-			expect: Parameters{},
+			expect: KVPList{},
 			err:    io.EOF,
 		},
 		{
 			data:   nil,
-			expect: Parameters{},
+			expect: KVPList{},
 			err:    io.EOF,
 		},
 		{
 			data:   []byte{},
-			expect: Parameters{},
+			expect: KVPList{},
 			err:    io.EOF,
 		},
 		{
 			data: []byte{0x01, 0x01, 0x01, 'A'},
-			expect: Parameters{KeyValuePair{
+			expect: KVPList{KeyValuePair{
 				Type:       1,
 				ValueBytes: []byte("A"),
 			}},
@@ -39,7 +39,7 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data: []byte{0x02, 0x02, 0x03, 0x01, 0x01, 'A'},
-			expect: Parameters{
+			expect: KVPList{
 				KeyValuePair{
 					Type:        2,
 					ValueVarInt: uint64(3),
@@ -53,7 +53,7 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data: []byte{0x01, 0x01, 0x01, 'A', 0x02, 0x02, 0x02, 0x02},
-			expect: Parameters{KeyValuePair{
+			expect: KVPList{KeyValuePair{
 				Type:       1,
 				ValueBytes: []byte("A"),
 			}},
@@ -61,12 +61,12 @@ func TestParseParameters(t *testing.T) {
 		},
 		{
 			data:   []byte{},
-			expect: Parameters{},
+			expect: KVPList{},
 			err:    io.EOF,
 		},
 		{
 			data: []byte{0x02, 0x0f, 0x01, 0x00, 0x01, 0x01, 'A'},
-			expect: Parameters{
+			expect: KVPList{
 				KeyValuePair{
 					Type:       0x0f,
 					ValueBytes: []byte{0x00},
@@ -81,8 +81,8 @@ func TestParseParameters(t *testing.T) {
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
-			res := Parameters{}
-			err := res.parse(tc.data)
+			res := KVPList{}
+			err := res.parseNum(tc.data)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

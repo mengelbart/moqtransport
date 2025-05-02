@@ -37,7 +37,7 @@ func TestControlMessageParser(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00, 0x01},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: nil,
 		},
@@ -51,7 +51,7 @@ func TestControlMessageParser(t *testing.T) {
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00, 0x01},
-				SetupParameters:   Parameters{},
+				SetupParameters:   KVPList{},
 			},
 			err: nil,
 		},

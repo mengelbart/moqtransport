@@ -12,7 +12,7 @@ type FetchOkMessage struct {
 	GroupOrder          uint8
 	EndOfTrack          uint8
 	EndLocation         Location
-	SubscribeParameters Parameters
+	SubscribeParameters KVPList
 }
 
 func (m *FetchOkMessage) LogValue() slog.Value {
@@ -42,7 +42,7 @@ func (m *FetchOkMessage) Append(buf []byte) []byte {
 	buf = append(buf, m.GroupOrder)
 	buf = append(buf, m.EndOfTrack)
 	buf = m.EndLocation.append(buf)
-	return m.SubscribeParameters.append(buf)
+	return m.SubscribeParameters.appendNum(buf)
 }
 
 func (m *FetchOkMessage) parse(v Version, data []byte) (err error) {
@@ -69,5 +69,5 @@ func (m *FetchOkMessage) parse(v Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	return m.SubscribeParameters.parse(data)
+	return m.SubscribeParameters.parseNum(data)
 }

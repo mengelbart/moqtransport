@@ -11,7 +11,7 @@ type TrackStatusRequestMessage struct {
 	RequestID      uint64
 	TrackNamespace Tuple
 	TrackName      []byte
-	Parameters     Parameters
+	Parameters     KVPList
 }
 
 func (m *TrackStatusRequestMessage) LogValue() slog.Value {
@@ -34,7 +34,7 @@ func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
 	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, []byte(m.TrackName))
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *TrackStatusRequestMessage) parse(_ Version, data []byte) (err error) {
@@ -57,6 +57,6 @@ func (m *TrackStatusRequestMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

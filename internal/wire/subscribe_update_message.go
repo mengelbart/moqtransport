@@ -12,7 +12,7 @@ type SubscribeUpdateMessage struct {
 	EndGroup           uint64
 	SubscriberPriority uint8
 	Forward            uint8
-	Parameters         Parameters
+	Parameters         KVPList
 }
 
 func (m *SubscribeUpdateMessage) LogValue() slog.Value {
@@ -43,7 +43,7 @@ func (m *SubscribeUpdateMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.EndGroup)
 	buf = append(buf, m.SubscriberPriority)
 	buf = append(buf, m.Forward)
-	return m.Parameters.append(buf)
+	return m.Parameters.appendNum(buf)
 }
 
 func (m *SubscribeUpdateMessage) parse(v Version, data []byte) (err error) {
@@ -77,6 +77,6 @@ func (m *SubscribeUpdateMessage) parse(v Version, data []byte) (err error) {
 	}
 	data = data[2:]
 
-	m.Parameters = Parameters{}
-	return m.Parameters.parse(data)
+	m.Parameters = KVPList{}
+	return m.Parameters.parseNum(data)
 }

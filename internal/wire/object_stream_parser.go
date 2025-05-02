@@ -148,9 +148,9 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 		var e qlog.Event
 		eth := slices.Collect(slices.Map(
 			m.ObjectExtensionHeaders,
-			func(e ObjectExtensionHeader) moqt.ExtensionHeader {
+			func(e KeyValuePair) moqt.ExtensionHeader {
 				return moqt.ExtensionHeader{
-					HeaderType:   e.key(),
+					HeaderType:   e.Type,
 					HeaderValue:  0, // TODO
 					HeaderLength: 0, // TODO
 					Payload:      qlog.RawInfo{},

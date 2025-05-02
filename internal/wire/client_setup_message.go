@@ -8,7 +8,7 @@ import (
 
 type ClientSetupMessage struct {
 	SupportedVersions versions
-	SetupParameters   Parameters
+	SetupParameters   KVPList
 }
 
 func (m *ClientSetupMessage) LogValue() slog.Value {
@@ -48,6 +48,6 @@ func (m *ClientSetupMessage) parse(_ Version, data []byte) error {
 		return err
 	}
 	data = data[n:]
-	m.SetupParameters = Parameters{}
-	return m.SetupParameters.parse(data)
+	m.SetupParameters = KVPList{}
+	return m.SetupParameters.parseNum(data)
 }

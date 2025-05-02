@@ -74,13 +74,12 @@ func (p *localTrack) sendDatagram(o Object) error {
 	if err := p.closed(); err != nil {
 		return err
 	}
-	om := &wire.ObjectMessage{
+	om := &wire.ObjectDatagramMessage{
 		TrackAlias:             p.trackAlias,
 		GroupID:                o.GroupID,
-		SubgroupID:             o.SubGroupID,
 		ObjectID:               o.ObjectID,
 		PublisherPriority:      0,
-		ObjectExtensionHeaders: []wire.ObjectExtensionHeader{},
+		ObjectExtensionHeaders: nil,
 		ObjectStatus:           0,
 		ObjectPayload:          o.Payload,
 	}
@@ -89,7 +88,7 @@ func (p *localTrack) sendDatagram(o Object) error {
 	if p.qlogger != nil {
 		eth := slices.Collect(slices.Map(
 			om.ObjectExtensionHeaders,
-			func(e wire.ObjectExtensionHeader) moqt.ExtensionHeader {
+			func(e wire.KeyValuePair) moqt.ExtensionHeader {
 				return moqt.ExtensionHeader{
 					HeaderType:   0, // TODO
 					HeaderValue:  0, // TODO
