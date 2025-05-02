@@ -7,23 +7,6 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-type StreamType uint64
-
-const (
-	StreamTypeSubgroup StreamType = 0x04
-	StreamTypeFetch    StreamType = 0x05
-)
-
-type ObjectStatus int
-
-const (
-	ObjectStatusNormal ObjectStatus = iota
-	ObjectStatusObjectDoesNotExist
-	ObjectStatusGroupDoesNotExist
-	ObjectStatusEndOfGroup
-	ObjectStatusEndOfTrack
-)
-
 type ObjectMessage struct {
 	TrackAlias             uint64
 	GroupID                uint64
@@ -69,11 +52,10 @@ func (m *ObjectMessage) readSubgroup(r io.Reader) (err error) {
 		return
 	}
 
-	if m.ObjectExtensionHeaders == nil {
-		m.ObjectExtensionHeaders = KVPList{}
-	}
-	if err = m.ObjectExtensionHeaders.parseLengthReader(br); err != nil {
-		return err
+	if m.ObjectExtensionHeaders != nil {
+		if err = m.ObjectExtensionHeaders.parseLengthReader(br); err != nil {
+			return err
+		}
 	}
 
 	length, err := quicvarint.Read(br)

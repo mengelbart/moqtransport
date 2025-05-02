@@ -15,7 +15,7 @@ type Subgroup struct {
 }
 
 func newSubgroup(stream SendStream, trackAlias, groupID, subgroupID uint64, publisherPriority uint8, qlogger *qlog.Logger) (*Subgroup, error) {
-	shgm := &wire.StreamHeaderSubgroupMessage{
+	shgm := &wire.SubgroupHeaderMessage{
 		TrackAlias:        trackAlias,
 		GroupID:           groupID,
 		SubgroupID:        subgroupID,

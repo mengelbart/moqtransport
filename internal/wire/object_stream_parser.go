@@ -13,6 +13,18 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+type StreamType uint64
+
+const (
+	StreamTypeFetch                StreamType = 0x05
+	StreamTypeSubgroupZeroSIDNoExt StreamType = 0x08
+	StreamTypeSubgroupZeroSIDExt   StreamType = 0x09
+	StreamTypeSubgroupNoSIDNoExt   StreamType = 0x0a
+	StreamTypeSubgroupNoSIDExt     StreamType = 0x0b
+	StreamTypeSubgroupSIDNoExt     StreamType = 0x0c
+	StreamTypeSubgroupSIDExt       StreamType = 0x0d
+)
+
 var (
 	errInvalidStreamType = errors.New("invalid stream type")
 )
@@ -21,11 +33,12 @@ type ObjectStreamParser struct {
 	qlogger  *qlog.Logger
 	streamID uint64
 
-	reader messageReader
-	typ    StreamType
+	reader        messageReader
+	typ           StreamType
+	identifier    uint64 // Track Alias (Subgroup) or Request ID (Fetch)
+	hasSubgroupID bool
+	hasExtensions bool
 
-	requestID         uint64
-	trackAlias        uint64
 	PublisherPriority uint8
 	GroupID           uint64
 	SubgroupID        uint64
@@ -35,18 +48,8 @@ func (p *ObjectStreamParser) Type() StreamType {
 	return p.typ
 }
 
-func (p *ObjectStreamParser) TrackAlias() (uint64, error) {
-	if p.typ != StreamTypeSubgroup {
-		return 0, errors.New("only subgroup streams have a track alias")
-	}
-	return p.trackAlias, nil
-}
-
-func (p *ObjectStreamParser) RequestID() (uint64, error) {
-	if p.typ != StreamTypeFetch {
-		return 0, errors.New("only fetch streams have a request ID")
-	}
-	return p.requestID, nil
+func (p *ObjectStreamParser) Identifier() uint64 {
+	return p.identifier
 }
 
 func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (*ObjectStreamParser, error) {
@@ -55,23 +58,16 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 	if err != nil {
 		return nil, err
 	}
-	typ := StreamType(st)
-	if qlogger != nil {
-		var qt moqt.StreamType
-		if typ == StreamTypeFetch {
-			qt = moqt.StreamTypeFetchHeader
+	streamType := StreamType(st)
+
+	if streamType == StreamTypeFetch {
+		if qlogger != nil {
+			qlogger.Log(moqt.StreamTypeSetEvent{
+				Owner:      moqt.GetOwner(moqt.OwnerRemote),
+				StreamID:   streamID,
+				StreamType: moqt.StreamTypeFetchHeader,
+			})
 		}
-		if typ == StreamTypeSubgroup {
-			qt = moqt.StreamTypeSubgroupHeader
-		}
-		qlogger.Log(moqt.StreamTypeSetEvent{
-			Owner:      moqt.GetOwner(moqt.OwnerRemote),
-			StreamID:   streamID,
-			StreamType: qt,
-		})
-	}
-	switch typ {
-	case StreamTypeFetch:
 		var fhm FetchHeaderMessage
 		if err := fhm.parse(br); err != nil {
 			return nil, err
@@ -80,34 +76,49 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			qlogger:           qlogger,
 			streamID:          streamID,
 			reader:            br,
-			typ:               typ,
-			requestID:         fhm.RequestID,
-			trackAlias:        0,
+			typ:               streamType,
+			identifier:        fhm.RequestID,
 			PublisherPriority: 0,
 			GroupID:           0,
 			SubgroupID:        0,
 		}, nil
+	}
+	if streamType >= 0x08 && streamType <= 0x0d {
+		if qlogger != nil {
+			qlogger.Log(moqt.StreamTypeSetEvent{
+				Owner:      moqt.GetOwner(moqt.OwnerRemote),
+				StreamID:   streamID,
+				StreamType: moqt.StreamTypeSubgroupHeader,
+			})
+		}
+		// least significant bit indicates if we have to read extensions on
+		// objects
+		ext := streamType&0x01 > 0
 
-	case StreamTypeSubgroup:
-		var shsm StreamHeaderSubgroupMessage
-		if err := shsm.parse(br); err != nil {
+		// Only read subgroup ID from header if type is 0x0c or 0x0d. In all
+		// other cases, it is either zero or will be read from the first object.
+		sid := streamType == 0x0c || streamType == 0x0d
+
+		var shsm SubgroupHeaderMessage
+		if err := shsm.parse(br, sid); err != nil {
 			return nil, err
 		}
 		return &ObjectStreamParser{
-			qlogger:           qlogger,
-			streamID:          streamID,
-			reader:            br,
-			typ:               typ,
-			requestID:         0,
-			trackAlias:        shsm.TrackAlias,
+			qlogger:    qlogger,
+			streamID:   streamID,
+			reader:     br,
+			typ:        streamType,
+			identifier: shsm.TrackAlias,
+			// if stream type is 0x0a or 0x0b, we don't yet know the subgroup ID
+			// because it will only be read when the first object is parsed.
+			hasSubgroupID:     streamType != 0x0a && streamType != 0x0b,
+			hasExtensions:     ext,
 			PublisherPriority: shsm.PublisherPriority,
 			GroupID:           shsm.GroupID,
 			SubgroupID:        shsm.SubgroupID,
 		}, nil
-
-	default:
-		return nil, fmt.Errorf("%w: %v", errInvalidStreamType, st)
 	}
+	return nil, fmt.Errorf("%w: %v", errInvalidStreamType, st)
 }
 
 func (p *ObjectStreamParser) Messages() iter.Seq2[*ObjectMessage, error] {
@@ -120,32 +131,29 @@ func (p *ObjectStreamParser) Messages() iter.Seq2[*ObjectMessage, error] {
 	}
 }
 
-func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
-	m := &ObjectMessage{
-		TrackAlias:        p.trackAlias,
-		GroupID:           p.GroupID,
-		SubgroupID:        0,
-		ObjectID:          0,
-		PublisherPriority: p.PublisherPriority,
-		ObjectStatus:      0,
-		ObjectPayload:     nil,
+func (p *ObjectStreamParser) parseSubgroupObject() (*ObjectMessage, error) {
+	var ext KVPList
+	if p.hasExtensions {
+		ext = KVPList{}
 	}
-	switch p.typ {
-	case StreamTypeFetch:
-		if err := m.readFetch(p.reader); err != nil {
-			return nil, err
-		}
-	case StreamTypeSubgroup:
-		if err := m.readSubgroup(p.reader); err != nil {
-			return nil, err
-		}
-		m.SubgroupID = p.SubgroupID
-		m.GroupID = p.GroupID
-	default:
-		return nil, errInvalidStreamType
+	m := &ObjectMessage{
+		TrackAlias:             p.identifier,
+		GroupID:                p.GroupID,
+		SubgroupID:             p.SubgroupID,
+		ObjectID:               0,
+		PublisherPriority:      p.PublisherPriority,
+		ObjectExtensionHeaders: ext,
+		ObjectStatus:           0,
+		ObjectPayload:          nil,
+	}
+	if err := m.readSubgroup(p.reader); err != nil {
+		return nil, err
+	}
+	if !p.hasSubgroupID {
+		p.SubgroupID = m.SubgroupID
+		p.hasSubgroupID = true
 	}
 	if p.qlogger != nil {
-		var e qlog.Event
 		eth := slices.Collect(slices.Map(
 			m.ObjectExtensionHeaders,
 			func(e KeyValuePair) moqt.ExtensionHeader {
@@ -157,50 +165,82 @@ func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
 				}
 			}),
 		)
-		if p.typ == StreamTypeFetch {
-			e = moqt.FetchObjectEvent{
-				EventName:              moqt.FetchObjectEventParsed,
-				StreamID:               p.streamID,
-				GroupID:                m.GroupID,
-				SubgroupID:             m.SubgroupID,
-				ObjectID:               m.ObjectID,
-				PublisherPriority:      m.PublisherPriority,
-				ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
-				ExtensionHeaders:       eth,
-				ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
-				ObjectStatus:           uint64(m.ObjectStatus),
-				ObjectPayload: qlog.RawInfo{
-					Length:        uint64(len(m.ObjectPayload)),
-					PayloadLength: uint64(len(m.ObjectPayload)),
-					Data:          m.ObjectPayload,
-				},
-			}
-		}
-		if p.typ == StreamTypeSubgroup {
-			gid := new(uint64)
-			sid := new(uint64)
-			*gid = p.GroupID
-			*sid = p.SubgroupID
-			e = moqt.SubgroupObjectEvent{
-				EventName:              moqt.SubgroupObjectEventParsed,
-				StreamID:               p.streamID,
-				GroupID:                gid,
-				SubgroupID:             sid,
-				ObjectID:               m.ObjectID,
-				ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
-				ExtensionHeaders:       eth,
-				ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
-				ObjectStatus:           uint64(m.ObjectStatus),
-				ObjectPayload: qlog.RawInfo{
-					Length:        uint64(len(m.ObjectPayload)),
-					PayloadLength: uint64(len(m.ObjectPayload)),
-					Data:          m.ObjectPayload,
-				},
-			}
-		}
-		if e != nil {
-			p.qlogger.Log(e)
-		}
+		gid := new(uint64)
+		sid := new(uint64)
+		*gid = p.GroupID
+		*sid = p.SubgroupID
+		p.qlogger.Log(moqt.SubgroupObjectEvent{
+			EventName:              moqt.SubgroupObjectEventParsed,
+			StreamID:               p.streamID,
+			GroupID:                gid,
+			SubgroupID:             sid,
+			ObjectID:               m.ObjectID,
+			ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
+			ExtensionHeaders:       eth,
+			ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
+			ObjectStatus:           uint64(m.ObjectStatus),
+			ObjectPayload: qlog.RawInfo{
+				Length:        uint64(len(m.ObjectPayload)),
+				PayloadLength: uint64(len(m.ObjectPayload)),
+				Data:          m.ObjectPayload,
+			},
+		})
 	}
 	return m, nil
+}
+
+func (p *ObjectStreamParser) parseFetchObject() (*ObjectMessage, error) {
+	m := &ObjectMessage{
+		TrackAlias:        0,
+		GroupID:           p.GroupID,
+		SubgroupID:        0,
+		ObjectID:          0,
+		PublisherPriority: p.PublisherPriority,
+		ObjectStatus:      0,
+		ObjectPayload:     nil,
+	}
+	if err := m.readFetch(p.reader); err != nil {
+		return nil, err
+	}
+	if p.qlogger != nil {
+		eth := slices.Collect(slices.Map(
+			m.ObjectExtensionHeaders,
+			func(e KeyValuePair) moqt.ExtensionHeader {
+				return moqt.ExtensionHeader{
+					HeaderType:   e.Type,
+					HeaderValue:  0, // TODO
+					HeaderLength: 0, // TODO
+					Payload:      qlog.RawInfo{},
+				}
+			}),
+		)
+		p.qlogger.Log(moqt.FetchObjectEvent{
+			EventName:              moqt.FetchObjectEventParsed,
+			StreamID:               p.streamID,
+			GroupID:                m.GroupID,
+			SubgroupID:             m.SubgroupID,
+			ObjectID:               m.ObjectID,
+			PublisherPriority:      m.PublisherPriority,
+			ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
+			ExtensionHeaders:       eth,
+			ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
+			ObjectStatus:           uint64(m.ObjectStatus),
+			ObjectPayload: qlog.RawInfo{
+				Length:        uint64(len(m.ObjectPayload)),
+				PayloadLength: uint64(len(m.ObjectPayload)),
+				Data:          m.ObjectPayload,
+			},
+		})
+	}
+	return m, nil
+}
+
+func (p *ObjectStreamParser) Parse() (*ObjectMessage, error) {
+	if p.typ == StreamTypeFetch {
+		return p.parseFetchObject()
+	}
+	if p.typ >= 0x08 && p.typ <= 0x0d {
+		return p.parseSubgroupObject()
+	}
+	return nil, errInvalidStreamType
 }

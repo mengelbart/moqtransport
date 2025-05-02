@@ -35,8 +35,7 @@ type controlMessageQueue[T any] interface {
 
 type objectMessageParser interface {
 	Type() wire.StreamType
-	RequestID() (uint64, error)
-	TrackAlias() (uint64, error)
+	Identifier() uint64
 	Messages() iter.Seq2[*wire.ObjectMessage, error]
 }
 
@@ -146,27 +145,15 @@ func (s *Session) readControlMessage(ctx context.Context) (*Message, error) {
 }
 
 func (s *Session) handleUniStream(parser objectMessageParser) error {
-	var err error
-	switch parser.Type() {
-	case wire.StreamTypeFetch:
-		err = s.readFetchStream(parser)
-	case wire.StreamTypeSubgroup:
-		err = s.readSubgroupStream(parser)
+	if parser.Type() == wire.StreamTypeFetch {
+		return s.readFetchStream(parser)
 	}
-	if err != nil {
-		return err
-	}
-	return nil
+	return s.readSubgroupStream(parser)
 }
 
 func (s *Session) readFetchStream(parser objectMessageParser) error {
 	s.logger.Info("reading fetch stream")
-	sid, err := parser.RequestID()
-	if err != nil {
-		s.logger.Info("failed to parse request ID", "error", err)
-		return err
-	}
-	rt, ok := s.remoteTrackByRequestID(sid)
+	rt, ok := s.remoteTrackByRequestID(parser.Identifier())
 	if !ok {
 		return errUnknownRequestID
 	}
@@ -175,12 +162,7 @@ func (s *Session) readFetchStream(parser objectMessageParser) error {
 
 func (s *Session) readSubgroupStream(parser objectMessageParser) error {
 	s.logger.Info("reading subgroup")
-	sid, err := parser.TrackAlias()
-	if err != nil {
-		s.logger.Info("failed to parse request ID", "error", err)
-		return err
-	}
-	rt, ok := s.remoteTrackByTrackAlias(sid)
+	rt, ok := s.remoteTrackByTrackAlias(parser.Identifier())
 	if !ok {
 		return errUnknownRequestID
 	}
