@@ -12,39 +12,39 @@ import (
 
 func TestStreamHeaderSubgroupMessageAppend(t *testing.T) {
 	cases := []struct {
-		shgm   StreamHeaderSubgroupMessage
+		shgm   SubgroupHeaderMessage
 		buf    []byte
 		expect []byte
 	}{
 		{
-			shgm: StreamHeaderSubgroupMessage{
+			shgm: SubgroupHeaderMessage{
 				TrackAlias:        0,
 				GroupID:           0,
 				SubgroupID:        0,
 				PublisherPriority: 0,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(StreamTypeSubgroup), 0x00, 0x00, 0x00, 0x00},
+			expect: []byte{byte(StreamTypeSubgroupSIDExt), 0x00, 0x00, 0x00, 0x00},
 		},
 		{
-			shgm: StreamHeaderSubgroupMessage{
+			shgm: SubgroupHeaderMessage{
 				TrackAlias:        1,
 				GroupID:           2,
 				SubgroupID:        3,
 				PublisherPriority: 4,
 			},
 			buf:    []byte{},
-			expect: []byte{byte(StreamTypeSubgroup), 0x01, 0x02, 0x03, 0x04},
+			expect: []byte{byte(StreamTypeSubgroupSIDExt), 0x01, 0x02, 0x03, 0x04},
 		},
 		{
-			shgm: StreamHeaderSubgroupMessage{
+			shgm: SubgroupHeaderMessage{
 				TrackAlias:        1,
 				GroupID:           2,
 				SubgroupID:        3,
 				PublisherPriority: 4,
 			},
 			buf:    []byte{0x0a, 0x0b},
-			expect: []byte{0x0a, 0x0b, byte(StreamTypeSubgroup), 0x01, 0x02, 0x03, 0x04},
+			expect: []byte{0x0a, 0x0b, byte(StreamTypeSubgroupSIDExt), 0x01, 0x02, 0x03, 0x04},
 		},
 	}
 	for i, tc := range cases {
@@ -58,22 +58,22 @@ func TestStreamHeaderSubgroupMessageAppend(t *testing.T) {
 func TestParseStreamHeaderSubgroupMessage(t *testing.T) {
 	cases := []struct {
 		data   []byte
-		expect *StreamHeaderSubgroupMessage
+		expect *SubgroupHeaderMessage
 		err    error
 	}{
 		{
 			data:   nil,
-			expect: &StreamHeaderSubgroupMessage{},
+			expect: &SubgroupHeaderMessage{},
 			err:    io.EOF,
 		},
 		{
 			data:   []byte{},
-			expect: &StreamHeaderSubgroupMessage{},
+			expect: &SubgroupHeaderMessage{},
 			err:    io.EOF,
 		},
 		{
 			data: []byte{0x01, 0x02, 0x03, 0x04},
-			expect: &StreamHeaderSubgroupMessage{
+			expect: &SubgroupHeaderMessage{
 				TrackAlias:        1,
 				GroupID:           2,
 				SubgroupID:        3,
@@ -85,8 +85,8 @@ func TestParseStreamHeaderSubgroupMessage(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
 			reader := bufio.NewReader(bytes.NewReader(tc.data))
-			res := &StreamHeaderSubgroupMessage{}
-			err := res.parse(reader)
+			res := &SubgroupHeaderMessage{}
+			err := res.parse(reader, true)
 			assert.Equal(t, tc.expect, res)
 			if tc.err != nil {
 				assert.Equal(t, tc.err, err)

@@ -404,9 +404,8 @@ func TestSession(t *testing.T) {
 		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
 		mp := NewMockObjectMessageParser(ctrl)
 
-		mp.EXPECT().Type().Return(wire.StreamTypeSubgroup).AnyTimes()
-		mp.EXPECT().RequestID().Return(uint64(0), nil).AnyTimes()
-		mp.EXPECT().TrackAlias().Return(uint64(0), nil).AnyTimes()
+		mp.EXPECT().Type().Return(wire.StreamTypeSubgroupSIDExt).AnyTimes()
+		mp.EXPECT().Identifier().Return(uint64(0)).AnyTimes()
 
 		mp.EXPECT().Messages().Return(func(yield func(*wire.ObjectMessage, error) bool) {
 			if !yield(&wire.ObjectMessage{

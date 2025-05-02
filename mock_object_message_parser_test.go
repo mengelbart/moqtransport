@@ -40,6 +40,44 @@ func (m *MockObjectMessageParser) EXPECT() *MockObjectMessageParserMockRecorder 
 	return m.recorder
 }
 
+// Identifier mocks base method.
+func (m *MockObjectMessageParser) Identifier() uint64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Identifier")
+	ret0, _ := ret[0].(uint64)
+	return ret0
+}
+
+// Identifier indicates an expected call of Identifier.
+func (mr *MockObjectMessageParserMockRecorder) Identifier() *MockObjectMessageParserIdentifierCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Identifier", reflect.TypeOf((*MockObjectMessageParser)(nil).Identifier))
+	return &MockObjectMessageParserIdentifierCall{Call: call}
+}
+
+// MockObjectMessageParserIdentifierCall wrap *gomock.Call
+type MockObjectMessageParserIdentifierCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockObjectMessageParserIdentifierCall) Return(arg0 uint64) *MockObjectMessageParserIdentifierCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockObjectMessageParserIdentifierCall) Do(f func() uint64) *MockObjectMessageParserIdentifierCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockObjectMessageParserIdentifierCall) DoAndReturn(f func() uint64) *MockObjectMessageParserIdentifierCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // Messages mocks base method.
 func (m *MockObjectMessageParser) Messages() iter.Seq2[*wire.ObjectMessage, error] {
 	m.ctrl.T.Helper()
@@ -74,84 +112,6 @@ func (c *MockObjectMessageParserMessagesCall) Do(f func() iter.Seq2[*wire.Object
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
 func (c *MockObjectMessageParserMessagesCall) DoAndReturn(f func() iter.Seq2[*wire.ObjectMessage, error]) *MockObjectMessageParserMessagesCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// RequestID mocks base method.
-func (m *MockObjectMessageParser) RequestID() (uint64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RequestID")
-	ret0, _ := ret[0].(uint64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RequestID indicates an expected call of RequestID.
-func (mr *MockObjectMessageParserMockRecorder) RequestID() *MockObjectMessageParserRequestIDCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestID", reflect.TypeOf((*MockObjectMessageParser)(nil).RequestID))
-	return &MockObjectMessageParserRequestIDCall{Call: call}
-}
-
-// MockObjectMessageParserRequestIDCall wrap *gomock.Call
-type MockObjectMessageParserRequestIDCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockObjectMessageParserRequestIDCall) Return(arg0 uint64, arg1 error) *MockObjectMessageParserRequestIDCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockObjectMessageParserRequestIDCall) Do(f func() (uint64, error)) *MockObjectMessageParserRequestIDCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockObjectMessageParserRequestIDCall) DoAndReturn(f func() (uint64, error)) *MockObjectMessageParserRequestIDCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
-
-// TrackAlias mocks base method.
-func (m *MockObjectMessageParser) TrackAlias() (uint64, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TrackAlias")
-	ret0, _ := ret[0].(uint64)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// TrackAlias indicates an expected call of TrackAlias.
-func (mr *MockObjectMessageParserMockRecorder) TrackAlias() *MockObjectMessageParserTrackAliasCall {
-	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TrackAlias", reflect.TypeOf((*MockObjectMessageParser)(nil).TrackAlias))
-	return &MockObjectMessageParserTrackAliasCall{Call: call}
-}
-
-// MockObjectMessageParserTrackAliasCall wrap *gomock.Call
-type MockObjectMessageParserTrackAliasCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockObjectMessageParserTrackAliasCall) Return(arg0 uint64, arg1 error) *MockObjectMessageParserTrackAliasCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockObjectMessageParserTrackAliasCall) Do(f func() (uint64, error)) *MockObjectMessageParserTrackAliasCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockObjectMessageParserTrackAliasCall) DoAndReturn(f func() (uint64, error)) *MockObjectMessageParserTrackAliasCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
