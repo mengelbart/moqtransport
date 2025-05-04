@@ -451,13 +451,13 @@ func (s *Session) Fetch(
 	return rt, nil
 }
 
-func (s *Session) acceptFetch(id uint64) error {
-	_, ok := s.localTracks.confirm(id)
+func (s *Session) acceptFetch(requestID uint64) error {
+	_, ok := s.localTracks.confirm(requestID)
 	if !ok {
 		return errUnknownRequestID
 	}
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchOkMessage{
-		RequestID:  id,
+		RequestID:  requestID,
 		GroupOrder: 1,
 		EndOfTrack: 0,
 		EndLocation: wire.Location{
