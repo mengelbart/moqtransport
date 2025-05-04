@@ -417,19 +417,19 @@ func (s *Session) Fetch(
 		return nil, err
 	}
 	cm := &wire.FetchMessage{
-		RequestID:            requestID,
-		SubscriberPriority:   0,
-		GroupOrder:           0,
-		FetchType:            wire.FetchTypeStandalone,
-		TrackNamespace:       namespace,
-		TrackName:            []byte(track),
-		StartGroup:           0,
-		StartObject:          0,
-		EndGroup:             0,
-		EndObject:            0,
-		JoiningSubscribeID:   0,
-		PrecedingGroupOffset: 0,
-		Parameters:           wire.KVPList{},
+		RequestID:          requestID,
+		SubscriberPriority: 0,
+		GroupOrder:         0,
+		FetchType:          wire.FetchTypeStandalone,
+		TrackNamespace:     namespace,
+		TrackName:          []byte(track),
+		StartGroup:         0,
+		StartObject:        0,
+		EndGroup:           0,
+		EndObject:          0,
+		JoiningSubscribeID: 0,
+		JoiningStart:       0,
+		Parameters:         wire.KVPList{},
 	}
 	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
 		_, _ = s.remoteTracks.reject(requestID)

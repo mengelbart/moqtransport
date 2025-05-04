@@ -8,25 +8,26 @@ import (
 )
 
 const (
-	FetchTypeStandalone = 0x01
-	FetchTypeJoining    = 0x02
+	FetchTypeStandalone      = 0x01
+	FetchTypeRelativeJoining = 0x02
+	FetchTypeAbsoluteJoining = 0x03
 )
 
 // TODO: Add tests
 type FetchMessage struct {
-	RequestID            uint64
-	SubscriberPriority   uint8
-	GroupOrder           uint8
-	FetchType            uint64
-	TrackNamespace       Tuple
-	TrackName            []byte
-	StartGroup           uint64
-	StartObject          uint64
-	EndGroup             uint64
-	EndObject            uint64
-	JoiningSubscribeID   uint64
-	PrecedingGroupOffset uint64
-	Parameters           KVPList
+	RequestID          uint64
+	SubscriberPriority uint8
+	GroupOrder         uint8
+	FetchType          uint64
+	TrackNamespace     Tuple
+	TrackName          []byte
+	StartGroup         uint64
+	StartObject        uint64
+	EndGroup           uint64
+	EndObject          uint64
+	JoiningSubscribeID uint64
+	JoiningStart       uint64
+	Parameters         KVPList
 }
 
 // Attrs implements moqt.ControlMessage.
@@ -53,10 +54,10 @@ func (m *FetchMessage) LogValue() slog.Value {
 			slog.Uint64("end_object", m.EndObject),
 		)
 	}
-	if m.FetchType == FetchTypeJoining {
+	if m.FetchType == FetchTypeAbsoluteJoining || m.FetchType == FetchTypeRelativeJoining {
 		attrs = append(attrs,
 			slog.Uint64("joining_subscribe_id", m.JoiningSubscribeID),
-			slog.Uint64("preceding_group_offset", m.PrecedingGroupOffset),
+			slog.Uint64("preceding_group_offset", m.JoiningStart),
 		)
 	}
 
@@ -81,14 +82,19 @@ func (m *FetchMessage) Append(buf []byte) []byte {
 	buf = append(buf, m.SubscriberPriority)
 	buf = append(buf, m.GroupOrder)
 	buf = quicvarint.Append(buf, m.FetchType)
-	buf = m.TrackNamespace.append(buf)
-	buf = appendVarIntBytes(buf, m.TrackName)
-	buf = quicvarint.Append(buf, m.StartGroup)
-	buf = quicvarint.Append(buf, m.StartObject)
-	buf = quicvarint.Append(buf, m.EndGroup)
-	buf = quicvarint.Append(buf, m.EndObject)
-	buf = quicvarint.Append(buf, m.JoiningSubscribeID)
-	buf = quicvarint.Append(buf, m.PrecedingGroupOffset)
+
+	if m.FetchType == FetchTypeStandalone {
+		buf = m.TrackNamespace.append(buf)
+		buf = appendVarIntBytes(buf, m.TrackName)
+		buf = quicvarint.Append(buf, m.StartGroup)
+		buf = quicvarint.Append(buf, m.StartObject)
+		buf = quicvarint.Append(buf, m.EndGroup)
+		buf = quicvarint.Append(buf, m.EndObject)
+	} else {
+		buf = quicvarint.Append(buf, m.JoiningSubscribeID)
+		buf = quicvarint.Append(buf, m.JoiningStart)
+	}
+
 	return m.Parameters.appendNum(buf)
 }
 
@@ -116,7 +122,7 @@ func (m *FetchMessage) parse(_ Version, data []byte) (err error) {
 	}
 	data = data[n:]
 
-	if m.FetchType != FetchTypeStandalone && m.FetchType != FetchTypeJoining {
+	if m.FetchType < FetchTypeStandalone || m.FetchType > FetchTypeAbsoluteJoining {
 		return errInvalidFetchType
 	}
 
@@ -156,15 +162,14 @@ func (m *FetchMessage) parse(_ Version, data []byte) (err error) {
 			return err
 		}
 		data = data[n:]
-	}
-	if m.FetchType == FetchTypeJoining {
+	} else {
 		m.JoiningSubscribeID, n, err = quicvarint.Parse(data)
 		if err != nil {
 			return err
 		}
 		data = data[n:]
 
-		m.PrecedingGroupOffset, n, err = quicvarint.Parse(data)
+		m.JoiningStart, n, err = quicvarint.Parse(data)
 		if err != nil {
 			return err
 		}
