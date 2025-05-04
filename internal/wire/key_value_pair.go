@@ -45,11 +45,11 @@ func (p *KeyValuePair) parse(data []byte) (int, error) {
 	var n, parsed int
 	var err error
 	p.Type, n, err = quicvarint.Parse(data)
+	parsed += n
 	if err != nil {
 		return n, err
 	}
 	data = data[n:]
-	parsed += n
 
 	if p.Type%2 == 1 {
 		var length uint64
