@@ -16,11 +16,10 @@ func newTrackStatusRequestMap() *trackStatusRequestMap {
 	}
 }
 
-func (m *trackStatusRequestMap) add(tsr *trackStatusRequest) bool {
+func (m *trackStatusRequestMap) add(tsr *trackStatusRequest) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.requests[tsr.requestID] = tsr
-	return true
 }
 
 func (m *trackStatusRequestMap) delete(requestID uint64) (*trackStatusRequest, bool) {

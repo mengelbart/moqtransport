@@ -80,12 +80,14 @@ func (p *KeyValuePair) parseReader(br *bufio.Reader) error {
 		return err
 	}
 	if p.Type%2 == 1 {
-		length, err := quicvarint.Read(br)
+		var length uint64
+		length, err = quicvarint.Read(br)
 		if err != nil {
 			return err
 		}
 		p.ValueBytes = make([]byte, length)
-		m, err := io.ReadFull(br, p.ValueBytes)
+		var m int
+		m, err = io.ReadFull(br, p.ValueBytes)
 		if err != nil {
 			return err
 		}
