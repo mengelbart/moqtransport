@@ -3,7 +3,6 @@ package moqtransport
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"math"
 	"slices"
 
@@ -24,7 +23,6 @@ func compileMessage(msg wire.ControlMessage) ([]byte, error) {
 		return nil, errControlMessageTooLarge
 	}
 	binary.BigEndian.PutUint16(buf[tl:tl+2], uint16(length))
-	log.Printf("tl=%v, length=%v, buf=%v", tl, length, buf)
 	return buf, nil
 }
 
