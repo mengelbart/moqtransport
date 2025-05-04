@@ -92,7 +92,7 @@ type Session struct {
 	localMaxRequestID  atomic.Uint64
 	remoteMaxRequestID atomic.Uint64
 
-	requestID              *sequence
+	requestIDs             *sequence
 	highestRequestsBlocked atomic.Uint64
 
 	outgoingAnnouncements *announcementMap
@@ -101,7 +101,7 @@ type Session struct {
 	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
 	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
 
-	trackAlias   *sequence
+	trackAliases *sequence
 	remoteTracks *remoteTrackMap
 	localTracks  *localTrackMap
 
@@ -118,13 +118,13 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
 		path:                                     "",
-		requestID:                                newSequence(uint64(perspective), 2),
+		requestIDs:                               newSequence(uint64(perspective), 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		highestRequestsBlocked:                   atomic.Uint64{},
-		trackAlias:                               newSequence(0, 1),
+		trackAliases:                             newSequence(0, 1),
 		remoteTracks:                             newRemoteTrackMap(),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
@@ -271,7 +271,7 @@ func (s *Session) Subscribe(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	requestID := s.requestID.next()
+	requestID := s.requestIDs.next()
 
 	// TODO: Verify this logic works correctly (or just use mutex for
 	// highestRequestsBlocked?)
@@ -293,7 +293,7 @@ func (s *Session) Subscribe(
 	rt := newRemoteTrack(requestID, func() error {
 		return s.unsubscribe(requestID)
 	})
-	trackAlias := s.trackAlias.next()
+	trackAlias := s.trackAliases.next()
 	if err := s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
@@ -398,7 +398,7 @@ func (s *Session) Fetch(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	requestID := s.requestID.next()
+	requestID := s.requestIDs.next()
 	rt := newRemoteTrack(requestID, func() error {
 		return s.fetchCancel(requestID)
 	})
@@ -492,7 +492,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		return nil, err
 	}
 	tsr := &trackStatusRequest{
-		requestID: s.requestID.next(),
+		requestID: s.requestIDs.next(),
 		namespace: namespace,
 		trackname: track,
 		response:  make(chan *TrackStatus, 1),
@@ -532,7 +532,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		return err
 	}
 	a := &announcement{
-		requestID:  s.requestID.next(),
+		requestID:  s.requestIDs.next(),
 		namespace:  namespace,
 		parameters: wire.KVPList{},
 		response:   make(chan error, 1),
@@ -612,7 +612,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		return err
 	}
 	as := &announcementSubscription{
-		requestID: s.requestID.next(),
+		requestID: s.requestIDs.next(),
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
 	}

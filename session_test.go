@@ -21,7 +21,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Protocol:                                 protocol,
 		Perspective:                              perspective,
 		path:                                     "/path",
-		requestID:                                newSequence(uint64(perspective), 2),
+		requestIDs:                               newSequence(uint64(perspective), 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -32,7 +32,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
 		localMaxRequestID:                        atomic.Uint64{},
 		remoteMaxRequestID:                       atomic.Uint64{},
-		trackAlias:                               newSequence(0, 1),
+		trackAliases:                             newSequence(0, 1),
 	}
 	s.localMaxRequestID.Store(100)
 	return s
