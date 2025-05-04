@@ -26,12 +26,10 @@ func findAnnouncementSubscription(as map[uint64]*announcementSubscription, names
 	return nil
 }
 
-// add returns an error if the entry is already present
-func (m *announcementSubscriptionMap) add(a *announcementSubscription) error {
+func (m *announcementSubscriptionMap) add(a *announcementSubscription) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.as[a.requestID] = a
-	return nil
 }
 
 // delete returns the deleted element (if present) and whether the entry was

@@ -133,7 +133,7 @@ func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
 		return errInvalidGroupOrder
 	}
 	m.Forward = data[2]
-	if m.Forward > 2 {
+	if m.Forward > 1 {
 		return errInvalidForwardFlag
 	}
 	data = data[3:]

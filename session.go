@@ -24,7 +24,6 @@ var (
 	errUnknownTrackAlias                = errors.New("unknown track alias")
 	errMissingPathParameter             = errors.New("missing path parameter")
 	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
-	errDuplicateTrackStatusRequest      = errors.New("track status already requested")
 	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
 
@@ -261,8 +260,8 @@ func (s *Session) sendClientSetup() error {
 	})
 }
 
-// Subscribe subscribes to track in namespace using id as the request ID. It
-// blocks until a response from the peer was received or ctx is cancelled.
+// Subscribe subscribes to track in namespace. It blocks until a response from
+// the peer was received or ctx is cancelled.
 func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace []string,
@@ -283,7 +282,7 @@ func (s *Session) Subscribe(
 			if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
 				MaximumRequestID: remoteMax,
 			}); queueErr != nil {
-				s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
+				s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
 			}
 		}
 		return nil, errRequestsBlocked{
@@ -389,8 +388,8 @@ func (s *Session) subscriptionDone(id, code, count uint64, reason string) error 
 	})
 }
 
-// Fetch fetches track in namespace from the peer using id as the request ID.
-// It blocks until a response from the peer was received or ctx is cancelled.
+// Fetch fetches track in namespace from the peer. It blocks until a response
+// from the peer was received or ctx is cancelled.
 func (s *Session) Fetch(
 	ctx context.Context,
 	namespace []string,
@@ -411,7 +410,7 @@ func (s *Session) Fetch(
 				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
 					MaximumRequestID: tooManySubscribes.maxRequestID,
 				}); queueErr != nil {
-					s.logger.Warn("skipping sending of subscribes_blocked message", "error", queueErr)
+					s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
 				}
 			}
 		}
@@ -499,9 +498,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		response:  make(chan *TrackStatus, 1),
 	}
 
-	if !s.outgoingTrackStatusRequests.add(tsr) {
-		return nil, errDuplicateTrackStatusRequest
-	}
+	s.outgoingTrackStatusRequests.add(tsr)
 	tsrm := &wire.TrackStatusRequestMessage{
 		TrackNamespace: namespace,
 		TrackName:      []byte(track),
@@ -619,9 +616,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
 	}
-	if err := s.pendingOutgointAnnouncementSubscriptions.add(as); err != nil {
-		return err
-	}
+	s.pendingOutgointAnnouncementSubscriptions.add(as)
 	sam := &wire.SubscribeAnnouncesMessage{
 		RequestID:            as.requestID,
 		TrackNamespacePrefix: as.namespace,
@@ -1042,12 +1037,10 @@ func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
 }
 
 func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
-	if err := s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
+	s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
 		requestID: msg.RequestID,
 		namespace: msg.TrackNamespacePrefix,
-	}); err != nil {
-		return err
-	}
+	})
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
 		RequestID: msg.RequestID,
 		Method:    MessageSubscribeAnnounces,
