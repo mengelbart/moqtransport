@@ -112,6 +112,12 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 				log.Printf("failed to accept announcement: %v", err)
 				return
 			}
+			if h.subscribe {
+				if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
+					log.Printf("failed to subscribe to track: %v", err)
+					return
+				}
+			}
 		case moqtransport.MessageSubscribe:
 			if !h.publish {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
@@ -162,13 +168,6 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 	if h.publish {
 		if err := session.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
-			return
-		}
-	}
-	if h.subscribe {
-		if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
-			log.Printf("failed to subscribe to track: %v", err)
-			conn.CloseWithError(0, "internal error")
 			return
 		}
 	}
