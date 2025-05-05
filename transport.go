@@ -54,7 +54,6 @@ func (t *Transport) Run() error {
 	t.logger.Info("control stream started")
 	go t.readStreams()
 	go t.readDatagrams()
-	go t.sendControlMessages()
 	go t.readControlMessages()
 	return nil
 }
@@ -181,21 +180,6 @@ func (t *Transport) readControlMessages() {
 			return
 		}
 		t.handle(msg)
-	}
-}
-
-func (t *Transport) sendControlMessages() {
-	for {
-		msg, err := t.Session.sendControlMessage(t.ctx)
-		if err != nil {
-			t.logger.Info("exiting control message send loop", "error", err)
-			return
-		}
-		if err := t.controlStream.queueControlMessage(msg); err != nil {
-			t.logger.Error("failed to queue control message, exiting control message send loop", "error", err)
-			t.handleProtocolViolation(err)
-			return
-		}
 	}
 }
 

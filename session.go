@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	errControlMessageQueueOverflow      = errors.New("control message overflow, message not queued")
 	errUnknownAnnouncementNamespace     = errors.New("unknown announcement namespace")
 	errMaxRequestIDViolated             = errors.New("max request ID violated")
 	errClientReceivedClientSetup        = errors.New("client received client setup message")
