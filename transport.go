@@ -215,47 +215,45 @@ func (t *Transport) readDatagrams() {
 			t.handleProtocolViolation(err)
 			return
 		}
-		go func() {
-			msg := new(wire.ObjectDatagramMessage)
-			_, err := msg.Parse(dgram)
-			if err != nil {
-				t.logger.Error("failed to parse datagram object", "error", err)
-				return
-			}
-			if t.Qlogger != nil {
-				eth := slices.Collect(slices.Map(
-					msg.ObjectExtensionHeaders,
-					func(e wire.KeyValuePair) moqt.ExtensionHeader {
-						return moqt.ExtensionHeader{
-							HeaderType:   0, // TODO
-							HeaderValue:  0, // TODO
-							HeaderLength: 0, // TODO
-							Payload:      qlog.RawInfo{},
-						}
-					}),
-				)
-				t.Qlogger.Log(moqt.ObjectDatagramEvent{
-					EventName:              moqt.ObjectDatagramEventparsed,
-					TrackAlias:             msg.TrackAlias,
-					GroupID:                msg.GroupID,
-					ObjectID:               msg.ObjectID,
-					PublisherPriority:      msg.PublisherPriority,
-					ExtensionHeadersLength: uint64(len(msg.ObjectExtensionHeaders)),
-					ExtensionHeaders:       eth,
-					ObjectStatus:           uint64(msg.ObjectStatus),
-					Payload: qlog.RawInfo{
-						Length:        uint64(len(msg.ObjectPayload)),
-						PayloadLength: uint64(len(msg.ObjectPayload)),
-						Data:          msg.ObjectPayload,
-					},
-				})
-			}
-			if err := t.Session.receiveDatagram(msg); err != nil {
-				t.logger.Error("session failed to handle dgram", "error", err)
-				t.handleProtocolViolation(err)
-				return
-			}
-		}()
+		msg := new(wire.ObjectDatagramMessage)
+		if _, err = msg.Parse(dgram); err != nil {
+			t.logger.Error("failed to parse datagram object", "error", err)
+			t.handleProtocolViolation(err)
+			return
+		}
+		if t.Qlogger != nil {
+			eth := slices.Collect(slices.Map(
+				msg.ObjectExtensionHeaders,
+				func(e wire.KeyValuePair) moqt.ExtensionHeader {
+					return moqt.ExtensionHeader{
+						HeaderType:   0, // TODO
+						HeaderValue:  0, // TODO
+						HeaderLength: 0, // TODO
+						Payload:      qlog.RawInfo{},
+					}
+				}),
+			)
+			t.Qlogger.Log(moqt.ObjectDatagramEvent{
+				EventName:              moqt.ObjectDatagramEventparsed,
+				TrackAlias:             msg.TrackAlias,
+				GroupID:                msg.GroupID,
+				ObjectID:               msg.ObjectID,
+				PublisherPriority:      msg.PublisherPriority,
+				ExtensionHeadersLength: uint64(len(msg.ObjectExtensionHeaders)),
+				ExtensionHeaders:       eth,
+				ObjectStatus:           uint64(msg.ObjectStatus),
+				Payload: qlog.RawInfo{
+					Length:        uint64(len(msg.ObjectPayload)),
+					PayloadLength: uint64(len(msg.ObjectPayload)),
+					Data:          msg.ObjectPayload,
+				},
+			})
+		}
+		if err := t.Session.receiveDatagram(msg); err != nil {
+			t.logger.Error("session failed to handle dgram", "error", err)
+			t.handleProtocolViolation(err)
+			return
+		}
 	}
 }
 
