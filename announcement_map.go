@@ -28,11 +28,10 @@ func newAnnouncementMap() *announcementMap {
 	}
 }
 
-func (m *announcementMap) add(a *announcement) error {
+func (m *announcementMap) add(a *announcement) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	m.pending[a.requestID] = a
-	return nil
 }
 
 func (m *announcementMap) confirmAndGet(requestID uint64) (*announcement, error) {

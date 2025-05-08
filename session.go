@@ -500,9 +500,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		parameters: wire.KVPList{},
 		response:   make(chan error, 1),
 	}
-	if err := s.outgoingAnnouncements.add(a); err != nil {
-		return err
-	}
+	s.outgoingAnnouncements.add(a)
 	am := &wire.AnnounceMessage{
 		RequestID:      a.requestID,
 		TrackNamespace: a.namespace,
@@ -936,12 +934,7 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		parameters: msg.Parameters,
 		response:   make(chan error),
 	}
-	if err := s.incomingAnnouncements.add(a); err != nil {
-		return ProtocolError{
-			code:    ErrorCodeAnnouncementInternal,
-			message: err.Error(),
-		}
-	}
+	s.incomingAnnouncements.add(a)
 	message := &Message{
 		RequestID: msg.RequestID,
 		Method:    MessageAnnounce,
