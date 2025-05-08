@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,8 +14,6 @@ import (
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/mengelbart/moqtransport/webtransportmoq"
-	"github.com/mengelbart/qlog"
-	"github.com/mengelbart/qlog/moqt"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -150,7 +147,6 @@ func (h *moqHandler) handle(conn moqtransport.Connection) {
 	transport := &moqtransport.Transport{
 		Conn:    conn,
 		Handler: h.getHandler(id, session),
-		Qlogger: qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
 		Session: session,
 	}
 	err := transport.Run()
