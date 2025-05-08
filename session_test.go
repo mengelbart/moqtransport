@@ -21,7 +21,7 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		Protocol:                                 protocol,
 		Perspective:                              perspective,
 		path:                                     "/path",
-		requestIDs:                               newSequence(uint64(perspective), 2),
+		requestIDs:                               newRequestIDGenerator(uint64(perspective), 100, 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -31,7 +31,6 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
 		localMaxRequestID:                        atomic.Uint64{},
-		remoteMaxRequestID:                       atomic.Uint64{},
 		trackAliases:                             newSequence(0, 1),
 	}
 	s.localMaxRequestID.Store(100)
@@ -198,10 +197,10 @@ func TestSession(t *testing.T) {
 			return nil
 		}).Times(1)
 		cms.EXPECT().enqueue(context.Background(), &wire.RequestsBlockedMessage{
-			MaximumRequestID: 1,
+			MaximumRequestID: 2,
 		}).Times(1)
 
-		s.remoteMaxRequestID.Store(1)
+		s.requestIDs.max = 2
 		close(s.handshakeDoneCh)
 		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
 		assert.NoError(t, err)
@@ -219,7 +218,7 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		s.remoteMaxRequestID.Store(1)
+		s.requestIDs.max = 1
 		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
