@@ -52,10 +52,9 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	localMaxRequestID  atomic.Uint64
-	remoteMaxRequestID atomic.Uint64
+	localMaxRequestID atomic.Uint64
 
-	requestIDs             *sequence
+	requestIDs             *requestIDGenerator
 	highestRequestsBlocked atomic.Uint64
 
 	outgoingAnnouncements *announcementMap
@@ -81,7 +80,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
 		path:                                     "",
-		requestIDs:                               newSequence(uint64(perspective), 2),
+		requestIDs:                               newRequestIDGenerator(uint64(perspective), 2, 0),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -92,7 +91,6 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
 		localMaxRequestID:                        atomic.Uint64{},
-		remoteMaxRequestID:                       atomic.Uint64{},
 	}
 	s.localMaxRequestID.Store(initMaxRequestID)
 	return s
@@ -195,6 +193,20 @@ func (s *Session) waitForHandshakeDone(ctx context.Context) error {
 	}
 }
 
+func (s *Session) getRequestID() (uint64, error) {
+	requestID, err := s.requestIDs.next()
+	if err != nil {
+		if err == errRequestIDblocked {
+			if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
+				MaximumRequestID: requestID,
+			}); queueErr != nil {
+				s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
+			}
+		}
+	}
+	return requestID, err
+}
+
 // Path returns the path of the MoQ session which was exchanged during the
 // handshake when using QUIC.
 func (s *Session) Path() string {
@@ -234,30 +246,15 @@ func (s *Session) Subscribe(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	requestID := s.requestIDs.next()
-
-	// TODO: Verify this logic works correctly (or just use mutex for
-	// highestRequestsBlocked?)
-	remoteMax := s.remoteMaxRequestID.Load()
-	if requestID > remoteMax {
-		highestBlocked := s.highestRequestsBlocked.Load()
-		if highestBlocked < remoteMax && s.highestRequestsBlocked.CompareAndSwap(highestBlocked, remoteMax) {
-			if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
-				MaximumRequestID: remoteMax,
-			}); queueErr != nil {
-				s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
-			}
-		}
-		return nil, errRequestsBlocked{
-			maxRequestID: remoteMax,
-		}
+	requestID, err := s.getRequestID()
+	if err != nil {
+		return nil, err
 	}
-
 	rt := newRemoteTrack(requestID, func() error {
 		return s.unsubscribe(requestID)
 	})
 	trackAlias := s.trackAliases.next()
-	if err := s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
+	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
 	cm := &wire.SubscribeMessage{
@@ -285,7 +282,6 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 
-	var err error
 	select {
 	case <-ctx.Done():
 		err = context.Cause(ctx)
@@ -361,7 +357,10 @@ func (s *Session) Fetch(
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
-	requestID := s.requestIDs.next()
+	requestID, err := s.getRequestID()
+	if err != nil {
+		return nil, err
+	}
 	rt := newRemoteTrack(requestID, func() error {
 		return s.fetchCancel(requestID)
 	})
@@ -398,7 +397,6 @@ func (s *Session) Fetch(
 		_, _ = s.remoteTracks.reject(requestID)
 		return nil, err
 	}
-	var err error
 	select {
 	case <-ctx.Done():
 		err = context.Cause(ctx)
@@ -454,8 +452,12 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
 	}
+	requestID, err := s.getRequestID()
+	if err != nil {
+		return nil, err
+	}
 	tsr := &trackStatusRequest{
-		requestID: s.requestIDs.next(),
+		requestID: requestID,
 		namespace: namespace,
 		trackname: track,
 		response:  make(chan *TrackStatus, 1),
@@ -494,8 +496,12 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return err
 	}
+	requestID, err := s.getRequestID()
+	if err != nil {
+		return err
+	}
 	a := &announcement{
-		requestID:  s.requestIDs.next(),
+		requestID:  requestID,
 		namespace:  namespace,
 		parameters: wire.KVPList{},
 		response:   make(chan error, 1),
@@ -572,8 +578,12 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return err
 	}
+	requestID, err := s.getRequestID()
+	if err != nil {
+		return err
+	}
 	as := &announcementSubscription{
-		requestID: s.requestIDs.next(),
+		requestID: requestID,
 		namespace: prefix,
 		response:  make(chan announcementSubscriptionResponse, 1),
 	}
@@ -712,7 +722,9 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 
 	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
 	if remoteMaxRequestID > 0 {
-		s.remoteMaxRequestID.Store(remoteMaxRequestID)
+		if err := s.requestIDs.setMax(remoteMaxRequestID); err != nil {
+			return err
+		}
 	}
 
 	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
@@ -741,7 +753,9 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 	s.version = m.SelectedVersion
 
 	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
-	s.remoteMaxRequestID.Store(remoteMaxRequestID)
+	if err := s.requestIDs.setMax(remoteMaxRequestID); err != nil {
+		return err
+	}
 	close(s.handshakeDoneCh)
 	return nil
 }
@@ -754,11 +768,7 @@ func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
 }
 
 func (s *Session) onMaxRequestID(msg *wire.MaxRequestIDMessage) error {
-	old := s.remoteMaxRequestID.Swap(msg.RequestID)
-	if old >= msg.RequestID {
-		return errMaxRequestIDDecreased
-	}
-	return nil
+	return s.requestIDs.setMax(msg.RequestID)
 }
 
 func (s *Session) onRequestsBlocked(msg *wire.RequestsBlockedMessage) error {
