@@ -6,12 +6,12 @@
 
 ## Overview
 
-This library implements the Media over QUIC Transport (MoQT) protocol as defined in [draft-ietf-moq-transport-08](https://www.ietf.org/archive/id/draft-ietf-moq-transport-08.txt). MoQT is designed to operate over QUIC or WebTransport for efficient media delivery with a publish/subscribe model.
+This library implements the Media over QUIC Transport (MoQT) protocol as defined in [draft-ietf-moq-transport-11](https://www.ietf.org/archive/id/draft-ietf-moq-transport-11.txt). MoQT is designed to operate over QUIC or WebTransport for efficient media delivery with a publish/subscribe model.
 
 ### Implementation Status
 
 This code, as well as the specification, is work in progress.
-The implementation currently covers most aspects of the MoQT specification (draft-08), including:
+The implementation currently covers most aspects of the MoQT specification (draft-11), including:
 
  Session establishment and initialization  
  Control message encoding and handling  
@@ -22,10 +22,9 @@ The implementation currently covers most aspects of the MoQT specification (draf
 
 ### Areas for Future Development
 
-- Enhanced relay support for CDN-like deployments
-- More comprehensive priority handling
-- Additional performance optimizations
-- Extended examples for various media streaming scenarios
+ Implementation of FETCH
+ Exposure of more parameters
+ ...
 
 ## Usage
 
