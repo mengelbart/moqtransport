@@ -3,6 +3,7 @@ package moqtransport
 // Common Message types. Handlers can react to any of these messages.
 const (
 	MessageSubscribe            = "SUBSCRIBE"
+	MessageSubscribeUpdate      = "SUBSCRIBE_UPDATE"
 	MessageFetch                = "FETCH"
 	MessageAnnounce             = "ANNOUNCE"
 	MessageAnnounceCancel       = "ANNOUNCE_CANCEL"
@@ -41,6 +42,17 @@ type Message struct {
 	ErrorCode uint64
 	// ReasonPhrase is set if the message is an error message.
 	ReasonPhrase string
+
+	// SUBSCRIBE_UPDATE specific fields
+	// SubscriberPriority is the new priority for the subscription (0-255, lower is higher priority)
+	SubscriberPriority uint8
+	// StartGroup and StartObject define the new start location (can only move forward)
+	StartGroup  uint64
+	StartObject uint64
+	// EndGroup defines the new end location (can only move backward)
+	EndGroup uint64
+	// Forward controls whether to pause (0) or forward (1) object delivery
+	Forward uint8
 }
 
 // ResponseWriter can be used to respond to messages that expect a response.

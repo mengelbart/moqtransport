@@ -334,6 +334,58 @@ func (s *Session) unsubscribe(id uint64) error {
 	})
 }
 
+// SubscribeUpdate sends a SUBSCRIBE_UPDATE message to modify an existing subscription.
+// The requestID must correspond to an active subscription.
+func (s *Session) SubscribeUpdate(
+	ctx context.Context,
+	requestID uint64,
+	priority uint8,
+	startGroup uint64,
+	startObject uint64,
+	endGroup uint64,
+	forward uint8,
+) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+	
+	// Verify the subscription exists
+	rt, ok := s.remoteTracks.findByRequestID(requestID)
+	if !ok {
+		return errUnknownRequestID
+	}
+	
+	// Create and send the SUBSCRIBE_UPDATE message
+	sum := &wire.SubscribeUpdateMessage{
+		RequestID: requestID,
+		StartLocation: wire.Location{
+			Group:  startGroup,
+			Object: startObject,
+		},
+		EndGroup:           endGroup,
+		SubscriberPriority: priority,
+		Forward:            forward,
+		Parameters:         wire.KVPList{},
+	}
+	
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, sum); err != nil {
+		return err
+	}
+	
+	// Log the update
+	s.logger.Info("sent SUBSCRIBE_UPDATE", 
+		"requestID", requestID,
+		"priority", priority,
+		"startGroup", startGroup,
+		"startObject", startObject,
+		"endGroup", endGroup,
+		"forward", forward,
+		"track", rt,
+	)
+	
+	return nil
+}
+
 func (s *Session) subscriptionDone(id, code, count uint64, reason string) error {
 	lt, ok := s.localTracks.delete(id)
 	if !ok {
@@ -827,9 +879,27 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	return nil
 }
 
-func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
-	// TODO
-	return nil
+func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+	// Find the local track for this request ID
+	lt, ok := s.localTracks.findByID(msg.RequestID)
+	if !ok {
+		return errUnknownRequestID
+	}
+	
+	// Create a message for the application handler
+	m := &Message{
+		Method:             MessageSubscribeUpdate,
+		RequestID:          msg.RequestID,
+		TrackAlias:         lt.trackAlias,
+		SubscriberPriority: msg.SubscriberPriority,
+		StartGroup:         msg.StartLocation.Group,
+		StartObject:        msg.StartLocation.Object,
+		EndGroup:           msg.EndGroup,
+		Forward:            msg.Forward,
+	}
+	
+	// Pass to the application handler
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 // TODO: Maybe don't immediately close the track and give app a chance to react
