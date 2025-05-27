@@ -80,7 +80,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		ctrlMsgReceiveQueue:                      newQueue[*Message](),
 		version:                                  0,
 		path:                                     "",
-		requestIDs:                               newRequestIDGenerator(uint64(perspective), 2, 0),
+		requestIDs:                               newRequestIDGenerator(uint64(perspective), 0 /*max*/, 2 /*step*/),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
