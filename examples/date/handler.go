@@ -94,33 +94,110 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 }
 
 func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session) moqtransport.Handler {
-	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
-		switch r.Method {
-		case moqtransport.MessageAnnounce:
-			if !h.subscribe {
-				log.Printf("sessionNr: %d got unexpected announcement: %v", sessionID, r.Namespace)
+	// Create a typed handler
+	typedHandler := &dateTypedHandler{
+		h:         h,
+		sessionID: sessionID,
+		session:   session,
+	}
+	// Adapt it to work with the existing Handler interface
+	return moqtransport.NewHandlerAdapter(typedHandler)
+}
+
+// dateTypedHandler implements TypedHandler for the date example
+type dateTypedHandler struct {
+	h         *moqHandler
+	sessionID uint64
+	session   *moqtransport.Session
+}
+
+// HandleTyped processes typed messages with full access to all fields
+func (dh *dateTypedHandler) HandleTyped(w moqtransport.ResponseWriter, msg moqtransport.TypedMessage) {
+	switch m := msg.(type) {
+	case *moqtransport.AnnounceMessage:
+		if !dh.h.subscribe {
+			log.Printf("sessionNr: %d got unexpected announcement: %s", dh.sessionID, m.TrackNamespace)
+			if arw, ok := w.(moqtransport.AnnounceResponseWriter); ok {
+				arw.RejectDetailed(moqtransport.AnnounceErrorGeneric, "date doesn't take announcements")
+			} else {
 				w.Reject(0, "date doesn't take announcements")
-				return
 			}
-			if !tupleEqual(r.Namespace, h.namespace) {
-				log.Printf("got unexpected announcement namespace: %v, expected %v", r.Namespace, h.namespace)
+			return
+		}
+		// Convert namespace string to slice for comparison (temporary)
+		namespace := []string{m.TrackNamespace}
+		if !tupleEqual(namespace, dh.h.namespace) {
+			log.Printf("got unexpected announcement namespace: %s, expected %v", m.TrackNamespace, dh.h.namespace)
+			if arw, ok := w.(moqtransport.AnnounceResponseWriter); ok {
+				arw.RejectDetailed(moqtransport.AnnounceErrorGeneric, "non-matching namespace")
+			} else {
 				w.Reject(0, "non-matching namespace")
-				return
 			}
-			err := w.Accept()
+			return
+		}
+		if arw, ok := w.(moqtransport.AnnounceResponseWriter); ok {
+			err := arw.AcceptDetailed()
 			if err != nil {
 				log.Printf("failed to accept announcement: %v", err)
-				return
 			}
-		case moqtransport.MessageSubscribe:
-			if !h.publish {
+		} else {
+			w.Accept()
+		}
+
+	case *moqtransport.SubscribeMessage:
+		if !dh.h.publish {
+			if srw, ok := w.(moqtransport.SubscribeResponseWriter); ok {
+				srw.RejectDetailed(moqtransport.SubscribeErrorTrackDoesNotExist, "endpoint does not publish any tracks")
+			} else {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
-				return
 			}
-			if !tupleEqual(r.Namespace, h.namespace) || (r.Track != h.trackname) {
+			return
+		}
+
+		// Convert namespace string to slice for comparison (temporary)
+		namespace := []string{m.TrackNamespace}
+		if !tupleEqual(namespace, dh.h.namespace) || (m.TrackName != dh.h.trackname) {
+			log.Printf("unknown track: %s/%s", m.TrackNamespace, m.TrackName)
+			if srw, ok := w.(moqtransport.SubscribeResponseWriter); ok {
+				srw.RejectDetailed(moqtransport.SubscribeErrorTrackDoesNotExist, "unknown track")
+			} else {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
+			}
+			return
+		}
+
+		// Log subscription details
+		log.Printf("Subscribe request for %s/%s", m.TrackNamespace, m.TrackName)
+		log.Printf("  Request ID: %d", m.RequestID)
+		log.Printf("  Track Alias: %d", m.TrackAlias)
+		log.Printf("  Priority: %d", m.SubscriberPriority)
+		log.Printf("  Group Order: %v", m.GroupOrder)
+		log.Printf("  Filter Type: %v", m.FilterType)
+
+		// Accept with detailed response if available
+		if srw, ok := w.(moqtransport.SubscribeResponseWriter); ok {
+			err := srw.AcceptDetailed(
+				moqtransport.WithGroupOrderResponse(moqtransport.GroupOrderAscending),
+				moqtransport.WithContentExists(true),
+			)
+			if err != nil {
+				log.Printf("failed to accept subscription: %v", err)
 				return
 			}
+
+			// Publisher is available through the SubscribeResponseWriter
+			datePublisher := &publisher{
+				p:          srw,
+				sessionNr:  dh.sessionID,
+				requestID:  m.RequestID,
+				trackAlias: m.TrackAlias,
+				session:    dh.session,
+			}
+			dh.h.lock.Lock()
+			dh.h.publishers[datePublisher] = struct{}{}
+			dh.h.lock.Unlock()
+		} else {
+			// Fallback to basic handling
 			err := w.Accept()
 			if err != nil {
 				log.Printf("failed to accept subscription: %v", err)
@@ -129,19 +206,26 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 			p, ok := w.(moqtransport.Publisher)
 			if !ok {
 				log.Printf("subscription response writer does not implement publisher?")
+				return
 			}
 			datePublisher := &publisher{
-				p:           p,
-				sessionID:   sessionID,
-				subscribeID: r.RequestID,
-				trackAlias:  r.TrackAlias,
-				session:     session,
+				p:          p,
+				sessionNr:  dh.sessionID,
+				requestID:  m.RequestID,
+				trackAlias: m.TrackAlias,
+				session:    dh.session,
 			}
-			h.lock.Lock()
-			h.publishers[datePublisher] = struct{}{}
-			h.lock.Unlock()
+			dh.h.lock.Lock()
+			dh.h.publishers[datePublisher] = struct{}{}
+			dh.h.lock.Unlock()
 		}
-	})
+
+	default:
+		log.Printf("Unhandled message type: %s", msg.Type())
+		if rejector, ok := w.(interface{ Reject(uint64, string) error }); ok {
+			rejector.Reject(0, "unsupported message type")
+		}
+	}
 }
 
 func (h *moqHandler) handle(conn moqtransport.Connection) {

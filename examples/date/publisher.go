@@ -7,11 +7,11 @@ import (
 )
 
 type publisher struct {
-	p           moqtransport.Publisher
-	session     *moqtransport.Session
-	sessionID   uint64
-	subscribeID uint64
-	trackAlias  uint64
+	p          moqtransport.Publisher
+	session    *moqtransport.Session
+	sessionNr  uint64
+	requestID  uint64
+	trackAlias uint64
 }
 
 func (p *publisher) SendDatagram(o moqtransport.Object) error {
@@ -19,8 +19,8 @@ func (p *publisher) SendDatagram(o moqtransport.Object) error {
 }
 
 func (p *publisher) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*moqtransport.Subgroup, error) {
-	log.Printf("sessionNr: %d, subscribeID: %d, trackAlias: %d, groupID: %d, subgroupID: %v",
-		p.sessionID, p.subscribeID, p.trackAlias, groupID, subgroupID)
+	log.Printf("sessionNr: %d, requestID: %d, trackAlias: %d, groupID: %d, subgroupID: %v",
+		p.sessionNr, p.requestID, p.trackAlias, groupID, subgroupID)
 	return p.p.OpenSubgroup(groupID, subgroupID, priority)
 }
 
