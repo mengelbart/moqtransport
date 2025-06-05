@@ -50,7 +50,7 @@ type SubscribeOptions struct {
 	// EndGroup specifies the end group for range filters
 	EndGroup *uint64
 
-	// Parameters contains custom key-value parameters for the subscription
+	// Parameters contains key-value parameters for the subscription
 	Parameters wire.KVPList
 }
 
@@ -81,7 +81,7 @@ type SubscribeOkOptions struct {
 	// LargestLocation specifies the largest available location if content exists
 	LargestLocation *wire.Location
 
-	// Parameters contains custom response parameters
+	// Parameters contains response parameters
 	Parameters wire.KVPList
 }
 
@@ -93,6 +93,39 @@ func DefaultSubscribeOkOptions() *SubscribeOkOptions {
 		ContentExists:   true,
 		LargestLocation: nil,
 		Parameters:      wire.KVPList{},
+	}
+}
+
+// SubscribeUpdateOptions contains options for updating an existing subscription.
+type SubscribeUpdateOptions struct {
+	// StartLocation specifies the new start position for the subscription
+	StartLocation wire.Location
+
+	// EndGroup specifies the new end group for the subscription
+	EndGroup uint64
+
+	// SubscriberPriority indicates the new delivery priority (0-255, higher is more important)
+	SubscriberPriority uint8
+
+	// Forward indicates the new forward preference:
+	// false = No forward preference, true = Forward preference
+	Forward bool
+
+	// Parameters contains key-value parameters for the update
+	Parameters wire.KVPList
+}
+
+// DefaultSubscribeUpdateOptions returns a reasonable default set of options for subscription updates.
+func DefaultSubscribeUpdateOptions() *SubscribeUpdateOptions {
+	return &SubscribeUpdateOptions{
+		StartLocation: wire.Location{
+			Group:  0,
+			Object: 0,
+		},
+		EndGroup:           0,
+		SubscriberPriority: 128,
+		Forward:            true,
+		Parameters:         wire.KVPList{},
 	}
 }
 
@@ -380,7 +413,7 @@ func (s *Session) SubscribeWithOptions(
 		Parameters:         make(wire.KVPList, len(opts.Parameters)),
 	}
 
-	// Copy custom parameters
+	// Copy parameter key-value pairs
 	copy(sm.Parameters, opts.Parameters)
 
 	// Set start location if provided and required by filter type
@@ -411,6 +444,37 @@ func (s *Session) SubscribeWithOptions(
 		return nil, err
 	}
 	return rt, nil
+}
+
+// UpdateSubscription updates an existing subscription with new parameters.
+// It blocks until the update is sent or ctx is cancelled.
+func (s *Session) UpdateSubscription(
+	ctx context.Context,
+	requestID uint64,
+	opts *SubscribeUpdateOptions,
+) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+
+	// Use defaults if not provided
+	if opts == nil {
+		opts = DefaultSubscribeUpdateOptions()
+	}
+
+	msg := &wire.SubscribeUpdateMessage{
+		RequestID:          requestID,
+		StartLocation:      opts.StartLocation,
+		EndGroup:           opts.EndGroup,
+		SubscriberPriority: opts.SubscriberPriority,
+		Forward:            boolToUint8(opts.Forward),
+		Parameters:         make(wire.KVPList, len(opts.Parameters)),
+	}
+
+	// Copy parameters
+	copy(msg.Parameters, opts.Parameters)
+
+	return s.ctrlMsgSendQueue.enqueue(ctx, msg)
 }
 
 func (s *Session) acceptSubscription(id uint64) error {
@@ -995,9 +1059,24 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	return nil
 }
 
-func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
-	// TODO
-	return nil
+func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+	m := &Message{
+		Method:    MessageSubscribeUpdate,
+		RequestID: msg.RequestID,
+
+		// SUBSCRIBE_UPDATE specific fields
+		SubscriberPriority:  msg.SubscriberPriority,
+		Forward:             msg.Forward,
+		UpdateStartLocation: &msg.StartLocation,
+		UpdateEndGroup:      &msg.EndGroup,
+		Parameters:          msg.Parameters,
+
+		NewSessionURI: "",
+		ErrorCode:     0,
+		ReasonPhrase:  "",
+	}
+
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 // TODO: Maybe don't immediately close the track and give app a chance to react

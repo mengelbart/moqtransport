@@ -9,6 +9,7 @@ import (
 // Common Message types. Handlers can react to any of these messages.
 const (
 	MessageSubscribe            = "SUBSCRIBE"
+	MessageSubscribeUpdate      = "SUBSCRIBE_UPDATE"
 	MessageFetch                = "FETCH"
 	MessageAnnounce             = "ANNOUNCE"
 	MessageAnnounceCancel       = "ANNOUNCE_CANCEL"
@@ -54,6 +55,12 @@ type Message struct {
 	EndGroup *uint64
 	// Parameters contains the full parameter list from the subscribe message
 	Parameters wire.KVPList
+
+	// Subscribe Update message specific fields (for SUBSCRIBE_UPDATE messages)
+	// UpdateStartLocation specifies the new start position for subscription updates
+	UpdateStartLocation *wire.Location
+	// UpdateEndGroup specifies the new end group for subscription updates  
+	UpdateEndGroup *uint64
 
 	// NewSessionURI is set in a GoAway message and points to a URI that can be
 	// used to setup a new session before closing the current session.
