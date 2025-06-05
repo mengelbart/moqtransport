@@ -58,9 +58,16 @@ func (t *Transport) Run() error {
 	return nil
 }
 
-func (t *Transport) handleSubscription(m *Message) {
-	lt := newLocalTrack(t.Conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
-		return t.Session.subscriptionDone(m.RequestID, code, count, reason)
+func (t *Transport) handleSubscription(m Message) {
+	// Extract subscribe-specific fields using type assertion
+	sm, ok := m.(*SubscribeMessage)
+	if !ok {
+		t.logger.Error("handleSubscription called with non-SubscribeMessage")
+		return
+	}
+	
+	lt := newLocalTrack(t.Conn, sm.RequestID(), sm.TrackAlias, func(code, count uint64, reason string) error {
+		return t.Session.subscriptionDone(sm.RequestID(), code, count, reason)
 	}, t.Qlogger)
 
 	if err := t.Session.addLocalTrack(lt); err != nil {
@@ -68,15 +75,15 @@ func (t *Transport) handleSubscription(m *Message) {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.Session.rejectSubscription(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectSubscription(sm.RequestID(), ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject subscription", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
 		return
 	}
 	srw := &subscriptionResponseWriter{
-		id:         m.RequestID,
-		trackAlias: m.TrackAlias,
+		id:         sm.RequestID(),
+		trackAlias: sm.TrackAlias,
 		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
@@ -90,21 +97,28 @@ func (t *Transport) handleSubscription(m *Message) {
 
 }
 
-func (t *Transport) handleFetch(m *Message) {
-	lt := newLocalTrack(t.Conn, m.RequestID, m.TrackAlias, nil, t.Qlogger)
+func (t *Transport) handleFetch(m Message) {
+	// Extract fetch-specific fields using type assertion  
+	fm, ok := m.(*GenericMessage)
+	if !ok {
+		t.logger.Error("handleFetch called with non-GenericMessage")
+		return
+	}
+	
+	lt := newLocalTrack(t.Conn, fm.RequestID(), fm.TrackAlias, nil, t.Qlogger)
 	if err := t.Session.addLocalTrack(lt); err != nil {
 		if err == errMaxRequestIDViolated || err == errDuplicateRequestID {
 			t.handleProtocolViolation(err)
 			return
 		}
-		if rejectErr := t.Session.rejectFetch(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := t.Session.rejectFetch(fm.RequestID(), ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			t.logger.Error("failed to add localtrack and failed to reject fetch", "error", err, "rejectErr", rejectErr)
 			// TODO: Close conn?
 		}
 		return
 	}
 	frw := &fetchResponseWriter{
-		id:         m.RequestID,
+		id:         fm.RequestID(),
 		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
@@ -117,16 +131,16 @@ func (t *Transport) handleFetch(m *Message) {
 	}
 }
 
-func (t *Transport) handle(m *Message) {
+func (t *Transport) handle(m Message) {
 	if t.Handler != nil {
-		switch m.Method {
+		switch m.Method() {
 		case MessageSubscribe:
 			t.handleSubscription(m)
 		case MessageFetch:
 			t.handleFetch(m)
 		case MessageAnnounce:
 			arw := &announcementResponseWriter{
-				requestID: m.RequestID,
+				requestID: m.RequestID(),
 				session:   t.Session,
 				handled:   false,
 			}
@@ -138,7 +152,7 @@ func (t *Transport) handle(m *Message) {
 			}
 		case MessageSubscribeAnnounces:
 			asrw := &announcementSubscriptionResponseWriter{
-				requestID: m.RequestID,
+				requestID: m.RequestID(),
 				session:   t.Session,
 				handled:   false,
 			}
@@ -149,12 +163,18 @@ func (t *Transport) handle(m *Message) {
 				}
 			}
 		case MessageTrackStatusRequest:
+			// Extract track status request specific fields using type assertion
+			gm, ok := m.(*GenericMessage)
+			if !ok {
+				t.logger.Error("handleTrackStatusRequest called with non-GenericMessage")
+				return
+			}
 			tsrw := &trackStatusResponseWriter{
 				session: t.Session,
 				handled: false,
 				status: TrackStatus{
-					Namespace:    m.Namespace,
-					Trackname:    m.Track,
+					Namespace:    gm.Namespace,
+					Trackname:    gm.Track,
 					StatusCode:   0,
 					LastGroupID:  0,
 					LastObjectID: 0,

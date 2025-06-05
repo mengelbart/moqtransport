@@ -14,8 +14,8 @@ func TestFetch(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageFetch, m.Method)
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageFetch, m.Method())
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
@@ -30,8 +30,8 @@ func TestFetch(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageFetch, m.Method)
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageFetch, m.Method())
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Reject(moqtransport.ErrorCodeFetchUnauthorized, "unauthorized"))
 		})
@@ -50,8 +50,8 @@ func TestFetch(t *testing.T) {
 
 		publisherCh := make(chan moqtransport.FetchPublisher, 1)
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageFetch, m.Method)
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageFetch, m.Method())
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 			publisher, ok := w.(moqtransport.FetchPublisher)
