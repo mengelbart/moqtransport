@@ -1,5 +1,11 @@
 package moqtransport
 
+import (
+	"time"
+
+	"github.com/mengelbart/moqtransport/internal/wire"
+)
+
 // Common Message types. Handlers can react to any of these messages.
 const (
 	MessageSubscribe            = "SUBSCRIBE"
@@ -30,8 +36,24 @@ type Message struct {
 	// Track is set if the message references a track.
 	Track string
 
-	// Authorization
+	// Authorization token should be an object, see 8.2.1.1
 	Authorization string
+
+	// Subscribe message specific fields
+	// SubscriberPriority indicates the delivery priority (0-255, higher is more important)
+	SubscriberPriority uint8
+	// GroupOrder indicates group ordering preference: 0=None, 1=Ascending, 2=Descending
+	GroupOrder uint8
+	// Forward indicates forward preference: 0=No, 1=Yes
+	Forward uint8
+	// FilterType specifies the subscription filter type
+	FilterType wire.FilterType
+	// StartLocation specifies the start position for absolute filters
+	StartLocation *wire.Location
+	// EndGroup specifies the end group for range filters
+	EndGroup *uint64
+	// Parameters contains the full parameter list from the subscribe message
+	Parameters wire.KVPList
 
 	// NewSessionURI is set in a GoAway message and points to a URI that can be
 	// used to setup a new session before closing the current session.
@@ -41,6 +63,38 @@ type Message struct {
 	ErrorCode uint64
 	// ReasonPhrase is set if the message is an error message.
 	ReasonPhrase string
+}
+
+// GetDeliveryTimeout extracts the delivery timeout parameter if present.
+func (m *Message) GetDeliveryTimeout() (time.Duration, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == wire.DeliveryTimeoutParameterKey {
+			return time.Duration(param.ValueVarInt) * time.Millisecond, true
+		}
+	}
+	return 0, false
+}
+
+// GetMaxCacheDuration extracts the max cache duration parameter if present.
+func (m *Message) GetMaxCacheDuration() (time.Duration, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == wire.MaxCacheDurationParameterKey && len(param.ValueBytes) > 0 {
+			// Parse duration from bytes (implementation depends on format)
+			// For now, return zero duration
+			return 0, true
+		}
+	}
+	return 0, false
+}
+
+// GetParameter extracts a custom parameter by key.
+func (m *Message) GetParameter(key uint64) (wire.KeyValuePair, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == key {
+			return param, true
+		}
+	}
+	return wire.KeyValuePair{}, false
 }
 
 // ResponseWriter can be used to respond to messages that expect a response.
@@ -82,6 +136,15 @@ type StatusRequestHandler interface {
 	// SetStatus sets the status for the response. Call this before calling
 	// Accept.
 	SetStatus(statusCode, lastGroupID, lastObjectID uint64)
+}
+
+// SubscribeResponseWriter is the enhanced interface implemented by ResponseWriters of Subscribe
+// messages, providing full control over subscription response parameters.
+type SubscribeResponseWriter interface {
+	ResponseWriter
+
+	// AcceptWithOptions accepts the subscription with custom response options.
+	AcceptWithOptions(opts *SubscribeOkOptions) error
 }
 
 // A Handler responds to MoQ messages.

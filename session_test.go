@@ -172,7 +172,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track1"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -226,7 +226,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -263,15 +263,22 @@ func TestSession(t *testing.T) {
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
 		mh.EXPECT().enqueue(context.Background(), &Message{
-			Method:        MessageSubscribe,
-			RequestID:     0,
-			TrackAlias:    0,
-			Namespace:     []string{"namespace"},
-			Track:         "track",
-			Authorization: "",
-			NewSessionURI: "",
-			ErrorCode:     0,
-			ReasonPhrase:  "",
+			Method:             MessageSubscribe,
+			RequestID:          0,
+			TrackAlias:         0,
+			Namespace:          []string{"namespace"},
+			Track:              "track",
+			Authorization:      "",
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			Forward:            0,
+			FilterType:         wire.FilterTypeNextGroupStart,
+			StartLocation:      nil,
+			EndGroup:          nil,
+			Parameters:        wire.KVPList{},
+			NewSessionURI:     "",
+			ErrorCode:         0,
+			ReasonPhrase:      "",
 		}).Do(func(_ context.Context, _ *Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
 			assert.NoError(t, s.acceptSubscription(0))
@@ -292,7 +299,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -313,12 +320,19 @@ func TestSession(t *testing.T) {
 		mh.EXPECT().enqueue(
 			context.Background(),
 			&Message{
-				Method:        MessageSubscribe,
-				Namespace:     []string{},
-				Track:         "",
-				Authorization: "",
-				ErrorCode:     0,
-				ReasonPhrase:  "",
+				Method:             MessageSubscribe,
+				Namespace:          []string{},
+				Track:              "",
+				Authorization:      "",
+				SubscriberPriority: 0,
+				GroupOrder:         0,
+				Forward:            0,
+				FilterType:         wire.FilterTypeNextGroupStart,
+				StartLocation:      nil,
+				EndGroup:          nil,
+				Parameters:        wire.KVPList{},
+				ErrorCode:         0,
+				ReasonPhrase:      "",
 			},
 		).DoAndReturn(func(_ context.Context, m *Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
@@ -338,7 +352,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte{},
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -436,7 +450,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("trackname"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
