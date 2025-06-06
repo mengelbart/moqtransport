@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
@@ -25,6 +26,205 @@ var (
 	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
 	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
+
+// Location represents a MoQ object location consisting of Group and Object IDs.
+// This is used to specify positions within the media stream for subscriptions
+// and other operations that require location information.
+type Location struct {
+	Group  uint64 // Group ID (typically corresponds to GOP/segment)
+	Object uint64 // Object ID within the group
+}
+
+// toWireLocation converts a public Location to an internal wire.Location
+func (l *Location) toWireLocation() wire.Location {
+	return wire.Location{
+		Group:  l.Group,
+		Object: l.Object,
+	}
+}
+
+// FilterType represents the subscription filter type used in SUBSCRIBE messages.
+type FilterType uint64
+
+const (
+	// FilterTypeLatestObject starts from the latest available object.
+	FilterTypeLatestObject FilterType = 0x02
+	
+	// FilterTypeNextGroupStart starts from the beginning of the next group.
+	FilterTypeNextGroupStart FilterType = 0x01
+	
+	// FilterTypeAbsoluteStart starts from a specific absolute position.
+	FilterTypeAbsoluteStart FilterType = 0x03
+	
+	// FilterTypeAbsoluteRange subscribes to a specific range of groups/objects.
+	FilterTypeAbsoluteRange FilterType = 0x04
+)
+
+// toWireFilterType converts a public FilterType to an internal wire.FilterType
+func (f FilterType) toWireFilterType() wire.FilterType {
+	return wire.FilterType(f)
+}
+
+// KeyValuePair represents a key-value parameter pair.
+type KeyValuePair struct {
+	Type       uint64
+	ValueVarInt uint64
+	ValueBytes []byte
+}
+
+// toWireKVP converts a public KeyValuePair to an internal wire.KeyValuePair
+func (kvp *KeyValuePair) toWireKVP() wire.KeyValuePair {
+	return wire.KeyValuePair{
+		Type:       kvp.Type,
+		ValueVarInt: kvp.ValueVarInt,
+		ValueBytes: kvp.ValueBytes,
+	}
+}
+
+// KVPList represents a list of key-value parameters.
+type KVPList []KeyValuePair
+
+// toWireKVPList converts a public KVPList to an internal wire.KVPList
+func (kvpl KVPList) toWireKVPList() wire.KVPList {
+	result := make(wire.KVPList, len(kvpl))
+	for i, kvp := range kvpl {
+		result[i] = kvp.toWireKVP()
+	}
+	return result
+}
+
+// fromWireLocation converts an internal wire.Location to a public Location
+func fromWireLocation(wl wire.Location) Location {
+	return Location{
+		Group:  wl.Group,
+		Object: wl.Object,
+	}
+}
+
+// fromWireFilterType converts an internal wire.FilterType to a public FilterType
+func fromWireFilterType(wf wire.FilterType) FilterType {
+	return FilterType(wf)
+}
+
+// fromWireKVP converts an internal wire.KeyValuePair to a public KeyValuePair
+func fromWireKVP(wkvp wire.KeyValuePair) KeyValuePair {
+	return KeyValuePair{
+		Type:       wkvp.Type,
+		ValueVarInt: wkvp.ValueVarInt,
+		ValueBytes: wkvp.ValueBytes,
+	}
+}
+
+// fromWireKVPList converts an internal wire.KVPList to a public KVPList
+func fromWireKVPList(wkvpl wire.KVPList) KVPList {
+	result := make(KVPList, len(wkvpl))
+	for i, wkvp := range wkvpl {
+		result[i] = fromWireKVP(wkvp)
+	}
+	return result
+}
+
+// SubscribeOptions contains options for subscribing to a track with full control
+// over all subscribe message parameters.
+type SubscribeOptions struct {
+	// SubscriberPriority indicates the delivery priority (0-255, higher is more important)
+	SubscriberPriority uint8
+
+	// GroupOrder indicates group ordering preference:
+	// 0 = None (no specific ordering), 1 = Ascending, 2 = Descending
+	GroupOrder uint8
+
+	// Forward indicates forward preference:
+	// false = No forward preference, true Forward preference
+	Forward bool // (true = 1, false = 0)
+
+	// FilterType specifies the subscription filter type
+	FilterType FilterType
+
+	// StartLocation specifies the start position for absolute filters
+	StartLocation *Location
+
+	// EndGroup specifies the end group for range filters
+	EndGroup *uint64
+
+	// Parameters contains key-value parameters for the subscription
+	Parameters KVPList
+}
+
+// DefaultSubscribeOptions returns a reasonable default set of options for subscriptions.
+func DefaultSubscribeOptions() *SubscribeOptions {
+	return &SubscribeOptions{
+		SubscriberPriority: 128,
+		GroupOrder:         1,
+		Forward:            true,
+		FilterType:         FilterTypeNextGroupStart,
+		StartLocation:      nil,
+		EndGroup:           nil,
+		Parameters:         KVPList{},
+	}
+}
+
+// SubscribeOkOptions contains options for customizing subscription acceptance responses.
+type SubscribeOkOptions struct {
+	// Expires specifies how long the subscription is valid
+	Expires time.Duration
+
+	// GroupOrder specifies the actual group order that will be used
+	GroupOrder uint8
+
+	// ContentExists indicates whether content is available for this track
+	ContentExists bool
+
+	// LargestLocation specifies the largest available location if content exists
+	LargestLocation *Location
+
+	// Parameters contains response parameters
+	Parameters KVPList
+}
+
+// DefaultSubscribeOkOptions returns a default set of options for SubscribeOk responses.
+func DefaultSubscribeOkOptions() *SubscribeOkOptions {
+	return &SubscribeOkOptions{
+		Expires:         0,
+		GroupOrder:      1,
+		ContentExists:   true,
+		LargestLocation: nil,
+		Parameters:      KVPList{},
+	}
+}
+
+// SubscribeUpdateOptions contains options for updating an existing subscription.
+type SubscribeUpdateOptions struct {
+	// StartLocation specifies the new start position for the subscription
+	StartLocation Location
+
+	// EndGroup specifies the new end group for the subscription
+	EndGroup uint64
+
+	// SubscriberPriority indicates the new delivery priority (0-255, higher is more important)
+	SubscriberPriority uint8
+
+	// Forward indicates the new forward preference:
+	// false = No forward preference, true = Forward preference
+	Forward bool
+
+	// Parameters contains key-value parameters for the update
+	Parameters KVPList
+}
+
+// DefaultSubscribeUpdateOptions returns a reasonable default set of options for subscription updates.
+func DefaultSubscribeUpdateOptions() *SubscribeUpdateOptions {
+	return &SubscribeUpdateOptions{
+		StartLocation: Location{
+			Group:  0,
+			Object: 0,
+		},
+		EndGroup:           0,
+		SubscriberPriority: 128,
+		Forward:            true,
+		Parameters:         KVPList{},
+	}
+}
 
 type controlMessageQueue[T any] interface {
 	enqueue(context.Context, T) error
@@ -47,7 +247,7 @@ type Session struct {
 	handshakeDoneCh chan struct{}
 
 	ctrlMsgSendQueue    controlMessageQueue[wire.ControlMessage]
-	ctrlMsgReceiveQueue controlMessageQueue[*Message]
+	ctrlMsgReceiveQueue controlMessageQueue[Message]
 
 	version wire.Version
 	path    string
@@ -77,7 +277,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		logger:                                   defaultLogger.With("perspective", perspective),
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
-		ctrlMsgReceiveQueue:                      newQueue[*Message](),
+		ctrlMsgReceiveQueue:                      newQueue[Message](),
 		version:                                  0,
 		path:                                     "",
 		requestIDs:                               newRequestIDGenerator(uint64(perspective), 0 /*max*/, 2 /*step*/),
@@ -100,7 +300,7 @@ func (s *Session) sendControlMessage(ctx context.Context) (wire.ControlMessage, 
 	return s.ctrlMsgSendQueue.dequeue(ctx)
 }
 
-func (s *Session) readControlMessage(ctx context.Context) (*Message, error) {
+func (s *Session) readControlMessage(ctx context.Context) (Message, error) {
 	return s.ctrlMsgReceiveQueue.dequeue(ctx)
 }
 
@@ -237,11 +437,38 @@ func (s *Session) sendClientSetup() error {
 
 // Subscribe subscribes to track in namespace. It blocks until a response from
 // the peer was received or ctx is cancelled.
+//
+// This is a convenience wrapper around SubscribeWithOptions with default settings.
+// Note. auth should not be a simple string, but a structured object containing
+// an optional session-specific alias (draft-11 8.2.1.1)
 func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace []string,
 	name string,
 	auth string,
+) (*RemoteTrack, error) {
+	opts := &SubscribeOptions{}
+
+	// Add authorization parameter if provided
+	if len(auth) > 0 {
+		opts.Parameters = KVPList{
+			{
+				Type:       wire.AuthorizationTokenParameterKey,
+				ValueBytes: []byte(auth),
+			},
+		}
+	}
+
+	return s.SubscribeWithOptions(ctx, namespace, name, opts)
+}
+
+// SubscribeWithOptions subscribes to a track with full control over subscription parameters.
+// It blocks until a response from the peer was received or ctx is cancelled.
+func (s *Session) SubscribeWithOptions(
+	ctx context.Context,
+	namespace []string,
+	name string,
+	opts *SubscribeOptions,
 ) (*RemoteTrack, error) {
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
@@ -257,28 +484,44 @@ func (s *Session) Subscribe(
 	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
-	cm := &wire.SubscribeMessage{
+
+	// Set default options if not provided
+	if opts == nil {
+		opts = DefaultSubscribeOptions()
+	}
+
+	// Default filter type to NextGroupStart if not specified (0 is invalid per draft-11)
+	filterType := opts.FilterType
+	if filterType == 0 {
+		filterType = FilterTypeNextGroupStart
+	}
+
+	// Create subscribe message with provided options
+	sm := &wire.SubscribeMessage{
 		RequestID:          requestID,
 		TrackAlias:         trackAlias,
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
-		SubscriberPriority: 0,
-		GroupOrder:         0,
-		FilterType:         0,
-		StartLocation: wire.Location{
-			Group:  0,
-			Object: 0,
-		},
-		EndGroup:   0,
-		Parameters: wire.KVPList{},
+		SubscriberPriority: opts.SubscriberPriority,
+		GroupOrder:         opts.GroupOrder,
+		Forward:            boolToUint8(opts.Forward),
+		FilterType:         filterType.toWireFilterType(),
+		EndGroup:           0,
+		Parameters:         opts.Parameters.toWireKVPList(),
 	}
-	if len(auth) > 0 {
-		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
-			Type:       wire.AuthorizationTokenParameterKey,
-			ValueBytes: []byte(auth),
-		})
+
+	// Set start location if provided and required by filter type
+	if opts.StartLocation != nil &&
+		(filterType == FilterTypeAbsoluteStart || filterType == FilterTypeAbsoluteRange) {
+		sm.StartLocation = opts.StartLocation.toWireLocation()
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+
+	// Set end group if provided and required by filter type
+	if opts.EndGroup != nil && filterType == FilterTypeAbsoluteRange {
+		sm.EndGroup = *opts.EndGroup
+	}
+
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, sm); err != nil {
 		return nil, err
 	}
 
@@ -297,6 +540,34 @@ func (s *Session) Subscribe(
 	return rt, nil
 }
 
+// UpdateSubscription updates an existing subscription with new parameters.
+// It blocks until the update is sent or ctx is cancelled.
+func (s *Session) UpdateSubscription(
+	ctx context.Context,
+	requestID uint64,
+	opts *SubscribeUpdateOptions,
+) error {
+	if err := s.waitForHandshakeDone(ctx); err != nil {
+		return err
+	}
+
+	// Use defaults if not provided
+	if opts == nil {
+		opts = DefaultSubscribeUpdateOptions()
+	}
+
+	msg := &wire.SubscribeUpdateMessage{
+		RequestID:          requestID,
+		StartLocation:      opts.StartLocation.toWireLocation(),
+		EndGroup:           opts.EndGroup,
+		SubscriberPriority: opts.SubscriberPriority,
+		Forward:            boolToUint8(opts.Forward),
+		Parameters:         opts.Parameters.toWireKVPList(),
+	}
+
+	return s.ctrlMsgSendQueue.enqueue(ctx, msg)
+}
+
 func (s *Session) acceptSubscription(id uint64) error {
 	_, ok := s.localTracks.confirm(id)
 	if !ok {
@@ -313,6 +584,36 @@ func (s *Session) acceptSubscription(id uint64) error {
 		},
 		Parameters: wire.KVPList{},
 	})
+}
+
+// acceptSubscriptionWithOptions accepts a subscription with custom response options.
+func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOptions) error {
+	_, ok := s.localTracks.confirm(id)
+	if !ok {
+		return errUnknownRequestID
+	}
+
+	// Use defaults if opts is nil
+	if opts == nil {
+		opts = &SubscribeOkOptions{
+			GroupOrder: 1,
+		}
+	}
+
+	msg := &wire.SubscribeOkMessage{
+		RequestID:     id,
+		Expires:       opts.Expires,
+		GroupOrder:    opts.GroupOrder,
+		ContentExists: opts.ContentExists,
+		Parameters:    opts.Parameters.toWireKVPList(),
+	}
+
+	// Set largest location if content exists and location is provided
+	if opts.ContentExists && opts.LargestLocation != nil {
+		msg.LargestLocation = opts.LargestLocation.toWireLocation()
+	}
+
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), msg)
 }
 
 func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
@@ -761,8 +1062,8 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:        MessageGoAway,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		Method_:       MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
 }
@@ -781,17 +1082,30 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	m := &Message{
-		Method:        MessageSubscribe,
-		RequestID:     msg.RequestID,
-		TrackAlias:    msg.TrackAlias,
-		Namespace:     msg.TrackNamespace,
-		Track:         string(msg.TrackName),
-		Authorization: auth,
-		NewSessionURI: "",
-		ErrorCode:     0,
-		ReasonPhrase:  "",
+
+	m := &SubscribeMessage{
+		RequestID_:         msg.RequestID,
+		TrackAlias:         msg.TrackAlias,
+		Namespace:          msg.TrackNamespace,
+		Track:              string(msg.TrackName),
+		Authorization:      auth,
+		SubscriberPriority: msg.SubscriberPriority,
+		GroupOrder:         msg.GroupOrder,
+		Forward:            msg.Forward,
+		FilterType:         fromWireFilterType(msg.FilterType),
+		Parameters:         fromWireKVPList(msg.Parameters),
 	}
+
+	// Set optional fields if present
+	if msg.FilterType == wire.FilterTypeAbsoluteStart || msg.FilterType == wire.FilterTypeAbsoluteRange {
+		loc := fromWireLocation(msg.StartLocation)
+		m.StartLocation = &loc
+	}
+
+	if msg.FilterType == wire.FilterTypeAbsoluteRange {
+		m.EndGroup = &msg.EndGroup
+	}
+
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
@@ -827,9 +1141,17 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	return nil
 }
 
-func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
-	// TODO
-	return nil
+func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+	m := &SubscribeUpdateMessage{
+		RequestID_:         msg.RequestID,
+		SubscriberPriority: msg.SubscriberPriority,
+		Forward:            msg.Forward,
+		StartLocation:      fromWireLocation(msg.StartLocation),
+		EndGroup:           msg.EndGroup,
+		Parameters:         fromWireKVPList(msg.Parameters),
+	}
+
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 // TODO: Maybe don't immediately close the track and give app a chance to react
@@ -855,11 +1177,11 @@ func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 }
 
 func (s *Session) onFetch(msg *wire.FetchMessage) error {
-	m := &Message{
-		Method:        MessageFetch,
+	m := &GenericMessage{
+		Method_:       MessageFetch,
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
-		RequestID:     msg.RequestID,
+		RequestID_:    msg.RequestID,
 		TrackAlias:    0,
 		Authorization: "",
 		NewSessionURI: "",
@@ -911,8 +1233,8 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:    MessageTrackStatusRequest,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		Method_:   MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
 		Track:     string(msg.TrackName),
 	})
@@ -945,10 +1267,10 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		response:   make(chan error),
 	}
 	s.incomingAnnouncements.add(a)
-	message := &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageAnnounce,
-		Namespace: a.namespace,
+	message := &AnnounceMessage{
+		RequestID_: msg.RequestID,
+		Namespace:  a.namespace,
+		Parameters: msg.Parameters,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
 }
@@ -986,16 +1308,16 @@ func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
 	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
 		return errUnknownAnnouncement
 	}
-	req := &Message{
-		Method:    MessageUnannounce,
+	req := &GenericMessage{
+		Method_:   MessageUnannounce,
 		Namespace: msg.TrackNamespace,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), req)
 }
 
 func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:       MessageAnnounceCancel,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		Method_:      MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
 		ReasonPhrase: msg.ReasonPhrase,
@@ -1007,10 +1329,10 @@ func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 		requestID: msg.RequestID,
 		namespace: msg.TrackNamespacePrefix,
 	})
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageSubscribeAnnounces,
-		Namespace: msg.TrackNamespacePrefix,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		RequestID_: msg.RequestID,
+		Method_:    MessageSubscribeAnnounces,
+		Namespace:  msg.TrackNamespacePrefix,
 	})
 }
 
@@ -1048,8 +1370,15 @@ func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 }
 
 func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:    MessageUnsubscribeAnnounces,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		Method_:   MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
+}
+
+func boolToUint8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }

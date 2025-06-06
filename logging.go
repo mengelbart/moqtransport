@@ -18,7 +18,7 @@ var moqtransportLogLevel = new(slog.LevelVar)
 var defaultLogger *slog.Logger
 
 func init() {
-	h := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		AddSource: false,
 		Level:     moqtransportLogLevel,
 	})

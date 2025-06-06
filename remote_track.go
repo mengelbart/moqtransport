@@ -96,7 +96,7 @@ func (t *RemoteTrack) readStream(parser objectMessageParser) error {
 			}
 			return err
 		}
-		t.logger.Info("subgroup got new object message", "message", m)
+		t.logger.Debug("subgroup got new object message", "message", m)
 		payload := make([]byte, len(m.ObjectPayload))
 		n := copy(payload, m.ObjectPayload)
 		if n != len(m.ObjectPayload) {
