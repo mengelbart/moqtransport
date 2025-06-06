@@ -271,10 +271,10 @@ func TestSession(t *testing.T) {
 			SubscriberPriority: 0,
 			GroupOrder:         0,
 			Forward:            0,
-			FilterType:         wire.FilterTypeNextGroupStart,
+			FilterType:         FilterTypeNextGroupStart,
 			StartLocation:      nil,
 			EndGroup:           nil,
-			Parameters:         wire.KVPList{},
+			Parameters:         KVPList{},
 		}).Do(func(_ context.Context, _ Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
 			assert.NoError(t, s.acceptSubscription(0))
@@ -324,10 +324,10 @@ func TestSession(t *testing.T) {
 				SubscriberPriority: 0,
 				GroupOrder:         0,
 				Forward:            0,
-				FilterType:         wire.FilterTypeNextGroupStart,
+				FilterType:         FilterTypeNextGroupStart,
 				StartLocation:      nil,
 				EndGroup:           nil,
-				Parameters:         wire.KVPList{},
+				Parameters:         KVPList{},
 			},
 		).DoAndReturn(func(_ context.Context, m Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))

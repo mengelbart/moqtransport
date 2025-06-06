@@ -44,10 +44,10 @@ type SubscribeMessage struct {
 	SubscriberPriority uint8        // Delivery priority (0-255, higher is more important)
 	GroupOrder         uint8        // Group ordering preference: 0=None, 1=Ascending, 2=Descending
 	Forward            uint8        // Forward preference: 0=No, 1=Yes
-	FilterType         wire.FilterType // Subscription filter type
-	StartLocation      *wire.Location  // Start position for absolute filters
-	EndGroup          *uint64          // End group for range filters
-	Parameters        wire.KVPList     // Full parameter list from the subscribe message
+	FilterType         FilterType // Subscription filter type
+	StartLocation      *Location  // Start position for absolute filters
+	EndGroup          *uint64     // End group for range filters
+	Parameters        KVPList     // Full parameter list from the subscribe message
 }
 
 // Method returns the message type.
@@ -83,13 +83,13 @@ func (m *SubscribeMessage) GetMaxCacheDuration() (time.Duration, bool) {
 }
 
 // GetParameter extracts a custom parameter by key.
-func (m *SubscribeMessage) GetParameter(key uint64) (wire.KeyValuePair, bool) {
+func (m *SubscribeMessage) GetParameter(key uint64) (KeyValuePair, bool) {
 	for _, param := range m.Parameters {
 		if param.Type == key {
 			return param, true
 		}
 	}
-	return wire.KeyValuePair{}, false
+	return KeyValuePair{}, false
 }
 
 // SubscribeUpdateMessage represents a SUBSCRIBE_UPDATE message from the peer.
@@ -97,9 +97,9 @@ type SubscribeUpdateMessage struct {
 	RequestID_         uint64
 	SubscriberPriority uint8           // New delivery priority
 	Forward            uint8           // New forward preference
-	StartLocation      wire.Location   // New start position for the subscription
-	EndGroup           uint64          // New end group for the subscription
-	Parameters         wire.KVPList    // Custom parameters for the update
+	StartLocation      Location   // New start position for the subscription
+	EndGroup           uint64     // New end group for the subscription
+	Parameters         KVPList    // Custom parameters for the update
 }
 
 // Method returns the message type.
@@ -123,13 +123,13 @@ func (m *SubscribeUpdateMessage) GetDeliveryTimeout() (time.Duration, bool) {
 }
 
 // GetParameter extracts a custom parameter by key.
-func (m *SubscribeUpdateMessage) GetParameter(key uint64) (wire.KeyValuePair, bool) {
+func (m *SubscribeUpdateMessage) GetParameter(key uint64) (KeyValuePair, bool) {
 	for _, param := range m.Parameters {
 		if param.Type == key {
 			return param, true
 		}
 	}
-	return wire.KeyValuePair{}, false
+	return KeyValuePair{}, false
 }
 
 // AnnounceMessage represents an ANNOUNCE message from the peer.

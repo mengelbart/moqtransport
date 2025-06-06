@@ -27,6 +27,103 @@ var (
 	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
 
+// Location represents a MoQ object location consisting of Group and Object IDs.
+// This is used to specify positions within the media stream for subscriptions
+// and other operations that require location information.
+type Location struct {
+	Group  uint64 // Group ID (typically corresponds to GOP/segment)
+	Object uint64 // Object ID within the group
+}
+
+// toWireLocation converts a public Location to an internal wire.Location
+func (l *Location) toWireLocation() wire.Location {
+	return wire.Location{
+		Group:  l.Group,
+		Object: l.Object,
+	}
+}
+
+// FilterType represents the subscription filter type used in SUBSCRIBE messages.
+type FilterType uint64
+
+const (
+	// FilterTypeLatestObject starts from the latest available object.
+	FilterTypeLatestObject FilterType = 0x02
+	
+	// FilterTypeNextGroupStart starts from the beginning of the next group.
+	FilterTypeNextGroupStart FilterType = 0x01
+	
+	// FilterTypeAbsoluteStart starts from a specific absolute position.
+	FilterTypeAbsoluteStart FilterType = 0x03
+	
+	// FilterTypeAbsoluteRange subscribes to a specific range of groups/objects.
+	FilterTypeAbsoluteRange FilterType = 0x04
+)
+
+// toWireFilterType converts a public FilterType to an internal wire.FilterType
+func (f FilterType) toWireFilterType() wire.FilterType {
+	return wire.FilterType(f)
+}
+
+// KeyValuePair represents a key-value parameter pair.
+type KeyValuePair struct {
+	Type       uint64
+	ValueVarInt uint64
+	ValueBytes []byte
+}
+
+// toWireKVP converts a public KeyValuePair to an internal wire.KeyValuePair
+func (kvp *KeyValuePair) toWireKVP() wire.KeyValuePair {
+	return wire.KeyValuePair{
+		Type:       kvp.Type,
+		ValueVarInt: kvp.ValueVarInt,
+		ValueBytes: kvp.ValueBytes,
+	}
+}
+
+// KVPList represents a list of key-value parameters.
+type KVPList []KeyValuePair
+
+// toWireKVPList converts a public KVPList to an internal wire.KVPList
+func (kvpl KVPList) toWireKVPList() wire.KVPList {
+	result := make(wire.KVPList, len(kvpl))
+	for i, kvp := range kvpl {
+		result[i] = kvp.toWireKVP()
+	}
+	return result
+}
+
+// fromWireLocation converts an internal wire.Location to a public Location
+func fromWireLocation(wl wire.Location) Location {
+	return Location{
+		Group:  wl.Group,
+		Object: wl.Object,
+	}
+}
+
+// fromWireFilterType converts an internal wire.FilterType to a public FilterType
+func fromWireFilterType(wf wire.FilterType) FilterType {
+	return FilterType(wf)
+}
+
+// fromWireKVP converts an internal wire.KeyValuePair to a public KeyValuePair
+func fromWireKVP(wkvp wire.KeyValuePair) KeyValuePair {
+	return KeyValuePair{
+		Type:       wkvp.Type,
+		ValueVarInt: wkvp.ValueVarInt,
+		ValueBytes: wkvp.ValueBytes,
+	}
+}
+
+// fromWireKVPList converts an internal wire.KVPList to a public KVPList
+func fromWireKVPList(wkvpl wire.KVPList) KVPList {
+	result := make(KVPList, len(wkvpl))
+	for i, wkvp := range wkvpl {
+		result[i] = fromWireKVP(wkvp)
+	}
+	return result
+}
+
 // SubscribeOptions contains options for subscribing to a track with full control
 // over all subscribe message parameters.
 type SubscribeOptions struct {
@@ -42,16 +139,16 @@ type SubscribeOptions struct {
 	Forward bool // (true = 1, false = 0)
 
 	// FilterType specifies the subscription filter type
-	FilterType wire.FilterType
+	FilterType FilterType
 
 	// StartLocation specifies the start position for absolute filters
-	StartLocation *wire.Location
+	StartLocation *Location
 
 	// EndGroup specifies the end group for range filters
 	EndGroup *uint64
 
 	// Parameters contains key-value parameters for the subscription
-	Parameters wire.KVPList
+	Parameters KVPList
 }
 
 // DefaultSubscribeOptions returns a reasonable default set of options for subscriptions.
@@ -60,10 +157,10 @@ func DefaultSubscribeOptions() *SubscribeOptions {
 		SubscriberPriority: 128,
 		GroupOrder:         1,
 		Forward:            true,
-		FilterType:         wire.FilterTypeNextGroupStart,
+		FilterType:         FilterTypeNextGroupStart,
 		StartLocation:      nil,
 		EndGroup:           nil,
-		Parameters:         wire.KVPList{},
+		Parameters:         KVPList{},
 	}
 }
 
@@ -79,10 +176,10 @@ type SubscribeOkOptions struct {
 	ContentExists bool
 
 	// LargestLocation specifies the largest available location if content exists
-	LargestLocation *wire.Location
+	LargestLocation *Location
 
 	// Parameters contains response parameters
-	Parameters wire.KVPList
+	Parameters KVPList
 }
 
 // DefaultSubscribeOkOptions returns a default set of options for SubscribeOk responses.
@@ -92,14 +189,14 @@ func DefaultSubscribeOkOptions() *SubscribeOkOptions {
 		GroupOrder:      1,
 		ContentExists:   true,
 		LargestLocation: nil,
-		Parameters:      wire.KVPList{},
+		Parameters:      KVPList{},
 	}
 }
 
 // SubscribeUpdateOptions contains options for updating an existing subscription.
 type SubscribeUpdateOptions struct {
 	// StartLocation specifies the new start position for the subscription
-	StartLocation wire.Location
+	StartLocation Location
 
 	// EndGroup specifies the new end group for the subscription
 	EndGroup uint64
@@ -112,20 +209,20 @@ type SubscribeUpdateOptions struct {
 	Forward bool
 
 	// Parameters contains key-value parameters for the update
-	Parameters wire.KVPList
+	Parameters KVPList
 }
 
 // DefaultSubscribeUpdateOptions returns a reasonable default set of options for subscription updates.
 func DefaultSubscribeUpdateOptions() *SubscribeUpdateOptions {
 	return &SubscribeUpdateOptions{
-		StartLocation: wire.Location{
+		StartLocation: Location{
 			Group:  0,
 			Object: 0,
 		},
 		EndGroup:           0,
 		SubscriberPriority: 128,
 		Forward:            true,
-		Parameters:         wire.KVPList{},
+		Parameters:         KVPList{},
 	}
 }
 
@@ -354,7 +451,7 @@ func (s *Session) Subscribe(
 
 	// Add authorization parameter if provided
 	if len(auth) > 0 {
-		opts.Parameters = wire.KVPList{
+		opts.Parameters = KVPList{
 			{
 				Type:       wire.AuthorizationTokenParameterKey,
 				ValueBytes: []byte(auth),
@@ -396,7 +493,7 @@ func (s *Session) SubscribeWithOptions(
 	// Default filter type to NextGroupStart if not specified (0 is invalid per draft-11)
 	filterType := opts.FilterType
 	if filterType == 0 {
-		filterType = wire.FilterTypeNextGroupStart
+		filterType = FilterTypeNextGroupStart
 	}
 
 	// Create subscribe message with provided options
@@ -408,22 +505,19 @@ func (s *Session) SubscribeWithOptions(
 		SubscriberPriority: opts.SubscriberPriority,
 		GroupOrder:         opts.GroupOrder,
 		Forward:            boolToUint8(opts.Forward),
-		FilterType:         filterType,
+		FilterType:         filterType.toWireFilterType(),
 		EndGroup:           0,
-		Parameters:         make(wire.KVPList, len(opts.Parameters)),
+		Parameters:         opts.Parameters.toWireKVPList(),
 	}
-
-	// Copy parameter key-value pairs
-	copy(sm.Parameters, opts.Parameters)
 
 	// Set start location if provided and required by filter type
 	if opts.StartLocation != nil &&
-		(filterType == wire.FilterTypeAbsoluteStart || filterType == wire.FilterTypeAbsoluteRange) {
-		sm.StartLocation = *opts.StartLocation
+		(filterType == FilterTypeAbsoluteStart || filterType == FilterTypeAbsoluteRange) {
+		sm.StartLocation = opts.StartLocation.toWireLocation()
 	}
 
 	// Set end group if provided and required by filter type
-	if opts.EndGroup != nil && filterType == wire.FilterTypeAbsoluteRange {
+	if opts.EndGroup != nil && filterType == FilterTypeAbsoluteRange {
 		sm.EndGroup = *opts.EndGroup
 	}
 
@@ -464,15 +558,12 @@ func (s *Session) UpdateSubscription(
 
 	msg := &wire.SubscribeUpdateMessage{
 		RequestID:          requestID,
-		StartLocation:      opts.StartLocation,
+		StartLocation:      opts.StartLocation.toWireLocation(),
 		EndGroup:           opts.EndGroup,
 		SubscriberPriority: opts.SubscriberPriority,
 		Forward:            boolToUint8(opts.Forward),
-		Parameters:         make(wire.KVPList, len(opts.Parameters)),
+		Parameters:         opts.Parameters.toWireKVPList(),
 	}
-
-	// Copy parameters
-	copy(msg.Parameters, opts.Parameters)
 
 	return s.ctrlMsgSendQueue.enqueue(ctx, msg)
 }
@@ -514,15 +605,12 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 		Expires:       opts.Expires,
 		GroupOrder:    opts.GroupOrder,
 		ContentExists: opts.ContentExists,
-		Parameters:    make(wire.KVPList, len(opts.Parameters)),
+		Parameters:    opts.Parameters.toWireKVPList(),
 	}
-
-	// Copy parameters
-	copy(msg.Parameters, opts.Parameters)
 
 	// Set largest location if content exists and location is provided
 	if opts.ContentExists && opts.LargestLocation != nil {
-		msg.LargestLocation = *opts.LargestLocation
+		msg.LargestLocation = opts.LargestLocation.toWireLocation()
 	}
 
 	return s.ctrlMsgSendQueue.enqueue(context.Background(), msg)
@@ -1004,13 +1092,14 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		SubscriberPriority: msg.SubscriberPriority,
 		GroupOrder:         msg.GroupOrder,
 		Forward:            msg.Forward,
-		FilterType:         msg.FilterType,
-		Parameters:         msg.Parameters,
+		FilterType:         fromWireFilterType(msg.FilterType),
+		Parameters:         fromWireKVPList(msg.Parameters),
 	}
 
 	// Set optional fields if present
 	if msg.FilterType == wire.FilterTypeAbsoluteStart || msg.FilterType == wire.FilterTypeAbsoluteRange {
-		m.StartLocation = &msg.StartLocation
+		loc := fromWireLocation(msg.StartLocation)
+		m.StartLocation = &loc
 	}
 
 	if msg.FilterType == wire.FilterTypeAbsoluteRange {
@@ -1057,9 +1146,9 @@ func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
 		RequestID_:         msg.RequestID,
 		SubscriberPriority: msg.SubscriberPriority,
 		Forward:            msg.Forward,
-		StartLocation:      msg.StartLocation,
+		StartLocation:      fromWireLocation(msg.StartLocation),
 		EndGroup:           msg.EndGroup,
-		Parameters:         msg.Parameters,
+		Parameters:         fromWireKVPList(msg.Parameters),
 	}
 
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
