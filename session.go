@@ -447,7 +447,7 @@ func (s *Session) Subscribe(
 	name string,
 	auth string,
 ) (*RemoteTrack, error) {
-	opts := &SubscribeOptions{}
+	opts := DefaultSubscribeOptions()
 
 	// Add authorization parameter if provided
 	if len(auth) > 0 {

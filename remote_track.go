@@ -76,6 +76,11 @@ func (t *RemoteTrack) Close() error {
 	return nil
 }
 
+// RequestID returns the request ID for this subscription.
+func (t *RemoteTrack) RequestID() uint64 {
+	return t.requestID
+}
+
 func (t *RemoteTrack) readFetchStream(parser objectMessageParser) error {
 	if t.fetchCount.Add(1) > 1 {
 		return errTooManyFetchStreams
