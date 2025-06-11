@@ -25,7 +25,7 @@ const (
 type Message interface {
 	// Method returns the type of the message.
 	Method() string
-	
+
 	// RequestID returns the request ID if the message references a request.
 	RequestID() uint64
 }
@@ -36,18 +36,18 @@ type SubscribeMessage struct {
 	TrackAlias uint64
 	Namespace  []string
 	Track      string
-	
+
 	// Authorization token should be an object, see 8.2.1.1
 	Authorization string
-	
+
 	// Subscribe message specific fields
-	SubscriberPriority uint8        // Delivery priority (0-255, higher is more important)
-	GroupOrder         uint8        // Group ordering preference: 0=None, 1=Ascending, 2=Descending
-	Forward            uint8        // Forward preference: 0=No, 1=Yes
+	SubscriberPriority uint8      // Delivery priority (0-255, higher is more important)
+	GroupOrder         uint8      // Group ordering preference: 0=None, 1=Ascending, 2=Descending
+	Forward            uint8      // Forward preference: 0=No, 1=Yes
 	FilterType         FilterType // Subscription filter type
 	StartLocation      *Location  // Start position for absolute filters
-	EndGroup          *uint64     // End group for range filters
-	Parameters        KVPList     // Full parameter list from the subscribe message
+	EndGroup           *uint64    // End group for range filters
+	Parameters         KVPList    // Full parameter list from the subscribe message
 }
 
 // Method returns the message type.
@@ -95,11 +95,11 @@ func (m *SubscribeMessage) GetParameter(key uint64) (KeyValuePair, bool) {
 // SubscribeUpdateMessage represents a SUBSCRIBE_UPDATE message from the peer.
 type SubscribeUpdateMessage struct {
 	RequestID_         uint64
-	SubscriberPriority uint8           // New delivery priority
-	Forward            uint8           // New forward preference
-	StartLocation      Location   // New start position for the subscription
-	EndGroup           uint64     // New end group for the subscription
-	Parameters         KVPList    // Custom parameters for the update
+	SubscriberPriority uint8    // New delivery priority
+	Forward            uint8    // New forward preference
+	StartLocation      Location // New start position for the subscription
+	EndGroup           uint64   // New end group for the subscription
+	Parameters         KVPList  // Custom parameters for the update
 }
 
 // Method returns the message type.
@@ -134,9 +134,9 @@ func (m *SubscribeUpdateMessage) GetParameter(key uint64) (KeyValuePair, bool) {
 
 // AnnounceMessage represents an ANNOUNCE message from the peer.
 type AnnounceMessage struct {
-	RequestID_  uint64
-	Namespace   []string
-	Parameters  wire.KVPList // Parameters from the announce message
+	RequestID_ uint64
+	Namespace  []string
+	Parameters wire.KVPList // Parameters from the announce message
 }
 
 // Method returns the message type.
@@ -182,7 +182,6 @@ func (m *GenericMessage) RequestID() uint64 {
 	return m.RequestID_
 }
 
-
 // ResponseWriter can be used to respond to messages that expect a response.
 type ResponseWriter interface {
 	// Accept sends an affirmative response to a message.
@@ -211,6 +210,9 @@ type Publisher interface {
 type FetchPublisher interface {
 	// OpenFetchStream opens and returns a new fetch stream.
 	FetchStream() (*FetchStream, error)
+
+	// Session returns the session associated with this fetch response writer.
+	Session() *Session
 }
 
 // StatusRequestHandler is the interface implemented by ResponseWriters of
@@ -231,6 +233,9 @@ type SubscribeResponseWriter interface {
 
 	// AcceptWithOptions accepts the subscription with custom response options.
 	AcceptWithOptions(opts *SubscribeOkOptions) error
+
+	// Session returns the session associated with this subscription response writer.
+	Session() *Session
 }
 
 // A Handler responds to MoQ messages.

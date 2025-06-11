@@ -41,3 +41,8 @@ func (w *subscriptionResponseWriter) AcceptWithOptions(opts *SubscribeOkOptions)
 	}
 	return nil
 }
+
+// Session returns the session associated with this subscription response writer.
+func (w *subscriptionResponseWriter) Session() *Session {
+	return w.session
+}
