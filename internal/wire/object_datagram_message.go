@@ -2,7 +2,6 @@ package wire
 
 import (
 	"io"
-	"log"
 
 	"github.com/quic-go/quic-go/quicvarint"
 )
@@ -57,7 +56,6 @@ func (m *ObjectDatagramMessage) AppendDatagramStatus(buf []byte) []byte {
 }
 
 func (m *ObjectDatagramMessage) Parse(data []byte) (parsed int, err error) {
-	log.Printf("parsing dgram: %v", data)
 	var n int
 	var typ uint64
 	typ, n, err = quicvarint.Parse(data)
