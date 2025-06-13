@@ -38,6 +38,9 @@ type RemoteTrack struct {
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
 
 	responseChan chan error
+	
+	// largestLocation stores the largest location from SUBSCRIBE_OK response
+	largestLocation *Location
 }
 
 func newRemoteTrack(requestID uint64, unsubscribeFunc func() error) *RemoteTrack {
@@ -79,6 +82,18 @@ func (t *RemoteTrack) Close() error {
 // RequestID returns the request ID for this subscription.
 func (t *RemoteTrack) RequestID() uint64 {
 	return t.requestID
+}
+
+// LargestLocation returns the largest location from the SUBSCRIBE_OK response.
+// This contains the largest group and object IDs available when the subscription was established.
+// Returns nil if the subscription had ContentExists=false or hasn't been confirmed yet.
+func (t *RemoteTrack) LargestLocation() *Location {
+	return t.largestLocation
+}
+
+// setLargestLocation sets the largest location from SUBSCRIBE_OK response
+func (t *RemoteTrack) setLargestLocation(location *Location) {
+	t.largestLocation = location
 }
 
 func (t *RemoteTrack) readFetchStream(parser objectMessageParser) error {

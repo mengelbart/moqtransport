@@ -1114,6 +1114,13 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	if !ok {
 		return errUnknownRequestID
 	}
+	
+	// Store largest location from SUBSCRIBE_OK if content exists
+	if msg.ContentExists {
+		location := fromWireLocation(msg.LargestLocation)
+		rt.setLargestLocation(&location)
+	}
+	
 	select {
 	case rt.responseChan <- nil:
 	default:
