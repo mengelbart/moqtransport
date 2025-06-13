@@ -22,3 +22,8 @@ func (f *fetchResponseWriter) Reject(code uint64, reason string) error {
 func (f *fetchResponseWriter) FetchStream() (*FetchStream, error) {
 	return f.localTrack.getFetchStream()
 }
+
+// Session returns the session associated with this fetch response writer.
+func (f *fetchResponseWriter) Session() *Session {
+	return f.session
+}

@@ -32,3 +32,17 @@ func (w *subscriptionResponseWriter) OpenSubgroup(groupID, subgroupID uint64, pr
 func (w *subscriptionResponseWriter) CloseWithError(code uint64, reason string) error {
 	return w.localTrack.close(code, reason)
 }
+
+// AcceptWithOptions accepts the subscription with custom response options.
+func (w *subscriptionResponseWriter) AcceptWithOptions(opts *SubscribeOkOptions) error {
+	w.handled = true
+	if err := w.session.acceptSubscriptionWithOptions(w.id, opts); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Session returns the session associated with this subscription response writer.
+func (w *subscriptionResponseWriter) Session() *Session {
+	return w.session
+}

@@ -13,8 +13,8 @@ func TestAnnounce(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageAnnounce, m.Method)
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageAnnounce, m.Method())
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
@@ -28,8 +28,8 @@ func TestAnnounce(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageAnnounce, m.Method)
+		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m moqtransport.Message) {
+			assert.Equal(t, moqtransport.MessageAnnounce, m.Method())
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Reject(moqtransport.ErrorCodeAnnouncementInternal, "expected error"))
 		})
