@@ -16,12 +16,21 @@ const (
 
 // Message represents a message from the peer that can be handled by the
 // application.
-type Message struct {
+type Message interface {
 	// Method describes the type of the message.
-	Method string
+	Method() string
 
 	// RequestID is set if the message references a request.
-	RequestID uint64
+	RequestID() uint64
+}
+
+// GenericMessage implements the Message interface and contains all fields.
+type GenericMessage struct {
+	// Method describes the type of the message.
+	method string
+
+	// RequestID is set if the message references a request.
+	requestID uint64
 	// TrackAlias corresponding to the subscription.
 	TrackAlias uint64
 
@@ -41,6 +50,16 @@ type Message struct {
 	ErrorCode uint64
 	// ReasonPhrase is set if the message is an error message.
 	ReasonPhrase string
+}
+
+// Method implements Message.
+func (m *GenericMessage) Method() string {
+	return m.method
+}
+
+// RequestID implements Message.
+func (m *GenericMessage) RequestID() uint64 {
+	return m.requestID
 }
 
 // ResponseWriter can be used to respond to messages that expect a response.
@@ -86,13 +105,13 @@ type StatusRequestHandler interface {
 
 // A Handler responds to MoQ messages.
 type Handler interface {
-	Handle(ResponseWriter, *Message)
+	Handle(ResponseWriter, Message)
 }
 
 // HandlerFunc is a type that implements Handler.
-type HandlerFunc func(ResponseWriter, *Message)
+type HandlerFunc func(ResponseWriter, Message)
 
 // Handle implements Handler.
-func (f HandlerFunc) Handle(rw ResponseWriter, r *Message) {
+func (f HandlerFunc) Handle(rw ResponseWriter, r Message) {
 	f(rw, r)
 }
