@@ -52,6 +52,7 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 		}),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
 		slog.Any("group_order", m.GroupOrder),
+		slog.Any("forward", m.Forward),
 		slog.Any("filter_type", m.FilterType),
 	}
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
