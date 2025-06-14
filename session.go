@@ -362,13 +362,11 @@ func (s *Session) Subscribe(
 		TrackName:          []byte(name),
 		SubscriberPriority: 0,
 		GroupOrder:         0,
-		FilterType:         0,
-		StartLocation: wire.Location{
-			Group:  0,
-			Object: 0,
-		},
-		EndGroup:   0,
-		Parameters: wire.KVPList{},
+		Forward:            1,
+		FilterType:         wire.FilterTypeLatestObject,
+		StartLocation:      wire.Location{Group: 0, Object: 0},
+		EndGroup:           0,
+		Parameters:         wire.KVPList{},
 	}
 	if len(auth) > 0 {
 		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
