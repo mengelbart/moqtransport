@@ -172,12 +172,10 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track1"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
-			StartLocation: wire.Location{
-				Group:  0,
-				Object: 0,
-			},
-			EndGroup: 0,
+			Forward:            1,
+			FilterType:         wire.FilterTypeLatestObject,
+			StartLocation:      wire.Location{Group: 0, Object: 0},
+			EndGroup:           0,
 			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
@@ -226,12 +224,10 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
-			StartLocation: wire.Location{
-				Group:  0,
-				Object: 0,
-			},
-			EndGroup: 0,
+			Forward:            1,
+			FilterType:         wire.FilterTypeLatestObject,
+			StartLocation:      wire.Location{Group: 0, Object: 0},
+			EndGroup:           0,
 			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
@@ -436,12 +432,10 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("trackname"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
-			StartLocation: wire.Location{
-				Group:  0,
-				Object: 0,
-			},
-			EndGroup: 0,
+			Forward:            1,
+			FilterType:         wire.FilterTypeLatestObject,
+			StartLocation:      wire.Location{Group: 0, Object: 0},
+			EndGroup:           0,
 			Parameters: wire.KVPList{
 				wire.KeyValuePair{
 					Type:       wire.AuthorizationTokenParameterKey,
