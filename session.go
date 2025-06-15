@@ -47,7 +47,7 @@ type Session struct {
 	handshakeDoneCh chan struct{}
 
 	ctrlMsgSendQueue    controlMessageQueue[wire.ControlMessage]
-	ctrlMsgReceiveQueue controlMessageQueue[*Message]
+	ctrlMsgReceiveQueue controlMessageQueue[Message]
 
 	version wire.Version
 	path    string
@@ -77,7 +77,7 @@ func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64
 		logger:                                   defaultLogger.With("perspective", perspective),
 		handshakeDoneCh:                          make(chan struct{}),
 		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
-		ctrlMsgReceiveQueue:                      newQueue[*Message](),
+		ctrlMsgReceiveQueue:                      newQueue[Message](),
 		version:                                  0,
 		path:                                     "",
 		requestIDs:                               newRequestIDGenerator(uint64(perspective), 0 /*max*/, 2 /*step*/),
@@ -100,7 +100,7 @@ func (s *Session) sendControlMessage(ctx context.Context) (wire.ControlMessage, 
 	return s.ctrlMsgSendQueue.dequeue(ctx)
 }
 
-func (s *Session) readControlMessage(ctx context.Context) (*Message, error) {
+func (s *Session) readControlMessage(ctx context.Context) (Message, error) {
 	return s.ctrlMsgReceiveQueue.dequeue(ctx)
 }
 
@@ -761,8 +761,8 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:        MessageGoAway,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		method:        MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
 }
@@ -781,9 +781,9 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	m := &Message{
-		Method:        MessageSubscribe,
-		RequestID:     msg.RequestID,
+	m := &GenericMessage{
+		method:        MessageSubscribe,
+		requestID:     msg.RequestID,
 		TrackAlias:    msg.TrackAlias,
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
@@ -855,11 +855,11 @@ func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 }
 
 func (s *Session) onFetch(msg *wire.FetchMessage) error {
-	m := &Message{
-		Method:        MessageFetch,
+	m := &GenericMessage{
+		method:        MessageFetch,
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
-		RequestID:     msg.RequestID,
+		requestID:     msg.RequestID,
 		TrackAlias:    0,
 		Authorization: "",
 		NewSessionURI: "",
@@ -911,8 +911,8 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:    MessageTrackStatusRequest,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		method:    MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
 		Track:     string(msg.TrackName),
 	})
@@ -945,9 +945,9 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		response:   make(chan error),
 	}
 	s.incomingAnnouncements.add(a)
-	message := &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageAnnounce,
+	message := &GenericMessage{
+		requestID: msg.RequestID,
+		method:    MessageAnnounce,
 		Namespace: a.namespace,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
@@ -986,16 +986,16 @@ func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
 	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
 		return errUnknownAnnouncement
 	}
-	req := &Message{
-		Method:    MessageUnannounce,
+	req := &GenericMessage{
+		method:    MessageUnannounce,
 		Namespace: msg.TrackNamespace,
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), req)
 }
 
 func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:       MessageAnnounceCancel,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		method:       MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
 		ReasonPhrase: msg.ReasonPhrase,
@@ -1007,9 +1007,9 @@ func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 		requestID: msg.RequestID,
 		namespace: msg.TrackNamespacePrefix,
 	})
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageSubscribeAnnounces,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		requestID: msg.RequestID,
+		method:    MessageSubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
 }
@@ -1048,8 +1048,8 @@ func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 }
 
 func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
-		Method:    MessageUnsubscribeAnnounces,
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &GenericMessage{
+		method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
 }

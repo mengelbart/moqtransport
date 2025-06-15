@@ -94,16 +94,23 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 }
 
 func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session) moqtransport.Handler {
-	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
-		switch r.Method {
+	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r moqtransport.Message) {
+		switch r.Method() {
 		case moqtransport.MessageAnnounce:
+			// Type assert to get announce-specific fields
+			gm, ok := r.(*moqtransport.GenericMessage)
+			if !ok {
+				log.Printf("sessionNr: %d got announce message with wrong type", sessionID)
+				w.Reject(0, "internal error")
+				return
+			}
 			if !h.subscribe {
-				log.Printf("sessionNr: %d got unexpected announcement: %v", sessionID, r.Namespace)
+				log.Printf("sessionNr: %d got unexpected announcement: %v", sessionID, gm.Namespace)
 				w.Reject(0, "date doesn't take announcements")
 				return
 			}
-			if !tupleEqual(r.Namespace, h.namespace) {
-				log.Printf("got unexpected announcement namespace: %v, expected %v", r.Namespace, h.namespace)
+			if !tupleEqual(gm.Namespace, h.namespace) {
+				log.Printf("got unexpected announcement namespace: %v, expected %v", gm.Namespace, h.namespace)
 				w.Reject(0, "non-matching namespace")
 				return
 			}
@@ -113,11 +120,18 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 				return
 			}
 		case moqtransport.MessageSubscribe:
+			// Type assert to get subscribe-specific fields
+			gm, ok := r.(*moqtransport.GenericMessage)
+			if !ok {
+				log.Printf("sessionNr: %d got subscribe message with wrong type", sessionID)
+				w.Reject(0, "internal error")
+				return
+			}
 			if !h.publish {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
 				return
 			}
-			if !tupleEqual(r.Namespace, h.namespace) || (r.Track != h.trackname) {
+			if !tupleEqual(gm.Namespace, h.namespace) || (gm.Track != h.trackname) {
 				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
 				return
 			}
@@ -133,8 +147,8 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 			datePublisher := &publisher{
 				p:           p,
 				sessionID:   sessionID,
-				subscribeID: r.RequestID,
-				trackAlias:  r.TrackAlias,
+				subscribeID: r.RequestID(),
+				trackAlias:  gm.TrackAlias,
 				session:     session,
 			}
 			h.lock.Lock()
