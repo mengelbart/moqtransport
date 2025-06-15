@@ -16,31 +16,12 @@ const (
 
 // Message represents a message from the peer that can be handled by the
 // application.
-type Message struct {
+type Message interface {
 	// Method describes the type of the message.
-	Method string
+	Method() string
 
 	// RequestID is set if the message references a request.
-	RequestID uint64
-	// TrackAlias corresponding to the subscription.
-	TrackAlias uint64
-
-	// Namespace is set if the message references a namespace.
-	Namespace []string
-	// Track is set if the message references a track.
-	Track string
-
-	// Authorization
-	Authorization string
-
-	// NewSessionURI is set in a GoAway message and points to a URI that can be
-	// used to setup a new session before closing the current session.
-	NewSessionURI string
-
-	// ErrorCode is set if the message is an error message.
-	ErrorCode uint64
-	// ReasonPhrase is set if the message is an error message.
-	ReasonPhrase string
+	RequestID() uint64
 }
 
 // ResponseWriter can be used to respond to messages that expect a response.
@@ -86,13 +67,13 @@ type StatusRequestHandler interface {
 
 // A Handler responds to MoQ messages.
 type Handler interface {
-	Handle(ResponseWriter, *Message)
+	Handle(ResponseWriter, Message)
 }
 
 // HandlerFunc is a type that implements Handler.
-type HandlerFunc func(ResponseWriter, *Message)
+type HandlerFunc func(ResponseWriter, Message)
 
 // Handle implements Handler.
-func (f HandlerFunc) Handle(rw ResponseWriter, r *Message) {
+func (f HandlerFunc) Handle(rw ResponseWriter, r Message) {
 	f(rw, r)
 }

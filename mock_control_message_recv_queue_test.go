@@ -40,10 +40,10 @@ func (m *MockControlMessageRecvQueue[T]) EXPECT() *MockControlMessageRecvQueueMo
 }
 
 // dequeue mocks base method.
-func (m *MockControlMessageRecvQueue[T]) dequeue(arg0 context.Context) (*Message, error) {
+func (m *MockControlMessageRecvQueue[T]) dequeue(arg0 context.Context) (Message, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "dequeue", arg0)
-	ret0, _ := ret[0].(*Message)
+	ret0, _ := ret[0].(Message)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -61,25 +61,25 @@ type MockControlMessageRecvQueuedequeueCall[T any] struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControlMessageRecvQueuedequeueCall[T]) Return(arg0 *Message, arg1 error) *MockControlMessageRecvQueuedequeueCall[T] {
+func (c *MockControlMessageRecvQueuedequeueCall[T]) Return(arg0 Message, arg1 error) *MockControlMessageRecvQueuedequeueCall[T] {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControlMessageRecvQueuedequeueCall[T]) Do(f func(context.Context) (*Message, error)) *MockControlMessageRecvQueuedequeueCall[T] {
+func (c *MockControlMessageRecvQueuedequeueCall[T]) Do(f func(context.Context) (Message, error)) *MockControlMessageRecvQueuedequeueCall[T] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControlMessageRecvQueuedequeueCall[T]) DoAndReturn(f func(context.Context) (*Message, error)) *MockControlMessageRecvQueuedequeueCall[T] {
+func (c *MockControlMessageRecvQueuedequeueCall[T]) DoAndReturn(f func(context.Context) (Message, error)) *MockControlMessageRecvQueuedequeueCall[T] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // enqueue mocks base method.
-func (m *MockControlMessageRecvQueue[T]) enqueue(arg0 context.Context, arg1 *Message) error {
+func (m *MockControlMessageRecvQueue[T]) enqueue(arg0 context.Context, arg1 Message) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "enqueue", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -105,13 +105,13 @@ func (c *MockControlMessageRecvQueueenqueueCall[T]) Return(arg0 error) *MockCont
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControlMessageRecvQueueenqueueCall[T]) Do(f func(context.Context, *Message) error) *MockControlMessageRecvQueueenqueueCall[T] {
+func (c *MockControlMessageRecvQueueenqueueCall[T]) Do(f func(context.Context, Message) error) *MockControlMessageRecvQueueenqueueCall[T] {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControlMessageRecvQueueenqueueCall[T]) DoAndReturn(f func(context.Context, *Message) error) *MockControlMessageRecvQueueenqueueCall[T] {
+func (c *MockControlMessageRecvQueueenqueueCall[T]) DoAndReturn(f func(context.Context, Message) error) *MockControlMessageRecvQueueenqueueCall[T] {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
