@@ -170,9 +170,10 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     wire.Tuple{"namespace"},
 			TrackName:          []byte("track1"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
+			Forward:            1,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -224,9 +225,10 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
+			Forward:            1,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -262,16 +264,19 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		mh.EXPECT().enqueue(context.Background(), &GenericMessage{
-			method:        MessageSubscribe,
-			requestID:     0,
-			TrackAlias:    0,
-			Namespace:     []string{"namespace"},
-			Track:         "track",
-			Authorization: "",
-			NewSessionURI: "",
-			ErrorCode:     0,
-			ReasonPhrase:  "",
+		mh.EXPECT().enqueue(context.Background(), &SubscribeMessage{
+			requestID:          0,
+			TrackAlias:         0,
+			Namespace:          []string{"namespace"},
+			Track:              "track",
+			Authorization:      "",
+			SubscriberPriority: 0,
+			GroupOrder:         0,
+			Forward:            0,
+			FilterType:         FilterTypeNextGroupStart,
+			StartLocation:      nil,
+			EndGroup:           nil,
+			Parameters:         KVPList{},
 		}).Do(func(_ context.Context, _ Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
 			assert.NoError(t, s.acceptSubscription(0))
@@ -292,7 +297,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte("track"),
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -312,13 +317,19 @@ func TestSession(t *testing.T) {
 		close(s.handshakeDoneCh)
 		mh.EXPECT().enqueue(
 			context.Background(),
-			&GenericMessage{
-				method:        MessageSubscribe,
-				Namespace:     []string{},
-				Track:         "",
-				Authorization: "",
-				ErrorCode:     0,
-				ReasonPhrase:  "",
+			&SubscribeMessage{
+				requestID:          0,
+				TrackAlias:         0,
+				Namespace:          []string{},
+				Track:              "",
+				Authorization:      "",
+				SubscriberPriority: 0,
+				GroupOrder:         0,
+				Forward:            0,
+				FilterType:         FilterTypeNextGroupStart,
+				StartLocation:      nil,
+				EndGroup:           nil,
+				Parameters:         KVPList{},
 			},
 		).DoAndReturn(func(_ context.Context, m Message) error {
 			assert.NoError(t, s.addLocalTrack(&localTrack{}))
@@ -338,7 +349,7 @@ func TestSession(t *testing.T) {
 			TrackName:          []byte{},
 			SubscriberPriority: 0,
 			GroupOrder:         0,
-			FilterType:         0,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,
@@ -378,10 +389,10 @@ func TestSession(t *testing.T) {
 
 		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
 		close(s.handshakeDoneCh)
-		mh.EXPECT().enqueue(context.Background(), &GenericMessage{
-			requestID: 2,
-			method:    MessageAnnounce,
-			Namespace: []string{"namespace"},
+		mh.EXPECT().enqueue(context.Background(), &AnnounceMessage{
+			requestID:  2,
+			Namespace:  []string{"namespace"},
+			Parameters: KVPList{},
 		}).DoAndReturn(func(_ context.Context, req Message) error {
 			assert.NoError(t, s.acceptAnnouncement(req.RequestID()))
 			return nil
@@ -434,9 +445,10 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("trackname"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
-			FilterType:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
+			Forward:            1,
+			FilterType:         wire.FilterTypeNextGroupStart,
 			StartLocation: wire.Location{
 				Group:  0,
 				Object: 0,

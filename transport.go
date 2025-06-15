@@ -59,14 +59,14 @@ func (t *Transport) Run() error {
 }
 
 func (t *Transport) handleSubscription(m Message) {
-	// Type assert to get access to GenericMessage fields
-	gm, ok := m.(*GenericMessage)
+	// Type assert to get access to SubscribeMessage fields
+	sm, ok := m.(*SubscribeMessage)
 	if !ok {
-		t.logger.Error("received non-GenericMessage in handleSubscription")
+		t.logger.Error("received non-SubscribeMessage in handleSubscription")
 		return
 	}
-	
-	lt := newLocalTrack(t.Conn, m.RequestID(), gm.TrackAlias, func(code, count uint64, reason string) error {
+
+	lt := newLocalTrack(t.Conn, m.RequestID(), sm.TrackAlias, func(code, count uint64, reason string) error {
 		return t.Session.subscriptionDone(m.RequestID(), code, count, reason)
 	}, t.Qlogger)
 
@@ -81,9 +81,9 @@ func (t *Transport) handleSubscription(m Message) {
 		}
 		return
 	}
-	srw := &subscriptionResponseWriter{
+	srw := &SubscribeResponseWriter{
 		id:         m.RequestID(),
-		trackAlias: gm.TrackAlias,
+		trackAlias: sm.TrackAlias,
 		session:    t.Session,
 		localTrack: lt,
 		handled:    false,
@@ -104,7 +104,7 @@ func (t *Transport) handleFetch(m Message) {
 		t.logger.Error("received non-GenericMessage in handleFetch")
 		return
 	}
-	
+
 	lt := newLocalTrack(t.Conn, m.RequestID(), gm.TrackAlias, nil, t.Qlogger)
 	if err := t.Session.addLocalTrack(lt); err != nil {
 		if err == errMaxRequestIDViolated || err == errDuplicateRequestID {

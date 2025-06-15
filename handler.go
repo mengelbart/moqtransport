@@ -24,44 +24,6 @@ type Message interface {
 	RequestID() uint64
 }
 
-// GenericMessage implements the Message interface and contains all fields.
-type GenericMessage struct {
-	// Method describes the type of the message.
-	method string
-
-	// RequestID is set if the message references a request.
-	requestID uint64
-	// TrackAlias corresponding to the subscription.
-	TrackAlias uint64
-
-	// Namespace is set if the message references a namespace.
-	Namespace []string
-	// Track is set if the message references a track.
-	Track string
-
-	// Authorization
-	Authorization string
-
-	// NewSessionURI is set in a GoAway message and points to a URI that can be
-	// used to setup a new session before closing the current session.
-	NewSessionURI string
-
-	// ErrorCode is set if the message is an error message.
-	ErrorCode uint64
-	// ReasonPhrase is set if the message is an error message.
-	ReasonPhrase string
-}
-
-// Method implements Message.
-func (m *GenericMessage) Method() string {
-	return m.method
-}
-
-// RequestID implements Message.
-func (m *GenericMessage) RequestID() uint64 {
-	return m.requestID
-}
-
 // ResponseWriter can be used to respond to messages that expect a response.
 type ResponseWriter interface {
 	// Accept sends an affirmative response to a message.

@@ -237,11 +237,38 @@ func (s *Session) sendClientSetup() error {
 
 // Subscribe subscribes to track in namespace. It blocks until a response from
 // the peer was received or ctx is cancelled.
+//
+// This is a convenience wrapper around SubscribeWithOptions with default settings.
+// Note. auth should not be a simple string, but a structured object containing
+// an optional session-specific alias (draft-11 8.2.1.1)
 func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace []string,
 	name string,
 	auth string,
+) (*RemoteTrack, error) {
+	opts := DefaultSubscribeOptions()
+
+	// Add authorization parameter if provided
+	if len(auth) > 0 {
+		opts.Parameters = KVPList{
+			{
+				Type:       wire.AuthorizationTokenParameterKey,
+				ValueBytes: []byte(auth),
+			},
+		}
+	}
+
+	return s.SubscribeWithOptions(ctx, namespace, name, opts)
+}
+
+// SubscribeWithOptions subscribes to a track with full control over subscription parameters.
+// It blocks until a response from the peer was received or ctx is cancelled.
+func (s *Session) SubscribeWithOptions(
+	ctx context.Context,
+	namespace []string,
+	name string,
+	opts *SubscribeOptions,
 ) (*RemoteTrack, error) {
 	if err := s.waitForHandshakeDone(ctx); err != nil {
 		return nil, err
@@ -257,28 +284,44 @@ func (s *Session) Subscribe(
 	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
-	cm := &wire.SubscribeMessage{
+
+	// Set default options if not provided
+	if opts == nil {
+		opts = DefaultSubscribeOptions()
+	}
+
+	// Default filter type to NextGroupStart if not specified (0 is invalid per draft-11)
+	filterType := opts.FilterType
+	if filterType == 0 {
+		filterType = FilterTypeNextGroupStart
+	}
+
+	// Create subscribe message with provided options
+	sm := &wire.SubscribeMessage{
 		RequestID:          requestID,
 		TrackAlias:         trackAlias,
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
-		SubscriberPriority: 0,
-		GroupOrder:         0,
-		FilterType:         0,
-		StartLocation: wire.Location{
-			Group:  0,
-			Object: 0,
-		},
-		EndGroup:   0,
-		Parameters: wire.KVPList{},
+		SubscriberPriority: opts.SubscriberPriority,
+		GroupOrder:         opts.GroupOrder,
+		Forward:            boolToUint8(opts.Forward),
+		FilterType:         filterType.toWireFilterType(),
+		EndGroup:           0,
+		Parameters:         opts.Parameters.toWireKVPList(),
 	}
-	if len(auth) > 0 {
-		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
-			Type:       wire.AuthorizationTokenParameterKey,
-			ValueBytes: []byte(auth),
-		})
+
+	// Set start location if provided and required by filter type
+	if opts.StartLocation != nil &&
+		(filterType == FilterTypeAbsoluteStart || filterType == FilterTypeAbsoluteRange) {
+		sm.StartLocation = opts.StartLocation.toWireLocation()
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+
+	// Set end group if provided and required by filter type
+	if opts.EndGroup != nil && filterType == FilterTypeAbsoluteRange {
+		sm.EndGroup = *opts.EndGroup
+	}
+
+	if err := s.ctrlMsgSendQueue.enqueue(ctx, sm); err != nil {
 		return nil, err
 	}
 
@@ -313,6 +356,36 @@ func (s *Session) acceptSubscription(id uint64) error {
 		},
 		Parameters: wire.KVPList{},
 	})
+}
+
+// acceptSubscriptionWithOptions accepts a subscription with custom response options.
+func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOptions) error {
+	_, ok := s.localTracks.confirm(id)
+	if !ok {
+		return errUnknownRequestID
+	}
+
+	// Use defaults if opts is nil
+	if opts == nil {
+		opts = &SubscribeOkOptions{
+			GroupOrder: 1,
+		}
+	}
+
+	msg := &wire.SubscribeOkMessage{
+		RequestID:     id,
+		Expires:       opts.Expires,
+		GroupOrder:    opts.GroupOrder,
+		ContentExists: opts.ContentExists,
+		Parameters:    opts.Parameters.toWireKVPList(),
+	}
+
+	// Set largest location if content exists and location is provided
+	if opts.ContentExists && opts.LargestLocation != nil {
+		msg.LargestLocation = opts.LargestLocation.toWireLocation()
+	}
+
+	return s.ctrlMsgSendQueue.enqueue(context.Background(), msg)
 }
 
 func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
@@ -781,17 +854,30 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	m := &GenericMessage{
-		method:        MessageSubscribe,
-		requestID:     msg.RequestID,
-		TrackAlias:    msg.TrackAlias,
-		Namespace:     msg.TrackNamespace,
-		Track:         string(msg.TrackName),
-		Authorization: auth,
-		NewSessionURI: "",
-		ErrorCode:     0,
-		ReasonPhrase:  "",
+
+	m := &SubscribeMessage{
+		requestID:          msg.RequestID,
+		TrackAlias:         msg.TrackAlias,
+		Namespace:          msg.TrackNamespace,
+		Track:              string(msg.TrackName),
+		Authorization:      auth,
+		SubscriberPriority: msg.SubscriberPriority,
+		GroupOrder:         msg.GroupOrder,
+		Forward:            msg.Forward,
+		FilterType:         fromWireFilterType(msg.FilterType),
+		Parameters:         fromWireKVPList(msg.Parameters),
 	}
+
+	// Set optional fields if present
+	if msg.FilterType == wire.FilterTypeAbsoluteStart || msg.FilterType == wire.FilterTypeAbsoluteRange {
+		loc := fromWireLocation(msg.StartLocation)
+		m.StartLocation = &loc
+	}
+
+	if msg.FilterType == wire.FilterTypeAbsoluteRange {
+		m.EndGroup = &msg.EndGroup
+	}
+
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
@@ -945,10 +1031,10 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		response:   make(chan error),
 	}
 	s.incomingAnnouncements.add(a)
-	message := &GenericMessage{
-		requestID: msg.RequestID,
-		method:    MessageAnnounce,
-		Namespace: a.namespace,
+	message := &AnnounceMessage{
+		requestID:  msg.RequestID,
+		Namespace:  a.namespace,
+		Parameters: fromWireKVPList(a.parameters),
 	}
 	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
 }
@@ -1052,4 +1138,11 @@ func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) 
 		method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
+}
+
+func boolToUint8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }
