@@ -7,21 +7,28 @@ import (
 	"testing"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/qlog"
 	"github.com/stretchr/testify/assert"
 	gomock "go.uber.org/mock/gomock"
+	"golang.org/x/sync/errgroup"
 )
 
-func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlMessageQueue[*Message], protocol Protocol, perspective Perspective) *Session {
+func newSession(conn Connection, cs controlMessageStream, h Handler) *Session {
 	s := &Session{
-		logger:                                   defaultLogger,
+		InitialMaxRequestID:                      0,
+		Handler:                                  h,
+		Qlogger:                                  &qlog.Logger{},
+		eg:                                       &errgroup.Group{},
+		ctx:                                      nil,
+		cancelCtx:                                nil,
 		handshakeDoneCh:                          make(chan struct{}),
-		ctrlMsgSendQueue:                         queue,
-		ctrlMsgReceiveQueue:                      handler,
+		handshakeDone:                            atomic.Bool{},
+		logger:                                   defaultLogger,
+		conn:                                     conn,
+		controlStream:                            cs,
 		version:                                  0,
-		Protocol:                                 protocol,
-		Perspective:                              perspective,
 		path:                                     "/path",
-		requestIDs:                               newRequestIDGenerator(uint64(perspective), 100, 2),
+		requestIDs:                               newRequestIDGenerator(uint64(conn.Perspective()), 100, 2),
 		outgoingAnnouncements:                    newAnnouncementMap(),
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
@@ -40,10 +47,12 @@ func newSession(queue controlMessageQueue[wire.ControlMessage], handler controlM
 func TestSession(t *testing.T) {
 	t.Run("sends_client_setup_quic", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		cms.EXPECT().enqueue(context.Background(),
+		cs.EXPECT().write(
 			&wire.ClientSetupMessage{
 				SupportedVersions: wire.SupportedVersions,
 				SetupParameters: wire.KVPList{
@@ -59,7 +68,7 @@ func TestSession(t *testing.T) {
 			},
 		)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
+		s := newSession(conn, cs, nil)
 		err := s.sendClientSetup()
 		assert.NoError(t, err)
 		assert.NotNil(t, s)
@@ -67,10 +76,12 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_client_setup_wt", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolWebTransport)
 
-		cms.EXPECT().enqueue(context.Background(), &wire.ClientSetupMessage{
+		cs.EXPECT().write(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
@@ -81,7 +92,7 @@ func TestSession(t *testing.T) {
 		},
 		)
 
-		s := newSession(cms, mh, ProtocolWebTransport, PerspectiveClient)
+		s := newSession(conn, cs, nil)
 		err := s.sendClientSetup()
 		assert.NoError(t, err)
 		assert.NotNil(t, s)
@@ -89,12 +100,14 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_server_setup_quic", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveServer)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
+		s := newSession(conn, cs, nil)
 
-		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
+		cs.EXPECT().write(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
@@ -118,12 +131,14 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_server_setup_wt", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveServer)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolWebTransport)
 
-		s := newSession(cms, mh, ProtocolWebTransport, PerspectiveServer)
+		s := newSession(conn, cs, nil)
 
-		cms.EXPECT().enqueue(context.Background(), &wire.ServerSetupMessage{
+		cs.EXPECT().write(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
 			SetupParameters: wire.KVPList{
 				wire.KeyValuePair{
@@ -147,10 +162,12 @@ func TestSession(t *testing.T) {
 
 	t.Run("rejects_quic_client_without_path", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveServer)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveServer)
+		s := newSession(conn, cs, nil)
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
 			SetupParameters:   wire.KVPList{},
@@ -160,12 +177,15 @@ func TestSession(t *testing.T) {
 
 	t.Run("rejects_subscribe_on_max_request_id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
+		s := newSession(conn, cs, nil)
+		s.handshakeDone.Store(true)
 
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
+		cs.EXPECT().write(&wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     wire.Tuple{"namespace"},
@@ -184,7 +204,7 @@ func TestSession(t *testing.T) {
 					ValueBytes: []byte("auth"),
 				},
 			},
-		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.onSubscribeOk(&wire.SubscribeOkMessage{
 				RequestID:       0,
 				Expires:         0,
@@ -196,12 +216,11 @@ func TestSession(t *testing.T) {
 			assert.NoError(t, err)
 			return nil
 		}).Times(1)
-		cms.EXPECT().enqueue(context.Background(), &wire.RequestsBlockedMessage{
+		cs.EXPECT().write(&wire.RequestsBlockedMessage{
 			MaximumRequestID: 2,
 		}).Times(1)
 
 		s.requestIDs.max = 2
-		close(s.handshakeDoneCh)
 		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
@@ -213,13 +232,16 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		close(s.handshakeDoneCh)
+		s := newSession(conn, cs, nil)
 		s.requestIDs.max = 1
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
+		s.handshakeDone.Store(true)
+
+		cs.EXPECT().write(&wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
@@ -238,7 +260,7 @@ func TestSession(t *testing.T) {
 					ValueBytes: []byte("auth"),
 				},
 			},
-		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.receive(&wire.SubscribeOkMessage{
 				RequestID:       0,
 				Expires:         0,
@@ -257,12 +279,16 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_subscribe_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		mh := NewMockHandler(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		close(s.handshakeDoneCh)
-		mh.EXPECT().enqueue(context.Background(), &Message{
+		s := newSession(conn, cs, mh)
+		s.handshakeDone.Store(true)
+
+		mh.EXPECT().Handle(gomock.Any(), &Message{
 			Method:        MessageSubscribe,
 			RequestID:     0,
 			TrackAlias:    0,
@@ -272,12 +298,10 @@ func TestSession(t *testing.T) {
 			NewSessionURI: "",
 			ErrorCode:     0,
 			ReasonPhrase:  "",
-		}).Do(func(_ context.Context, _ *Message) error {
-			assert.NoError(t, s.addLocalTrack(&localTrack{}))
-			assert.NoError(t, s.acceptSubscription(0))
-			return nil
+		}).Do(func(r ResponseWriter, m *Message) {
+			assert.NoError(t, r.Accept())
 		})
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeOkMessage{
+		cs.EXPECT().write(&wire.SubscribeOkMessage{
 			RequestID:       0,
 			Expires:         0,
 			GroupOrder:      1,
@@ -305,13 +329,17 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_subscribe_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		mh := NewMockHandler(ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		close(s.handshakeDoneCh)
-		mh.EXPECT().enqueue(
-			context.Background(),
+		s := newSession(conn, cs, mh)
+		s.handshakeDone.Store(true)
+
+		mh.EXPECT().Handle(
+			gomock.Any(),
 			&Message{
 				Method:        MessageSubscribe,
 				Namespace:     []string{},
@@ -320,12 +348,10 @@ func TestSession(t *testing.T) {
 				ErrorCode:     0,
 				ReasonPhrase:  "",
 			},
-		).DoAndReturn(func(_ context.Context, m *Message) error {
-			assert.NoError(t, s.addLocalTrack(&localTrack{}))
-			assert.NoError(t, s.rejectSubscription(m.RequestID, ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
-			return nil
+		).DoAndReturn(func(rw ResponseWriter, m *Message) {
+			assert.NoError(t, rw.Reject(ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 		})
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeErrorMessage{
+		cs.EXPECT().write(&wire.SubscribeErrorMessage{
 			RequestID:    0,
 			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
 			ReasonPhrase: "track not found",
@@ -351,16 +377,19 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_announce", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		close(s.handshakeDoneCh)
-		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceMessage{
+		s := newSession(conn, cs, nil)
+		s.handshakeDone.Store(true)
+
+		cs.EXPECT().write(&wire.AnnounceMessage{
 			RequestID:      0,
 			TrackNamespace: []string{"namespace"},
 			Parameters:     wire.KVPList{},
-		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			err := s.receive(&wire.AnnounceOkMessage{
 				RequestID: 0,
 			})
@@ -373,20 +402,23 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_announce_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		mh := NewMockHandler(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
-		close(s.handshakeDoneCh)
-		mh.EXPECT().enqueue(context.Background(), &Message{
+		s := newSession(conn, cs, mh)
+		s.handshakeDone.Store(true)
+
+		mh.EXPECT().Handle(gomock.Any(), &Message{
 			RequestID: 2,
 			Method:    MessageAnnounce,
 			Namespace: []string{"namespace"},
-		}).DoAndReturn(func(_ context.Context, req *Message) error {
-			assert.NoError(t, s.acceptAnnouncement(req.RequestID))
-			return nil
+		}).DoAndReturn(func(rw ResponseWriter, req *Message) {
+			assert.NoError(t, rw.Accept())
 		})
-		cms.EXPECT().enqueue(context.Background(), &wire.AnnounceOkMessage{
+		cs.EXPECT().write(&wire.AnnounceOkMessage{
 			RequestID: 2,
 		})
 		err := s.receive(&wire.AnnounceMessage{
@@ -399,9 +431,12 @@ func TestSession(t *testing.T) {
 
 	t.Run("receives_objects_before_susbcribe_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cms := NewMockControlMessageSendQueue[wire.ControlMessage](ctrl)
-		mh := NewMockControlMessageRecvQueue[*Message](ctrl)
+		cs := NewMockControlMessageStream(ctrl)
+		mh := NewMockHandler(ctrl)
 		mp := NewMockObjectMessageParser(ctrl)
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
 		mp.EXPECT().Type().Return(wire.StreamTypeSubgroupSIDExt).AnyTimes()
 		mp.EXPECT().Identifier().Return(uint64(0)).AnyTimes()
@@ -423,13 +458,14 @@ func TestSession(t *testing.T) {
 			yield(nil, io.EOF)
 		})
 
-		s := newSession(cms, mh, ProtocolQUIC, PerspectiveClient)
+		s := newSession(conn, cs, mh)
+		s.handshakeDone.Store(true)
+
 		err := s.onMaxRequestID(&wire.MaxRequestIDMessage{
 			RequestID: 100,
 		})
 		assert.NoError(t, err)
-		close(s.handshakeDoneCh)
-		cms.EXPECT().enqueue(context.Background(), &wire.SubscribeMessage{
+		cs.EXPECT().write(&wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
@@ -448,7 +484,7 @@ func TestSession(t *testing.T) {
 					ValueBytes: []byte("auth"),
 				},
 			},
-		}).DoAndReturn(func(_ context.Context, _ wire.ControlMessage) error {
+		}).DoAndReturn(func(_ wire.ControlMessage) error {
 			assert.NoError(t, s.handleUniStream(mp))
 			assert.NoError(t, s.onSubscribeOk(&wire.SubscribeOkMessage{
 				RequestID:       0,

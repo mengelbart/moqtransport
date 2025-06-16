@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,8 +14,6 @@ import (
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
 	"github.com/mengelbart/moqtransport/webtransportmoq"
-	"github.com/mengelbart/qlog"
-	"github.com/mengelbart/qlog/moqt"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
@@ -50,7 +47,9 @@ func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
 	if h.publish {
 		go h.setupDateTrack()
 	}
-	h.handle(conn)
+	if err = h.handle(conn); err != nil {
+		return err
+	}
 	select {}
 }
 
@@ -93,7 +92,7 @@ func (h *moqHandler) runServer(ctx context.Context) error {
 	}
 }
 
-func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session) moqtransport.Handler {
+func (h *moqHandler) getHandler(sessionID uint64) moqtransport.Handler {
 	return moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, r *moqtransport.Message) {
 		switch r.Method {
 		case moqtransport.MessageAnnounce:
@@ -135,7 +134,6 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 				sessionID:   sessionID,
 				subscribeID: r.RequestID,
 				trackAlias:  r.TrackAlias,
-				session:     session,
 			}
 			h.lock.Lock()
 			h.publishers[datePublisher] = struct{}{}
@@ -144,34 +142,26 @@ func (h *moqHandler) getHandler(sessionID uint64, session *moqtransport.Session)
 	})
 }
 
-func (h *moqHandler) handle(conn moqtransport.Connection) {
+func (h *moqHandler) handle(conn moqtransport.Connection) error {
 	id := h.nextSessionID.Add(1)
-	session := moqtransport.NewSession(conn.Protocol(), conn.Perspective(), 100)
-	transport := &moqtransport.Transport{
-		Conn:    conn,
-		Handler: h.getHandler(id, session),
-		Qlogger: qlog.NewQLOGHandler(os.Stdout, "MoQ QLOG", "MoQ QLOG", conn.Perspective().String(), moqt.Schema),
-		Session: session,
+	session := &moqtransport.Session{
+		Handler:             h.getHandler(id),
+		InitialMaxRequestID: 100,
 	}
-	err := transport.Run()
-	if err != nil {
-		log.Printf("MoQ Session initialization failed: %v", err)
-		conn.CloseWithError(0, "session initialization error")
-		return
+	if err := session.Run(conn); err != nil {
+		return err
 	}
 	if h.publish {
 		if err := session.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
-			return
 		}
 	}
 	if h.subscribe {
 		if err := h.subscribeAndRead(session, h.namespace, h.trackname); err != nil {
-			log.Printf("failed to subscribe to track: %v", err)
-			conn.CloseWithError(0, "internal error")
-			return
+			return err
 		}
 	}
+	return nil
 }
 
 func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []string, trackname string) error {

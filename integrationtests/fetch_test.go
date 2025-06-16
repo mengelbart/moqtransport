@@ -19,7 +19,7 @@ func TestFetch(t *testing.T) {
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")
@@ -35,7 +35,7 @@ func TestFetch(t *testing.T) {
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Reject(moqtransport.ErrorCodeFetchUnauthorized, "unauthorized"))
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")
@@ -58,7 +58,7 @@ func TestFetch(t *testing.T) {
 			assert.True(t, ok)
 			publisherCh <- publisher
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Fetch(context.Background(), []string{"namespace"}, "track")

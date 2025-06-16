@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 
 	"github.com/quic-go/quic-go/quicvarint"
@@ -43,14 +44,46 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 
 	var m ControlMessage
 	switch controlMessageType(mt) {
-	case messageTypeSubscribeUpdate:
-		m = &SubscribeUpdateMessage{}
+	case messageTypeClientSetup:
+		m = &ClientSetupMessage{}
+	case messageTypeServerSetup:
+		m = &ServerSetupMessage{}
+
+	case messageTypeGoAway:
+		m = &GoAwayMessage{}
+
+	case messageTypeMaxRequestID:
+		m = &MaxRequestIDMessage{}
+	case messageTypeRequestsBlocked:
+		m = &RequestsBlockedMessage{}
+
 	case messageTypeSubscribe:
 		m = &SubscribeMessage{}
 	case messageTypeSubscribeOk:
 		m = &SubscribeOkMessage{}
 	case messageTypeSubscribeError:
 		m = &SubscribeErrorMessage{}
+	case messageTypeUnsubscribe:
+		m = &UnsubscribeMessage{}
+	case messageTypeSubscribeUpdate:
+		m = &SubscribeUpdateMessage{}
+	case messageTypeSubscribeDone:
+		m = &SubscribeDoneMessage{}
+
+	case messageTypeFetch:
+		m = &FetchMessage{}
+	case messageTypeFetchOk:
+		m = &FetchOkMessage{}
+	case messageTypeFetchError:
+		m = &FetchErrorMessage{}
+	case messageTypeFetchCancel:
+		m = &FetchCancelMessage{}
+
+	case messageTypeTrackStatusRequest:
+		m = &TrackStatusRequestMessage{}
+	case messageTypeTrackStatus:
+		m = &TrackStatusMessage{}
+
 	case messageTypeAnnounce:
 		m = &AnnounceMessage{}
 	case messageTypeAnnounceOk:
@@ -59,18 +92,9 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 		m = &AnnounceErrorMessage{}
 	case messageTypeUnannounce:
 		m = &UnannounceMessage{}
-	case messageTypeUnsubscribe:
-		m = &UnsubscribeMessage{}
-	case messageTypeSubscribeDone:
-		m = &SubscribeDoneMessage{}
 	case messageTypeAnnounceCancel:
 		m = &AnnounceCancelMessage{}
-	case messageTypeTrackStatusRequest:
-		m = &TrackStatusRequestMessage{}
-	case messageTypeTrackStatus:
-		m = &TrackStatusMessage{}
-	case messageTypeGoAway:
-		m = &GoAwayMessage{}
+
 	case messageTypeSubscribeAnnounces:
 		m = &SubscribeAnnouncesMessage{}
 	case messageTypeSubscribeAnnouncesOk:
@@ -79,22 +103,8 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 		m = &SubscribeAnnouncesErrorMessage{}
 	case messageTypeUnsubscribeAnnounces:
 		m = &UnsubscribeAnnouncesMessage{}
-	case messageTypeMaxRequestID:
-		m = &MaxRequestIDMessage{}
-	case messageTypeFetch:
-		m = &FetchMessage{}
-	case messageTypeFetchCancel:
-		m = &FetchCancelMessage{}
-	case messageTypeFetchOk:
-		m = &FetchOkMessage{}
-	case messageTypeFetchError:
-		m = &FetchErrorMessage{}
-	case messageTypeClientSetup:
-		m = &ClientSetupMessage{}
-	case messageTypeServerSetup:
-		m = &ServerSetupMessage{}
 	default:
-		return nil, errInvalidMessageType
+		return nil, fmt.Errorf("%w: %v", errInvalidMessageType, mt)
 	}
 	err = m.parse(CurrentVersion, msg)
 	return m, err

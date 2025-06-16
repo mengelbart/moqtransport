@@ -8,8 +8,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"math/big"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
@@ -44,47 +44,42 @@ func connect(t *testing.T) (server, client quic.Connection, cancel func()) {
 }
 
 func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Handler) (
-	serverTransport *moqtransport.Transport,
 	serverSession *moqtransport.Session,
-	clientTransport *moqtransport.Transport,
 	clientSession *moqtransport.Session,
 	cancel func(),
 ) {
-	ss := moqtransport.NewSession(moqtransport.ProtocolQUIC, moqtransport.PerspectiveServer, 100)
-	assert.NotNil(t, ss)
-	str := &moqtransport.Transport{
-		Conn:    quicmoq.NewServer(sConn),
-		Handler: handler,
-		Session: ss,
+	serverSession = &moqtransport.Session{
+		Handler:             handler,
+		InitialMaxRequestID: 100,
+		Qlogger:             nil,
 	}
-	serverSetup := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		err := str.Run()
+		defer wg.Done()
+		err := serverSession.Run(quicmoq.NewServer(sConn))
 		assert.NoError(t, err)
-		close(serverSetup)
 	}()
-	defer str.Close()
 
-	cs := moqtransport.NewSession(moqtransport.ProtocolQUIC, moqtransport.PerspectiveClient, 100)
-	assert.NotNil(t, cs)
-	ctr := &moqtransport.Transport{
-		Conn:    quicmoq.NewClient(cConn),
-		Handler: nil,
-		Session: cs,
+	clientSession = &moqtransport.Session{
+		Handler:             handler,
+		InitialMaxRequestID: 100,
+		Qlogger:             nil,
 	}
-	err := ctr.Run()
-	assert.NoError(t, err)
-	defer ctr.Close()
 
-	select {
-	case <-serverSetup:
-	case <-time.After(time.Second):
-		assert.Fail(t, "failed to setup sessions and transports")
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := clientSession.Run(quicmoq.NewClient(cConn))
+		assert.NoError(t, err)
+	}()
+
+	cancel = func() {
+		serverSession.Close()
+		clientSession.Close()
 	}
-	return str, ss, ctr, cs, func() {
-		assert.NoError(t, str.Close())
-		assert.NoError(t, ctr.Close())
-	}
+	wg.Wait()
+	return
 }
 
 // Setup a bare-bones TLS config for the server

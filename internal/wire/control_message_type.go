@@ -93,7 +93,7 @@ func (mt controlMessageType) String() string {
 	case messageTypeAnnounceError:
 		return "AnnounceErrorMessage"
 	case messageTypeUnannounce:
-		return "AnannounceMessage"
+		return "UnannounceMessage"
 	case messageTypeAnnounceCancel:
 		return "AnnounceCancelMessage"
 

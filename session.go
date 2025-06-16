@@ -5,10 +5,13 @@ import (
 	"errors"
 	"iter"
 	"log/slog"
-	"slices"
 	"sync/atomic"
 
+	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/qlog"
+	"github.com/mengelbart/qlog/moqt"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -26,9 +29,9 @@ var (
 	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
 )
 
-type controlMessageQueue[T any] interface {
-	enqueue(context.Context, T) error
-	dequeue(context.Context) (T, error)
+type controlMessageStream interface {
+	write(wire.ControlMessage) error
+	read() iter.Seq2[wire.ControlMessage, error]
 }
 
 type objectMessageParser interface {
@@ -39,15 +42,25 @@ type objectMessageParser interface {
 
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
-	Protocol    Protocol
-	Perspective Perspective
+	// Initial MAX_REQUEST_ID value
+	InitialMaxRequestID uint64
+
+	// Handler
+	Handler Handler
+
+	// QLOG Logger
+	Qlogger *qlog.Logger
+
+	eg              *errgroup.Group
+	ctx             context.Context
+	cancelCtx       context.CancelFunc
+	handshakeDoneCh chan struct{}
+	handshakeDone   atomic.Bool
 
 	logger *slog.Logger
 
-	handshakeDoneCh chan struct{}
-
-	ctrlMsgSendQueue    controlMessageQueue[wire.ControlMessage]
-	ctrlMsgReceiveQueue controlMessageQueue[*Message]
+	conn          Connection
+	controlStream controlMessageStream
 
 	version wire.Version
 	path    string
@@ -70,38 +83,144 @@ type Session struct {
 	outgoingTrackStatusRequests *trackStatusRequestMap
 }
 
-func NewSession(proto Protocol, perspective Perspective, initMaxRequestID uint64) *Session {
-	s := &Session{
-		Protocol:                                 proto,
-		Perspective:                              perspective,
-		logger:                                   defaultLogger.With("perspective", perspective),
-		handshakeDoneCh:                          make(chan struct{}),
-		ctrlMsgSendQueue:                         newQueue[wire.ControlMessage](),
-		ctrlMsgReceiveQueue:                      newQueue[*Message](),
-		version:                                  0,
-		path:                                     "",
-		requestIDs:                               newRequestIDGenerator(uint64(perspective), 0 /*max*/, 2 /*step*/),
-		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    newAnnouncementMap(),
-		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		highestRequestsBlocked:                   atomic.Uint64{},
-		trackAliases:                             newSequence(0, 1),
-		remoteTracks:                             newRemoteTrackMap(),
-		localTracks:                              newLocalTrackMap(),
-		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
-		localMaxRequestID:                        atomic.Uint64{},
+func (s *Session) Run(conn Connection) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.eg, s.ctx = errgroup.WithContext(ctx)
+	s.cancelCtx = cancel
+
+	var cs Stream
+	var err error
+	if conn.Perspective() == PerspectiveServer {
+		cs, err = conn.AcceptStream(ctx)
+	} else if conn.Perspective() == PerspectiveClient {
+		cs, err = conn.OpenStreamSync(ctx)
+	} else {
+		return errors.New("invalid perspective")
 	}
-	s.localMaxRequestID.Store(initMaxRequestID)
-	return s
+	if err != nil {
+		return err
+	}
+
+	s.handshakeDoneCh = make(chan struct{})
+	s.logger = defaultLogger.With("perspective", conn.Perspective())
+	s.conn = conn
+	s.localMaxRequestID.Store(s.InitialMaxRequestID)
+	s.requestIDs = newRequestIDGenerator(uint64(conn.Perspective()), 0 /*max*/, 2 /*step*/)
+	s.outgoingAnnouncements = newAnnouncementMap()
+	s.incomingAnnouncements = newAnnouncementMap()
+	s.pendingOutgointAnnouncementSubscriptions = newAnnouncementSubscriptionMap()
+	s.pendingIncomingAnnouncementSubscriptions = newAnnouncementSubscriptionMap()
+	s.trackAliases = newSequence(0, 1)
+	s.remoteTracks = newRemoteTrackMap()
+	s.localTracks = newLocalTrackMap()
+	s.outgoingTrackStatusRequests = newTrackStatusRequestMap()
+	s.controlStream = &controlStream{
+		stream:  cs,
+		logger:  defaultLogger.With("perspective", conn.Perspective()),
+		qlogger: nil,
+	}
+
+	s.eg.Go(s.readControlStream)
+	s.eg.Go(func() error { return s.readStreams(s.ctx) })
+	s.eg.Go(func() error { return s.readDatagrams(s.ctx) })
+
+	if s.conn.Perspective() == PerspectiveClient {
+		if err := s.sendClientSetup(); err != nil {
+			return err
+		}
+	}
+	select {
+	case <-s.ctx.Done():
+		return context.Cause(s.ctx)
+	case <-s.handshakeDoneCh:
+	}
+	return nil
 }
 
-func (s *Session) sendControlMessage(ctx context.Context) (wire.ControlMessage, error) {
-	return s.ctrlMsgSendQueue.dequeue(ctx)
+func (s *Session) Close() error {
+	s.cancelCtx()
+	if err := s.conn.CloseWithError(0, ""); err != nil {
+		s.logger.Error("failed to close connection", "err", err)
+	}
+	return s.eg.Wait()
 }
 
-func (s *Session) readControlMessage(ctx context.Context) (*Message, error) {
-	return s.ctrlMsgReceiveQueue.dequeue(ctx)
+func (s *Session) readControlStream() error {
+	for msg, err := range s.controlStream.read() {
+		if err != nil {
+			return err
+		}
+		if err = s.receive(msg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Session) readStreams(ctx context.Context) error {
+	for {
+		stream, err := s.conn.AcceptUniStream(ctx)
+		if err != nil {
+			return err
+		}
+		// TODO: Instead of starting a goroutine here, start it in the remote
+		// stream and close all remote streams when the sesssion closes.
+		go func() {
+			s.logger.Info("handling new uni stream")
+			parser, err := wire.NewObjectStreamParser(stream, stream.StreamID(), s.Qlogger)
+			if err != nil {
+				return
+			}
+			s.logger.Debug("parsed object stream header")
+			if err := s.handleUniStream(parser); err != nil {
+				return
+			}
+		}()
+	}
+}
+
+func (s *Session) readDatagrams(ctx context.Context) error {
+	for {
+		dgram, err := s.conn.ReceiveDatagram(ctx)
+		if err != nil {
+			return err
+		}
+		msg := new(wire.ObjectDatagramMessage)
+		if _, err = msg.Parse(dgram); err != nil {
+			return err
+		}
+		if s.Qlogger != nil {
+			eth := slices.Collect(slices.Map(
+				msg.ObjectExtensionHeaders,
+				func(e wire.KeyValuePair) moqt.ExtensionHeader {
+					return moqt.ExtensionHeader{
+						HeaderType:   0, // TODO
+						HeaderValue:  0, // TODO
+						HeaderLength: 0, // TODO
+						Payload:      qlog.RawInfo{},
+					}
+				}),
+			)
+			s.Qlogger.Log(moqt.ObjectDatagramEvent{
+				EventName:              moqt.ObjectDatagramEventparsed,
+				TrackAlias:             msg.TrackAlias,
+				GroupID:                msg.GroupID,
+				ObjectID:               msg.ObjectID,
+				PublisherPriority:      msg.PublisherPriority,
+				ExtensionHeadersLength: uint64(len(msg.ObjectExtensionHeaders)),
+				ExtensionHeaders:       eth,
+				ObjectStatus:           uint64(msg.ObjectStatus),
+				Payload: qlog.RawInfo{
+					Length:        uint64(len(msg.ObjectPayload)),
+					PayloadLength: uint64(len(msg.ObjectPayload)),
+					Data:          msg.ObjectPayload,
+				},
+			})
+		}
+		if err := s.receiveDatagram(msg); err != nil {
+			return err
+		}
+	}
 }
 
 func (s *Session) handleUniStream(parser objectMessageParser) error {
@@ -152,7 +271,7 @@ func (s *Session) addLocalTrack(lt *localTrack) error {
 	if lt.requestID >= oldMax/2 {
 		newMax := 2 * oldMax
 		s.localMaxRequestID.CompareAndSwap(oldMax, newMax)
-		if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.MaxRequestIDMessage{
+		if err := s.controlStream.write(&wire.MaxRequestIDMessage{
 			RequestID: newMax,
 		}); err != nil {
 			s.logger.Warn("skipping sending of max_request_id due to control message queue overflow")
@@ -175,29 +294,11 @@ func (s *Session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	return sub, ok
 }
 
-func (s *Session) handshakeDone() bool {
-	select {
-	case <-s.handshakeDoneCh:
-		return true
-	default:
-		return false
-	}
-}
-
-func (s *Session) waitForHandshakeDone(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-s.handshakeDoneCh:
-		return nil
-	}
-}
-
 func (s *Session) getRequestID() (uint64, error) {
 	requestID, err := s.requestIDs.next()
 	if err != nil {
 		if err == errRequestIDblocked {
-			if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
+			if queueErr := s.controlStream.write(&wire.RequestsBlockedMessage{
 				MaximumRequestID: requestID,
 			}); queueErr != nil {
 				s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
@@ -222,14 +323,14 @@ func (s *Session) sendClientSetup() error {
 			ValueVarInt: s.localMaxRequestID.Load(),
 		},
 	}
-	if s.Protocol == ProtocolQUIC {
+	if s.conn.Protocol() == ProtocolQUIC {
 		path := s.path
 		params = append(params, wire.KeyValuePair{
 			Type:       wire.PathParameterKey,
 			ValueBytes: []byte(path),
 		})
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ClientSetupMessage{
+	return s.controlStream.write(&wire.ClientSetupMessage{
 		SupportedVersions: wire.SupportedVersions,
 		SetupParameters:   params,
 	})
@@ -243,9 +344,6 @@ func (s *Session) Subscribe(
 	name string,
 	auth string,
 ) (*RemoteTrack, error) {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return nil, err
-	}
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return nil, err
@@ -278,7 +376,7 @@ func (s *Session) Subscribe(
 			ValueBytes: []byte(auth),
 		})
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+	if err = s.controlStream.write(cm); err != nil {
 		return nil, err
 	}
 
@@ -289,9 +387,6 @@ func (s *Session) Subscribe(
 	}
 	if err != nil {
 		s.remoteTracks.reject(requestID)
-		if closeErr := rt.Close(); closeErr != nil {
-			return nil, errors.Join(err, closeErr)
-		}
 		return nil, err
 	}
 	return rt, nil
@@ -302,7 +397,7 @@ func (s *Session) acceptSubscription(id uint64) error {
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeOkMessage{
+	return s.controlStream.write(&wire.SubscribeOkMessage{
 		RequestID:     id,
 		Expires:       0,
 		GroupOrder:    1,
@@ -320,7 +415,7 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeErrorMessage{
+	return s.controlStream.write(&wire.SubscribeErrorMessage{
 		RequestID:    lt.requestID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
@@ -329,7 +424,7 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 }
 
 func (s *Session) unsubscribe(id uint64) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.UnsubscribeMessage{
+	return s.controlStream.write(&wire.UnsubscribeMessage{
 		RequestID: id,
 	})
 }
@@ -339,7 +434,7 @@ func (s *Session) subscriptionDone(id, code, count uint64, reason string) error 
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeDoneMessage{
+	return s.controlStream.write(&wire.SubscribeDoneMessage{
 		RequestID:    lt.requestID,
 		StatusCode:   code,
 		StreamCount:  count,
@@ -354,9 +449,6 @@ func (s *Session) Fetch(
 	namespace []string,
 	track string,
 ) (*RemoteTrack, error) {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return nil, err
-	}
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return nil, err
@@ -364,12 +456,12 @@ func (s *Session) Fetch(
 	rt := newRemoteTrack(requestID, func() error {
 		return s.fetchCancel(requestID)
 	})
-	if err := s.remoteTracks.addPending(requestID, rt); err != nil {
+	if err = s.remoteTracks.addPending(requestID, rt); err != nil {
 		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
 			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
 			if previous < tooManySubscribes.maxRequestID {
-				if queueErr := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.RequestsBlockedMessage{
+				if queueErr := s.controlStream.write(&wire.RequestsBlockedMessage{
 					MaximumRequestID: tooManySubscribes.maxRequestID,
 				}); queueErr != nil {
 					s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
@@ -393,7 +485,7 @@ func (s *Session) Fetch(
 		JoiningStart:       0,
 		Parameters:         wire.KVPList{},
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, cm); err != nil {
+	if err = s.controlStream.write(cm); err != nil {
 		_, _ = s.remoteTracks.reject(requestID)
 		return nil, err
 	}
@@ -417,7 +509,7 @@ func (s *Session) acceptFetch(requestID uint64) error {
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchOkMessage{
+	return s.controlStream.write(&wire.FetchOkMessage{
 		RequestID:  requestID,
 		GroupOrder: 1,
 		EndOfTrack: 0,
@@ -434,7 +526,7 @@ func (s *Session) rejectFetch(id uint64, errorCode uint64, reason string) error 
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchErrorMessage{
+	return s.controlStream.write(&wire.FetchErrorMessage{
 		RequestID:    lt.requestID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
@@ -443,15 +535,12 @@ func (s *Session) rejectFetch(id uint64, errorCode uint64, reason string) error 
 }
 
 func (s *Session) fetchCancel(id uint64) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.FetchCancelMessage{
+	return s.controlStream.write(&wire.FetchCancelMessage{
 		RequestID: id,
 	})
 }
 
 func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, track string) (*TrackStatus, error) {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return nil, err
-	}
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return nil, err
@@ -468,7 +557,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 		TrackNamespace: namespace,
 		TrackName:      []byte(track),
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, tsrm); err != nil {
+	if err := s.controlStream.write(tsrm); err != nil {
 		_, _ = s.outgoingTrackStatusRequests.delete(tsrm.RequestID)
 		return nil, err
 	}
@@ -481,7 +570,7 @@ func (s *Session) RequestTrackStatus(ctx context.Context, namespace []string, tr
 }
 
 func (s *Session) sendTrackStatus(ts TrackStatus) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.TrackStatusMessage{
+	return s.controlStream.write(&wire.TrackStatusMessage{
 		StatusCode:      ts.StatusCode,
 		RequestID:       0,
 		LargestLocation: wire.Location{},
@@ -493,9 +582,6 @@ func (s *Session) sendTrackStatus(ts TrackStatus) error {
 // peer was received or ctx is cancelled and returns an error if the
 // announcement was rejected.
 func (s *Session) Announce(ctx context.Context, namespace []string) error {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return err
-	}
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return err
@@ -512,7 +598,7 @@ func (s *Session) Announce(ctx context.Context, namespace []string) error {
 		TrackNamespace: a.namespace,
 		Parameters:     a.parameters,
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, am); err != nil {
+	if err := s.controlStream.write(am); err != nil {
 		_, _ = s.outgoingAnnouncements.reject(a.requestID)
 		return err
 	}
@@ -528,7 +614,7 @@ func (s *Session) acceptAnnouncement(requestID uint64) error {
 	if _, err := s.incomingAnnouncements.confirmAndGet(requestID); err != nil {
 		return err
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceOkMessage{
+	if err := s.controlStream.write(&wire.AnnounceOkMessage{
 		RequestID: requestID,
 	}); err != nil {
 		return err
@@ -537,7 +623,7 @@ func (s *Session) acceptAnnouncement(requestID uint64) error {
 }
 
 func (s *Session) rejectAnnouncement(requestID uint64, c uint64, r string) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.AnnounceErrorMessage{
+	return s.controlStream.write(&wire.AnnounceErrorMessage{
 		RequestID:    requestID,
 		ErrorCode:    c,
 		ReasonPhrase: r,
@@ -545,22 +631,16 @@ func (s *Session) rejectAnnouncement(requestID uint64, c uint64, r string) error
 }
 
 func (s *Session) Unannounce(ctx context.Context, namespace []string) error {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return err
-	}
 	if ok := s.outgoingAnnouncements.delete(namespace); ok {
 		return errUnknownAnnouncementNamespace
 	}
 	u := &wire.UnannounceMessage{
 		TrackNamespace: namespace,
 	}
-	return s.ctrlMsgSendQueue.enqueue(ctx, u)
+	return s.controlStream.write(u)
 }
 
 func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorCode uint64, reason string) error {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return err
-	}
 	if !s.incomingAnnouncements.delete(namespace) {
 		return errUnknownAnnouncementNamespace
 	}
@@ -569,15 +649,12 @@ func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorC
 		ErrorCode:      errorCode,
 		ReasonPhrase:   reason,
 	}
-	return s.ctrlMsgSendQueue.enqueue(ctx, acm)
+	return s.controlStream.write(acm)
 }
 
 // SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
 // It blocks until a response from the peer is received or ctx is cancelled.
 func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
-	if err := s.waitForHandshakeDone(ctx); err != nil {
-		return err
-	}
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return err
@@ -593,7 +670,7 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 		TrackNamespacePrefix: as.namespace,
 		Parameters:           wire.KVPList{},
 	}
-	if err := s.ctrlMsgSendQueue.enqueue(ctx, sam); err != nil {
+	if err := s.controlStream.write(sam); err != nil {
 		_, _ = s.pendingOutgointAnnouncementSubscriptions.deleteByID(as.requestID)
 		return err
 	}
@@ -606,13 +683,13 @@ func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) e
 }
 
 func (s *Session) acceptAnnouncementSubscription(requestID uint64) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesOkMessage{
+	return s.controlStream.write(&wire.SubscribeAnnouncesOkMessage{
 		RequestID: requestID,
 	})
 }
 
 func (s *Session) rejectAnnouncementSubscription(requestID uint64, c uint64, r string) error {
-	return s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.SubscribeAnnouncesErrorMessage{
+	return s.controlStream.write(&wire.SubscribeAnnouncesErrorMessage{
 		RequestID:    requestID,
 		ErrorCode:    c,
 		ReasonPhrase: r,
@@ -624,7 +701,7 @@ func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []stri
 	uam := &wire.UnsubscribeAnnouncesMessage{
 		TrackNamespacePrefix: namespace,
 	}
-	return s.ctrlMsgSendQueue.enqueue(ctx, uam)
+	return s.controlStream.write(uam)
 }
 
 // Session message handlers
@@ -632,7 +709,7 @@ func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []stri
 func (s *Session) receive(msg wire.ControlMessage) error {
 	s.logger.Info("received message", "type", msg.Type().String(), "msg", msg)
 
-	if !s.handshakeDone() {
+	if !s.handshakeDone.Load() {
 		switch m := msg.(type) {
 		case *wire.ClientSetupMessage:
 			return s.onClientSetup(m)
@@ -645,7 +722,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	var err error
 	switch m := msg.(type) {
 	case *wire.GoAwayMessage:
-		err = s.onGoAway(m)
+		s.onGoAway(m)
 	case *wire.MaxRequestIDMessage:
 		err = s.onMaxRequestID(m)
 	case *wire.RequestsBlockedMessage:
@@ -683,7 +760,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	case *wire.UnannounceMessage:
 		err = s.onUnannounce(m)
 	case *wire.AnnounceCancelMessage:
-		err = s.onAnnounceCancel(m)
+		s.onAnnounceCancel(m)
 	case *wire.SubscribeAnnouncesMessage:
 		err = s.onSubscribeAnnounces(m)
 	case *wire.SubscribeAnnouncesOkMessage:
@@ -691,7 +768,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	case *wire.SubscribeAnnouncesErrorMessage:
 		err = s.onSubscribeAnnouncesError(m)
 	case *wire.UnsubscribeAnnouncesMessage:
-		err = s.onUnsubscribeAnnounces(m)
+		s.onUnsubscribeAnnounces(m)
 	default:
 		err = errUnexpectedMessageType
 	}
@@ -699,7 +776,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 }
 
 func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
-	if s.Perspective != PerspectiveServer {
+	if s.conn.Perspective() != PerspectiveServer {
 		return errClientReceivedClientSetup
 	}
 	selectedVersion := -1
@@ -714,7 +791,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	s.version = wire.Version(selectedVersion)
 
-	path, err := validatePathParameter(m.SetupParameters, s.Protocol == ProtocolQUIC)
+	path, err := validatePathParameter(m.SetupParameters, s.conn.Protocol() == ProtocolQUIC)
 	if err != nil {
 		return err
 	}
@@ -727,7 +804,7 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		}
 	}
 
-	if err := s.ctrlMsgSendQueue.enqueue(context.Background(), &wire.ServerSetupMessage{
+	if err := s.controlStream.write(&wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
 		SetupParameters: wire.KVPList{
 			wire.KeyValuePair{
@@ -739,11 +816,12 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 		return err
 	}
 	close(s.handshakeDoneCh)
+	s.handshakeDone.Store(true)
 	return nil
 }
 
 func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
-	if s.Perspective != PerspectiveClient {
+	if s.conn.Perspective() != PerspectiveClient {
 		return errServerReceveidServerSetup
 	}
 
@@ -757,11 +835,12 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 		return err
 	}
 	close(s.handshakeDoneCh)
+	s.handshakeDone.Store(true)
 	return nil
 }
 
-func (s *Session) onGoAway(msg *wire.GoAwayMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+func (s *Session) onGoAway(msg *wire.GoAwayMessage) {
+	s.Handler.Handle(nil, &Message{
 		Method:        MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
@@ -792,7 +871,36 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
+	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
+		return s.subscriptionDone(m.RequestID, code, count, reason)
+	}, s.Qlogger)
+
+	if err := s.addLocalTrack(lt); err != nil {
+		code := ErrorCodeInternal
+		reason := "internal"
+		if err == errMaxRequestIDViolated {
+			code = ErrorCodeTooManyRequests
+			reason = "too many subscribes"
+		}
+		return s.controlStream.write(&wire.SubscribeErrorMessage{
+			RequestID:    lt.requestID,
+			ErrorCode:    code,
+			ReasonPhrase: reason,
+			TrackAlias:   lt.trackAlias,
+		})
+	}
+	srw := &subscriptionResponseWriter{
+		id:         m.RequestID,
+		trackAlias: m.TrackAlias,
+		session:    s,
+		localTrack: lt,
+		handled:    false,
+	}
+	s.Handler.Handle(srw, m)
+	if !srw.handled {
+		return srw.Reject(0, "unhandled subscription")
+	}
+	return nil
 }
 
 func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
@@ -816,11 +924,12 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	if !ok {
 		return errUnknownRequestID
 	}
-	select {
-	case sub.responseChan <- ProtocolError{
+	err := ProtocolError{
 		code:    msg.ErrorCode,
 		message: msg.ReasonPhrase,
-	}:
+	}
+	select {
+	case sub.responseChan <- err:
 	default:
 		s.logger.Info("dropping unhandled SubscribeError response")
 	}
@@ -866,7 +975,24 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
+	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, nil, s.Qlogger)
+	if err := s.addLocalTrack(lt); err != nil {
+		if rejectErr := s.rejectFetch(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+			return rejectErr
+		}
+		return err
+	}
+	frw := &fetchResponseWriter{
+		id:         m.RequestID,
+		session:    s,
+		localTrack: lt,
+		handled:    false,
+	}
+	s.Handler.Handle(frw, m)
+	if !frw.handled {
+		return frw.Reject(0, "unhandled fetch")
+	}
+	return nil
 }
 
 func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
@@ -911,11 +1037,26 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+	tsrw := &trackStatusResponseWriter{
+		session: s,
+		handled: false,
+		status: TrackStatus{
+			Namespace:    msg.TrackNamespace,
+			Trackname:    string(msg.TrackName),
+			StatusCode:   0,
+			LastGroupID:  0,
+			LastObjectID: 0,
+		},
+	}
+	s.Handler.Handle(tsrw, &Message{
 		Method:    MessageTrackStatusRequest,
 		Namespace: msg.TrackNamespace,
 		Track:     string(msg.TrackName),
 	})
+	if !tsrw.handled {
+		return tsrw.Reject(0, "")
+	}
+	return nil
 }
 
 func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
@@ -950,7 +1091,16 @@ func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
 		Method:    MessageAnnounce,
 		Namespace: a.namespace,
 	}
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), message)
+	arw := &announcementResponseWriter{
+		requestID: message.RequestID,
+		session:   s,
+		handled:   false,
+	}
+	s.Handler.Handle(arw, message)
+	if !arw.handled {
+		return arw.Reject(0, "unhandlded announcement")
+	}
+	return nil
 }
 
 func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
@@ -986,15 +1136,15 @@ func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
 	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
 		return errUnknownAnnouncement
 	}
-	req := &Message{
+	s.Handler.Handle(nil, &Message{
 		Method:    MessageUnannounce,
 		Namespace: msg.TrackNamespace,
-	}
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), req)
+	})
+	return nil
 }
 
-func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) {
+	s.Handler.Handle(nil, &Message{
 		Method:       MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
@@ -1007,11 +1157,21 @@ func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) erro
 		requestID: msg.RequestID,
 		namespace: msg.TrackNamespacePrefix,
 	})
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+	asrw := &announcementSubscriptionResponseWriter{
+		requestID: msg.RequestID,
+		session:   s,
+		handled:   false,
+	}
+	m := &Message{
 		RequestID: msg.RequestID,
 		Method:    MessageSubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
-	})
+	}
+	s.Handler.Handle(asrw, m)
+	if !asrw.handled {
+		return asrw.Reject(0, "unhandled announcement subscription")
+	}
+	return nil
 }
 
 func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
@@ -1047,8 +1207,8 @@ func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 	return nil
 }
 
-func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) error {
-	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), &Message{
+func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) {
+	s.Handler.Handle(nil, &Message{
 		Method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
