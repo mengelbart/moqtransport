@@ -18,7 +18,7 @@ func TestSubscribeAnnounces(t *testing.T) {
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		err := ct.SubscribeAnnouncements(context.Background(), []string{"test_prefix"})

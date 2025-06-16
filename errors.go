@@ -1,5 +1,7 @@
 package moqtransport
 
+import "fmt"
+
 // Generic error codes
 const (
 	ErrorCodeNoError                  uint64 = 0x00
@@ -90,8 +92,12 @@ type ProtocolError struct {
 	message string
 }
 
+func (e *ProtocolError) String() string {
+	return e.Error()
+}
+
 func (e ProtocolError) Error() string {
-	return e.message
+	return fmt.Sprintf("%v: %v", e.code, e.message)
 }
 
 func (e ProtocolError) Code() uint64 {

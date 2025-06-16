@@ -8,7 +8,6 @@ import (
 
 type publisher struct {
 	p           moqtransport.Publisher
-	session     *moqtransport.Session
 	sessionID   uint64
 	subscribeID uint64
 	trackAlias  uint64

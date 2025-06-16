@@ -19,7 +19,7 @@ func TestSubscribe(t *testing.T) {
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -36,7 +36,7 @@ func TestSubscribe(t *testing.T) {
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Reject(moqtransport.ErrorCodeSubscribeUnauthorized, "unauthorized"))
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -59,7 +59,7 @@ func TestSubscribe(t *testing.T) {
 			assert.True(t, ok)
 			publisherCh <- publisher
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -122,7 +122,7 @@ func TestSubscribe(t *testing.T) {
 			assert.True(t, ok)
 			publisherCh <- publisher
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -160,7 +160,7 @@ func TestSubscribe(t *testing.T) {
 			assert.True(t, ok)
 			publisherCh <- publisher
 		})
-		_, _, _, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
