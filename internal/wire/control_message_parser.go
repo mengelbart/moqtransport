@@ -33,7 +33,7 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	length := uint16(hi)<<8 | uint16(lo)
 
 	msg := make([]byte, length)
-	n, err := p.reader.Read(msg)
+	n, err := io.ReadFull(p.reader, msg)
 	if err != nil {
 		return nil, err
 	}
