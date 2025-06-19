@@ -2,6 +2,7 @@ package integrationtests
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -113,14 +114,21 @@ func TestSubscribe(t *testing.T) {
 		defer cancel()
 
 		publisherCh := make(chan moqtransport.Publisher, 1)
+		var clientClosing atomic.Bool
+		clientClosing.Store(false)
 
 		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
-			assert.NotNil(t, w)
-			assert.NoError(t, w.Accept())
-			publisher, ok := w.(moqtransport.Publisher)
-			assert.True(t, ok)
-			publisherCh <- publisher
+			if !clientClosing.Load() {
+				assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+				assert.NotNil(t, w)
+				assert.NoError(t, w.Accept())
+				publisher, ok := w.(moqtransport.Publisher)
+				assert.True(t, ok)
+				publisherCh <- publisher
+			} else {
+				assert.Equal(t, moqtransport.MessageUnsubscribe, m.Method)
+				assert.Nil(t, w)
+			}
 		})
 		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
@@ -136,6 +144,7 @@ func TestSubscribe(t *testing.T) {
 			assert.FailNow(t, "timeout while waiting for publisher")
 		}
 
+		clientClosing.Store(true)
 		assert.NoError(t, rt.Close())
 
 		time.Sleep(10 * time.Millisecond)

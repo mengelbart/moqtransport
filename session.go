@@ -939,15 +939,17 @@ func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
 	return nil
 }
 
-// TODO: Maybe don't immediately close the track and give app a chance to react
-// first?
 func (s *Session) onUnsubscribe(msg *wire.UnsubscribeMessage) error {
 	lt, ok := s.localTracks.findByID(msg.RequestID)
 	if !ok {
 		return errUnknownRequestID
 	}
 	lt.unsubscribe()
-	return nil
+	m := &Message{
+		Method:      MessageUnsubscribe,
+		SubscribeID: msg.SubscribeID,
+	}
+	return s.ctrlMsgReceiveQueue.enqueue(context.Background(), m)
 }
 
 func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
