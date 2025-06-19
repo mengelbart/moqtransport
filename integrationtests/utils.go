@@ -48,8 +48,17 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 	clientSession *moqtransport.Session,
 	cancel func(),
 ) {
+	return setupWithHandlers(t, sConn, cConn, handler, nil)
+}
+
+func setupWithHandlers(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Handler, subscribeHandler moqtransport.SubscribeHandler) (
+	serverSession *moqtransport.Session,
+	clientSession *moqtransport.Session,
+	cancel func(),
+) {
 	serverSession = &moqtransport.Session{
 		Handler:             handler,
+		SubscribeHandler:    subscribeHandler,
 		InitialMaxRequestID: 100,
 		Qlogger:             nil,
 	}
@@ -63,6 +72,7 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 
 	clientSession = &moqtransport.Session{
 		Handler:             handler,
+		SubscribeHandler:    subscribeHandler,
 		InitialMaxRequestID: 100,
 		Qlogger:             nil,
 	}
