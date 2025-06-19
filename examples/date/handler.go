@@ -31,6 +31,7 @@ type moqHandler struct {
 	nextSessionID atomic.Uint64
 	publishers    map[moqtransport.Publisher]struct{}
 	lock          sync.Mutex
+	largestGroup  atomic.Uint64
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -111,34 +112,44 @@ func (h *moqHandler) getHandler(sessionID uint64) moqtransport.Handler {
 				log.Printf("failed to accept announcement: %v", err)
 				return
 			}
-		case moqtransport.MessageSubscribe:
-			if !h.publish {
-				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
-				return
-			}
-			if !tupleEqual(r.Namespace, h.namespace) || (r.Track != h.trackname) {
-				w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
-				return
-			}
-			err := w.Accept()
-			if err != nil {
-				log.Printf("failed to accept subscription: %v", err)
-				return
-			}
-			p, ok := w.(moqtransport.Publisher)
-			if !ok {
-				log.Printf("subscription response writer does not implement publisher?")
-			}
-			datePublisher := &publisher{
-				p:           p,
-				sessionID:   sessionID,
-				subscribeID: r.RequestID,
-				trackAlias:  r.TrackAlias,
-			}
-			h.lock.Lock()
-			h.publishers[datePublisher] = struct{}{}
-			h.lock.Unlock()
 		}
+	})
+}
+
+func (h *moqHandler) getSubscribeHandler(sessionID uint64) moqtransport.SubscribeHandler {
+	return moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+		if !h.publish {
+			log.Printf("sessionNr: %d got unexpected subscribe request: %v", sessionID, m.Namespace)
+			w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "endpoint does not publish any tracks")
+			return
+		}
+		if !tupleEqual(m.Namespace, h.namespace) || m.Track != h.trackname {
+			log.Printf("got unexpected subscribe namespace/track: %v/%v, expected %v/%v", m.Namespace, m.Track, h.namespace, h.trackname)
+			w.Reject(moqtransport.ErrorCodeSubscribeTrackDoesNotExist, "unknown track")
+			return
+		}
+		largestGroup := h.largestGroup.Load()
+		options := moqtransport.DefaultSubscribeOkOptions()
+		options.ContentExists = true
+		options.LargestLocation = &moqtransport.Location{
+			Group:  largestGroup,
+			Object: 0,
+		}
+		err := w.AcceptWithOptions(options)
+		if err != nil {
+			log.Printf("failed to accept subscription: %v", err)
+			return
+		}
+		log.Printf("sessionNr: %d accepted subscription for namespace %v track %v", sessionID, m.Namespace, m.Track)
+		datePublisher := &publisher{
+			p:           w,
+			sessionID:   sessionID,
+			subscribeID: m.RequestID,
+			trackAlias:  m.TrackAlias,
+		}
+		h.lock.Lock()
+		h.publishers[datePublisher] = struct{}{}
+		h.lock.Unlock()
 	})
 }
 
@@ -146,6 +157,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) error {
 	id := h.nextSessionID.Add(1)
 	session := &moqtransport.Session{
 		Handler:             h.getHandler(id),
+		SubscribeHandler:    h.getSubscribeHandler(id),
 		InitialMaxRequestID: 100,
 	}
 	if err := session.Run(conn); err != nil {
@@ -212,6 +224,7 @@ func (h *moqHandler) setupDateTrack() {
 			// }
 		}
 		h.lock.Unlock()
+		h.largestGroup.Store(uint64(groupID))
 		groupID++
 	}
 }

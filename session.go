@@ -48,6 +48,9 @@ type Session struct {
 	// Handler
 	Handler Handler
 
+	// SubscribeHandler is Handler for Subscribe messages
+	SubscribeHandler SubscribeHandler
+
 	// QLOG Logger
 	Qlogger *qlog.Logger
 
@@ -338,12 +341,39 @@ func (s *Session) sendClientSetup() error {
 
 // Subscribe subscribes to track in namespace. It blocks until a response from
 // the peer was received or ctx is cancelled.
+// This is a convenience wrapper around SubscribeWithOptions with default settings.
+// Note. auth should not be a simple string, but a structured object containing
+// an optional session-specific alias (draft-11 8.2.1.1)
 func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace []string,
 	name string,
 	auth string,
 ) (*RemoteTrack, error) {
+	opts := DefaultSubscribeOptions()
+
+	// Add authorization parameter if provided
+	if len(auth) > 0 {
+		opts.Parameters = KVPList{
+			{
+				Type:       wire.AuthorizationTokenParameterKey,
+				ValueBytes: []byte(auth),
+			},
+		}
+	}
+
+	return s.SubscribeWithOptions(ctx, namespace, name, opts)
+}
+
+// SubscribeWithOptions subscribes to a track with full control over subscription parameters.
+// It blocks until a response from the peer was received or ctx is cancelled.
+func (s *Session) SubscribeWithOptions(
+	ctx context.Context,
+	namespace []string,
+	name string,
+	opts *SubscribeOptions,
+) (*RemoteTrack, error) {
+
 	requestID, err := s.getRequestID()
 	if err != nil {
 		return nil, err
@@ -355,24 +385,22 @@ func (s *Session) Subscribe(
 	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
 		return nil, err
 	}
+
+	if opts == nil {
+		opts = DefaultSubscribeOptions()
+	}
 	cm := &wire.SubscribeMessage{
 		RequestID:          requestID,
 		TrackAlias:         trackAlias,
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
-		SubscriberPriority: 0,
-		GroupOrder:         0,
-		Forward:            1,
-		FilterType:         wire.FilterTypeLatestObject,
-		StartLocation:      wire.Location{Group: 0, Object: 0},
-		EndGroup:           0,
-		Parameters:         wire.KVPList{},
-	}
-	if len(auth) > 0 {
-		cm.Parameters = append(cm.Parameters, wire.KeyValuePair{
-			Type:       wire.AuthorizationTokenParameterKey,
-			ValueBytes: []byte(auth),
-		})
+		SubscriberPriority: opts.SubscriberPriority,
+		GroupOrder:         opts.GroupOrder,
+		Forward:            boolToUint8(opts.Forward),
+		FilterType:         opts.FilterType.toWireFilterType(),
+		StartLocation:      opts.StartLocation.toWireLocation(),
+		EndGroup:           opts.EndGroup,
+		Parameters:         opts.Parameters.toWireKVPList(),
 	}
 	if err = s.controlStream.write(cm); err != nil {
 		return nil, err
@@ -390,22 +418,32 @@ func (s *Session) Subscribe(
 	return rt, nil
 }
 
-func (s *Session) acceptSubscription(id uint64) error {
+// acceptSubscriptionWithOptions accepts a subscription with relevant options.
+func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOptions) error {
 	_, ok := s.localTracks.confirm(id)
 	if !ok {
 		return errUnknownRequestID
 	}
-	return s.controlStream.write(&wire.SubscribeOkMessage{
+
+	// Use defaults if opts is nil
+	if opts == nil {
+		opts = DefaultSubscribeOkOptions()
+	}
+
+	msg := &wire.SubscribeOkMessage{
 		RequestID:     id,
-		Expires:       0,
-		GroupOrder:    1,
-		ContentExists: false,
-		LargestLocation: wire.Location{
-			Group:  0,
-			Object: 0,
-		},
-		Parameters: wire.KVPList{},
-	})
+		Expires:       opts.Expires,
+		GroupOrder:    opts.GroupOrder,
+		ContentExists: opts.ContentExists,
+		Parameters:    opts.Parameters.toWireKVPList(),
+	}
+
+	// Set largest location if content exists and location is provided
+	if opts.ContentExists && opts.LargestLocation != nil {
+		msg.LargestLocation = opts.LargestLocation.toWireLocation()
+	}
+
+	return s.controlStream.write(msg)
 }
 
 func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
@@ -858,16 +896,20 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	if err != nil {
 		return err
 	}
-	m := &Message{
-		Method:        MessageSubscribe,
-		RequestID:     msg.RequestID,
-		TrackAlias:    msg.TrackAlias,
-		Namespace:     msg.TrackNamespace,
-		Track:         string(msg.TrackName),
-		Authorization: auth,
-		NewSessionURI: "",
-		ErrorCode:     0,
-		ReasonPhrase:  "",
+
+	m := &SubscribeMessage{
+		RequestID:          msg.RequestID,
+		TrackAlias:         msg.TrackAlias,
+		Namespace:          msg.TrackNamespace,
+		Track:              string(msg.TrackName),
+		Authorization:      auth,
+		SubscriberPriority: msg.SubscriberPriority,
+		GroupOrder:         msg.GroupOrder,
+		Forward:            msg.Forward,
+		FilterType:         fromWireFilterType(msg.FilterType),
+		StartLocation:      nil,
+		EndGroup:           nil,
+		Parameters:         fromWireKVPList(msg.Parameters),
 	}
 	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
 		return s.subscriptionDone(m.RequestID, code, count, reason)
@@ -887,14 +929,14 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 			TrackAlias:   lt.trackAlias,
 		})
 	}
-	srw := &subscriptionResponseWriter{
+	srw := &SubscribeResponseWriter{
 		id:         m.RequestID,
 		trackAlias: m.TrackAlias,
 		session:    s,
 		localTrack: lt,
 		handled:    false,
 	}
-	s.Handler.Handle(srw, m)
+	s.SubscribeHandler.HandleSubscribe(srw, m)
 	if !srw.handled {
 		return srw.Reject(0, "unhandled subscription")
 	}
@@ -1210,4 +1252,11 @@ func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) 
 		Method:    MessageUnsubscribeAnnounces,
 		Namespace: msg.TrackNamespacePrefix,
 	})
+}
+
+func boolToUint8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
 }
