@@ -8,6 +8,11 @@ type SubscribeResponseWriter struct {
 	handled    bool
 }
 
+// Accept accepts the subscription with default options for backward compatibility.
+func (w *SubscribeResponseWriter) Accept() error {
+	return w.AcceptWithOptions(DefaultSubscribeOkOptions())
+}
+
 // AcceptWithOptions accepts the subscription with custom response options.
 func (w *SubscribeResponseWriter) AcceptWithOptions(opts *SubscribeOkOptions) error {
 	w.handled = true

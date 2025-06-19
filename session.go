@@ -400,7 +400,7 @@ func (s *Session) SubscribeWithOptions(
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
 		SubscriberPriority: opts.SubscriberPriority,
-		GroupOrder:         opts.GroupOrder,
+		GroupOrder:         uint8(opts.GroupOrder),
 		Forward:            boolToUint8(opts.Forward),
 		FilterType:         opts.FilterType.toWireFilterType(),
 		StartLocation:      opts.StartLocation.toWireLocation(),
@@ -464,7 +464,7 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 	msg := &wire.SubscribeOkMessage{
 		RequestID:     id,
 		Expires:       opts.Expires,
-		GroupOrder:    opts.GroupOrder,
+		GroupOrder:    uint8(opts.GroupOrder),
 		ContentExists: opts.ContentExists,
 		Parameters:    opts.Parameters.toWireKVPList(),
 	}
@@ -967,8 +967,14 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		localTrack: lt,
 		handled:    false,
 	}
-	s.SubscribeHandler.HandleSubscribe(srw, m)
+	if s.SubscribeHandler != nil {
+		s.SubscribeHandler.HandleSubscribe(srw, m)
+	}
 	if !srw.handled {
+		if s.SubscribeHandler == nil {
+			s.logger.Warn("no SubscribeHandler set, rejecting subscription",
+				"request_id", m.RequestID, "track_alias", m.TrackAlias)
+		}
 		return srw.Reject(0, "unhandled subscription")
 	}
 	return nil
@@ -979,6 +985,23 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	if !ok {
 		return errUnknownRequestID
 	}
+
+	// Store complete subscription information from SUBSCRIBE_OK
+	info := &SubscriptionInfo{
+		Expires:       msg.Expires,
+		GroupOrder:    GroupOrder(msg.GroupOrder),
+		ContentExists: msg.ContentExists,
+		Parameters:    fromWireKVPList(msg.Parameters),
+	}
+
+	// Only set LargestLocation if content exists
+	if msg.ContentExists {
+		loc := fromWireLocation(msg.LargestLocation)
+		info.LargestLocation = &loc
+	}
+
+	rt.setSubscriptionInfo(info)
+
 	select {
 	case rt.responseChan <- nil:
 	default:

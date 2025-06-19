@@ -39,10 +39,36 @@ type RemoteTrack struct {
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
 
 	responseChan chan error
+
+	subscriptionInfo *SubscriptionInfo
 }
 
 func (t *RemoteTrack) RequestID() uint64 {
 	return t.requestID
+}
+
+// SubscriptionInfo returns the complete subscription information received from SUBSCRIBE_OK.
+// Returns nil if no SUBSCRIBE_OK has been received yet or the subscription is still pending.
+// This provides access to all metadata including expires, group order, content existence,
+// largest location, and any custom parameters from the publisher.
+func (t *RemoteTrack) SubscriptionInfo() *SubscriptionInfo {
+	return t.subscriptionInfo
+}
+
+// LargestLocation returns the largest location received from SUBSCRIBE_OK.
+// Returns nil if no location was provided in the SUBSCRIBE_OK response or if ContentExists is false.
+// This is a convenience method that extracts the LargestLocation from the full SubscriptionInfo.
+func (t *RemoteTrack) LargestLocation() *Location {
+	if t.subscriptionInfo == nil {
+		return nil
+	}
+	return t.subscriptionInfo.LargestLocation
+}
+
+// setSubscriptionInfo sets the complete subscription information from SUBSCRIBE_OK response.
+// This is called internally when processing SUBSCRIBE_OK messages.
+func (t *RemoteTrack) setSubscriptionInfo(info *SubscriptionInfo) {
+	t.subscriptionInfo = info
 }
 
 // UpdateSubscription updates the subscription parameters for this track.

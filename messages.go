@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -39,9 +40,53 @@ const (
 	FilterTypeAbsoluteRange FilterType = 0x04
 )
 
+// String returns a human-readable description of the FilterType.
+func (f FilterType) String() string {
+	switch f {
+	case FilterTypeLatestObject:
+		return "LatestObject"
+	case FilterTypeNextGroupStart:
+		return "NextGroupStart"
+	case FilterTypeAbsoluteStart:
+		return "AbsoluteStart"
+	case FilterTypeAbsoluteRange:
+		return "AbsoluteRange"
+	default:
+		return fmt.Sprintf("Unknown(%d)", uint64(f))
+	}
+}
+
 // toWireFilterType converts a public FilterType to an internal wire.FilterType
 func (f FilterType) toWireFilterType() wire.FilterType {
 	return wire.FilterType(f)
+}
+
+// GroupOrder represents the group delivery order preference used in SUBSCRIBE_OK messages.
+type GroupOrder uint8
+
+const (
+	// GroupOrderNone indicates no specific ordering preference.
+	GroupOrderNone GroupOrder = 0x0
+
+	// GroupOrderAscending indicates groups should be delivered in ascending order.
+	GroupOrderAscending GroupOrder = 0x1
+
+	// GroupOrderDescending indicates groups should be delivered in descending order.
+	GroupOrderDescending GroupOrder = 0x2
+)
+
+// String returns a human-readable description of the GroupOrder.
+func (g GroupOrder) String() string {
+	switch g {
+	case GroupOrderNone:
+		return "None"
+	case GroupOrderAscending:
+		return "Ascending"
+	case GroupOrderDescending:
+		return "Descending"
+	default:
+		return fmt.Sprintf("Invalid(%d)", uint8(g))
+	}
 }
 
 // KeyValuePair represents a key-value parameter pair.
@@ -62,6 +107,57 @@ func (kvp *KeyValuePair) toWireKVP() wire.KeyValuePair {
 
 // KVPList represents a list of key-value parameters.
 type KVPList []KeyValuePair
+
+// GetParameter extracts a specific parameter by key from the parameter list.
+func (kvpl KVPList) GetParameter(key uint64) (KeyValuePair, bool) {
+	for _, param := range kvpl {
+		if param.Type == key {
+			return param, true
+		}
+	}
+	return KeyValuePair{}, false
+}
+
+// GetDeliveryTimeout extracts the delivery timeout parameter if present.
+// Returns the timeout duration in milliseconds and whether the parameter was found.
+func (kvpl KVPList) GetDeliveryTimeout() (time.Duration, bool) {
+	for _, param := range kvpl {
+		if param.Type == wire.DeliveryTimeoutParameterKey {
+			return time.Duration(param.ValueVarInt) * time.Millisecond, true
+		}
+	}
+	return 0, false
+}
+
+// GetMaxCacheDuration extracts the max cache duration parameter if present.
+// Returns the cache duration and whether the parameter was found.
+func (kvpl KVPList) GetMaxCacheDuration() (time.Duration, bool) {
+	for _, param := range kvpl {
+		if param.Type == wire.MaxCacheDurationParameterKey {
+			if len(param.ValueBytes) > 0 {
+				// TODO: Parse duration from bytes according to specification
+				// For now, return zero duration as placeholder
+				return 0, true
+			}
+			// If no bytes, treat as varInt milliseconds
+			return time.Duration(param.ValueVarInt) * time.Millisecond, true
+		}
+	}
+	return 0, false
+}
+
+// GetAuthorizationToken extracts the authorization token parameter if present.
+// Returns the token as a byte slice and whether the parameter was found.
+func (kvpl KVPList) GetAuthorizationToken() ([]byte, bool) {
+	for _, param := range kvpl {
+		if param.Type == wire.AuthorizationTokenParameterKey {
+			if len(param.ValueBytes) > 0 {
+				return param.ValueBytes, true
+			}
+		}
+	}
+	return nil, false
+}
 
 // toWireKVPList converts a public KVPList to an internal wire.KVPList
 func (kvpl KVPList) toWireKVPList() wire.KVPList {
@@ -111,7 +207,7 @@ type SubscribeOptions struct {
 
 	// GroupOrder indicates group ordering preference:
 	// 0 = None (no specific ordering), 1 = Ascending, 2 = Descending
-	GroupOrder uint8
+	GroupOrder GroupOrder
 
 	// Forward indicates forward preference:
 	// false = No forward preference, true Forward preference
@@ -134,9 +230,9 @@ type SubscribeOptions struct {
 func DefaultSubscribeOptions() *SubscribeOptions {
 	return &SubscribeOptions{
 		SubscriberPriority: 128,
-		GroupOrder:         1,
+		GroupOrder:         GroupOrderAscending,
 		Forward:            true,
-		FilterType:         FilterTypeNextGroupStart,
+		FilterType:         FilterTypeLatestObject,
 		StartLocation:      Location{0, 0},
 		EndGroup:           0,
 		Parameters:         KVPList{},
@@ -149,7 +245,7 @@ type SubscribeOkOptions struct {
 	Expires time.Duration
 
 	// GroupOrder specifies the actual group order that will be used
-	GroupOrder uint8
+	GroupOrder GroupOrder
 
 	// ContentExists indicates whether content is available for this track
 	ContentExists bool
@@ -165,11 +261,37 @@ type SubscribeOkOptions struct {
 func DefaultSubscribeOkOptions() *SubscribeOkOptions {
 	return &SubscribeOkOptions{
 		Expires:         0,
-		GroupOrder:      1,
-		ContentExists:   true,
+		GroupOrder:      GroupOrderAscending,
+		ContentExists:   false,
 		LargestLocation: nil,
 		Parameters:      KVPList{},
 	}
+}
+
+// SubscriptionInfo contains all information received from a SUBSCRIBE_OK response.
+// This provides clients with complete metadata about the accepted subscription.
+type SubscriptionInfo struct {
+	// Expires specifies how long the subscription is valid in milliseconds.
+	// A value of 0 indicates that the subscription does not expire or expires at an unknown time.
+	// Expires is advisory and a subscription can end prior to the expiry time or last longer.
+	Expires time.Duration
+
+	// GroupOrder indicates the subscription will be delivered in a specific order by group.
+	// See GroupOrder constants for valid values.
+	GroupOrder GroupOrder
+
+	// ContentExists indicates whether content has been published on this track.
+	// true if an object has been published, false if not.
+	ContentExists bool
+
+	// LargestLocation contains the location of the largest object available for this track.
+	// This field is only present if ContentExists is true.
+	// Can be used for optimal track switching by calculating switching boundaries.
+	LargestLocation *Location
+
+	// Parameters contains the key-value parameters from the SUBSCRIBE_OK response.
+	// These may include publisher-specific metadata or delivery preferences.
+	Parameters KVPList
 }
 
 // SubscribeUpdateOptions contains options for updating an existing subscription.
@@ -225,78 +347,14 @@ type SubscribeMessage struct {
 	Parameters         KVPList    // Full parameter list from the subscribe message
 }
 
-// GetDeliveryTimeout extracts the delivery timeout parameter if present.
-func (m *SubscribeMessage) GetDeliveryTimeout() (time.Duration, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == wire.DeliveryTimeoutParameterKey {
-			return time.Duration(param.ValueVarInt) * time.Millisecond, true
-		}
-	}
-	return 0, false
-}
-
-// GetMaxCacheDuration extracts the max cache duration parameter if present.
-func (m *SubscribeMessage) GetMaxCacheDuration() (time.Duration, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == wire.MaxCacheDurationParameterKey && len(param.ValueBytes) > 0 {
-			// Parse duration from bytes (implementation depends on format)
-			// For now, return zero duration
-			return 0, true
-		}
-	}
-	return 0, false
-}
-
-// GetParameter extracts a custom parameter by key.
-func (m *SubscribeMessage) GetParameter(key uint64) (KeyValuePair, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == key {
-			return param, true
-		}
-	}
-	return KeyValuePair{}, false
-}
-
 // SubscribeUpdateMessage represents a SUBSCRIBE_UPDATE message from the peer.
 type SubscribeUpdateMessage struct {
 	RequestID uint64
 
 	// Subscribe update specific fields
-	StartLocation      Location  // New start position for the subscription
-	EndGroup           uint64    // New end group for the subscription
-	SubscriberPriority uint8     // Updated delivery priority (0-255, higher is more important)
-	Forward            uint8     // Updated forward preference: 0=No, 1=Yes
-	Parameters         KVPList   // Updated parameter list
-}
-
-// GetDeliveryTimeout extracts the delivery timeout parameter if present.
-func (m *SubscribeUpdateMessage) GetDeliveryTimeout() (time.Duration, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == wire.DeliveryTimeoutParameterKey {
-			return time.Duration(param.ValueVarInt) * time.Millisecond, true
-		}
-	}
-	return 0, false
-}
-
-// GetMaxCacheDuration extracts the max cache duration parameter if present.
-func (m *SubscribeUpdateMessage) GetMaxCacheDuration() (time.Duration, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == wire.MaxCacheDurationParameterKey && len(param.ValueBytes) > 0 {
-			// Parse duration from bytes (implementation depends on format)
-			// For now, return zero duration
-			return 0, true
-		}
-	}
-	return 0, false
-}
-
-// GetParameter extracts a custom parameter by key.
-func (m *SubscribeUpdateMessage) GetParameter(key uint64) (KeyValuePair, bool) {
-	for _, param := range m.Parameters {
-		if param.Type == key {
-			return param, true
-		}
-	}
-	return KeyValuePair{}, false
+	StartLocation      Location // New start position for the subscription
+	EndGroup           uint64   // New end group for the subscription
+	SubscriberPriority uint8    // Updated delivery priority (0-255, higher is more important)
+	Forward            uint8    // Updated forward preference: 0=No, 1=Yes
+	Parameters         KVPList  // Updated parameter list
 }
