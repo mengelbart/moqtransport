@@ -503,7 +503,7 @@ func TestSession_UpdateSubscription(t *testing.T) {
 		h := HandlerFunc(func(rw ResponseWriter, m *Message) {})
 
 		s := newSession(conn, cs, h)
-		s.remoteTracks.addPending(123, &RemoteTrack{requestID: 123})
+		_ = s.remoteTracks.addPending(123, &RemoteTrack{requestID: 123})
 		s.remoteTracks.confirm(123)
 
 		// Expect SUBSCRIBE_UPDATE message to be written
