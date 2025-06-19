@@ -29,6 +29,7 @@ type RemoteTrack struct {
 
 	logger          *slog.Logger
 	unsubscribeFunc func() error
+	updateFunc      func(context.Context, *SubscribeUpdateOptions) error
 	buffer          chan *Object
 
 	doneCtx       context.Context
@@ -44,12 +45,22 @@ func (t *RemoteTrack) RequestID() uint64 {
 	return t.requestID
 }
 
-func newRemoteTrack(requestID uint64, unsubscribeFunc func() error) *RemoteTrack {
+// UpdateSubscription updates the subscription parameters for this track.
+// No response is expected according to draft-11 specification.
+func (t *RemoteTrack) UpdateSubscription(ctx context.Context, opts *SubscribeUpdateOptions) error {
+	if t.updateFunc == nil {
+		return errors.New("update function not available")
+	}
+	return t.updateFunc(ctx, opts)
+}
+
+func newRemoteTrack(requestID uint64, unsubscribeFunc func() error, updateFunc func(context.Context, *SubscribeUpdateOptions) error) *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
 		requestID:       requestID,
 		logger:          defaultLogger,
 		unsubscribeFunc: unsubscribeFunc,
+		updateFunc:      updateFunc,
 		buffer:          make(chan *Object, 100),
 		doneCtx:         ctx,
 		doneCtxCancel:   cancel,

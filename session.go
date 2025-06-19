@@ -51,6 +51,9 @@ type Session struct {
 	// SubscribeHandler is Handler for Subscribe messages
 	SubscribeHandler SubscribeHandler
 
+	// SubscribeUpdateHandler is Handler for SubscribeUpdate messages
+	SubscribeUpdateHandler SubscribeUpdateHandler
+
 	// QLOG Logger
 	Qlogger *qlog.Logger
 
@@ -380,6 +383,8 @@ func (s *Session) SubscribeWithOptions(
 	}
 	rt := newRemoteTrack(requestID, func() error {
 		return s.unsubscribe(requestID)
+	}, func(ctx context.Context, opts *SubscribeUpdateOptions) error {
+		return s.UpdateSubscription(ctx, requestID, opts)
 	})
 	trackAlias := s.trackAliases.next()
 	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
@@ -416,6 +421,32 @@ func (s *Session) SubscribeWithOptions(
 		return nil, err
 	}
 	return rt, nil
+}
+
+// UpdateSubscription sends a SUBSCRIBE_UPDATE message to update an existing subscription.
+// No response is expected according to draft-11 specification.
+func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opts *SubscribeUpdateOptions) error {
+	// Validate that the subscription exists
+	if _, exists := s.remoteTracks.findByRequestID(requestID); !exists {
+		return errUnknownRequestID
+	}
+
+	// Use defaults if opts is nil
+	if opts == nil {
+		opts = DefaultSubscribeUpdateOptions()
+	}
+
+	// Create and send SUBSCRIBE_UPDATE message
+	cm := &wire.SubscribeUpdateMessage{
+		RequestID:          requestID,
+		StartLocation:      opts.StartLocation.toWireLocation(),
+		EndGroup:           opts.EndGroup,
+		SubscriberPriority: opts.SubscriberPriority,
+		Forward:            boolToUint8(opts.Forward),
+		Parameters:         opts.Parameters.toWireKVPList(),
+	}
+
+	return s.controlStream.write(cm)
 }
 
 // acceptSubscriptionWithOptions accepts a subscription with relevant options.
@@ -491,7 +522,7 @@ func (s *Session) Fetch(
 	}
 	rt := newRemoteTrack(requestID, func() error {
 		return s.fetchCancel(requestID)
-	})
+	}, nil)
 	if err = s.remoteTracks.addPending(requestID, rt); err != nil {
 		var tooManySubscribes errRequestsBlocked
 		if errors.As(err, &tooManySubscribes) {
@@ -976,8 +1007,32 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 	return nil
 }
 
-func (s *Session) onSubscribeUpdate(_ *wire.SubscribeUpdateMessage) error {
-	// TODO
+func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
+	// Find the local track for this request ID to validate it exists
+	_, ok := s.localTracks.findByID(msg.RequestID)
+	if !ok {
+		// According to draft-11, should close session with Protocol Violation
+		// if Request ID doesn't exist
+		return errUnknownRequestID
+	}
+
+	// Convert wire message to public message struct
+	publicMsg := &SubscribeUpdateMessage{
+		RequestID:          msg.RequestID,
+		StartLocation:      fromWireLocation(msg.StartLocation),
+		EndGroup:           msg.EndGroup,
+		SubscriberPriority: msg.SubscriberPriority,
+		Forward:            msg.Forward,
+		Parameters:         fromWireKVPList(msg.Parameters),
+	}
+
+	// Propagate to application handler if available
+	if s.SubscribeUpdateHandler != nil {
+		s.SubscribeUpdateHandler.HandleSubscribeUpdate(publicMsg)
+	}
+
+	// For now, accept the update without enforcing constraints
+	// A full implementation would validate narrowing constraints per draft-11
 	return nil
 }
 
