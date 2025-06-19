@@ -495,3 +495,88 @@ func TestSession(t *testing.T) {
 		assert.NotNil(t, rt)
 	})
 }
+
+func TestSession_UpdateSubscription(t *testing.T) {
+	t.Run("UpdateSubscription sends SUBSCRIBE_UPDATE message", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
+		cs := NewMockControlMessageStream(ctrl)
+		h := HandlerFunc(func(rw ResponseWriter, m *Message) {})
+
+		s := newSession(conn, cs, h)
+		s.remoteTracks.addPending(123, &RemoteTrack{requestID: 123})
+		s.remoteTracks.confirm(123)
+
+		// Expect SUBSCRIBE_UPDATE message to be written
+		cs.EXPECT().write(&wire.SubscribeUpdateMessage{
+			RequestID:          123,
+			StartLocation:      wire.Location{Group: 100, Object: 5},
+			EndGroup:           200,
+			SubscriberPriority: 64,
+			Forward:            1,
+			Parameters:         wire.KVPList{},
+		}).Return(nil)
+
+		// Test UpdateSubscription
+		opts := &SubscribeUpdateOptions{
+			StartLocation:      Location{Group: 100, Object: 5},
+			EndGroup:           200,
+			SubscriberPriority: 64,
+			Forward:            true,
+			Parameters:         KVPList{},
+		}
+
+		err := s.UpdateSubscription(context.Background(), 123, opts)
+		assert.NoError(t, err)
+	})
+
+	t.Run("UpdateSubscription returns error for unknown request ID", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
+		cs := NewMockControlMessageStream(ctrl)
+		h := HandlerFunc(func(rw ResponseWriter, m *Message) {})
+
+		s := newSession(conn, cs, h)
+
+		err := s.UpdateSubscription(context.Background(), 999, nil)
+		assert.Error(t, err)
+		assert.Equal(t, errUnknownRequestID, err)
+	})
+}
+
+func TestRemoteTrack_UpdateSubscription(t *testing.T) {
+	t.Run("RemoteTrack UpdateSubscription calls session method", func(t *testing.T) {
+		callCount := 0
+		updateFunc := func(ctx context.Context, opts *SubscribeUpdateOptions) error {
+			callCount++
+			assert.Equal(t, uint64(150), opts.StartLocation.Group)
+			return nil
+		}
+
+		rt := newRemoteTrack(123, nil, updateFunc)
+
+		opts := &SubscribeUpdateOptions{
+			StartLocation: Location{Group: 150, Object: 0},
+		}
+
+		err := rt.UpdateSubscription(context.Background(), opts)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, callCount)
+	})
+
+	t.Run("RemoteTrack UpdateSubscription returns error when updateFunc is nil", func(t *testing.T) {
+		rt := newRemoteTrack(123, nil, nil)
+
+		err := rt.UpdateSubscription(context.Background(), nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "update function not available")
+	})
+}

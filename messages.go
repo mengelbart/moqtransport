@@ -256,3 +256,47 @@ func (m *SubscribeMessage) GetParameter(key uint64) (KeyValuePair, bool) {
 	}
 	return KeyValuePair{}, false
 }
+
+// SubscribeUpdateMessage represents a SUBSCRIBE_UPDATE message from the peer.
+type SubscribeUpdateMessage struct {
+	RequestID uint64
+
+	// Subscribe update specific fields
+	StartLocation      Location  // New start position for the subscription
+	EndGroup           uint64    // New end group for the subscription
+	SubscriberPriority uint8     // Updated delivery priority (0-255, higher is more important)
+	Forward            uint8     // Updated forward preference: 0=No, 1=Yes
+	Parameters         KVPList   // Updated parameter list
+}
+
+// GetDeliveryTimeout extracts the delivery timeout parameter if present.
+func (m *SubscribeUpdateMessage) GetDeliveryTimeout() (time.Duration, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == wire.DeliveryTimeoutParameterKey {
+			return time.Duration(param.ValueVarInt) * time.Millisecond, true
+		}
+	}
+	return 0, false
+}
+
+// GetMaxCacheDuration extracts the max cache duration parameter if present.
+func (m *SubscribeUpdateMessage) GetMaxCacheDuration() (time.Duration, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == wire.MaxCacheDurationParameterKey && len(param.ValueBytes) > 0 {
+			// Parse duration from bytes (implementation depends on format)
+			// For now, return zero duration
+			return 0, true
+		}
+	}
+	return 0, false
+}
+
+// GetParameter extracts a custom parameter by key.
+func (m *SubscribeUpdateMessage) GetParameter(key uint64) (KeyValuePair, bool) {
+	for _, param := range m.Parameters {
+		if param.Type == key {
+			return param, true
+		}
+	}
+	return KeyValuePair{}, false
+}

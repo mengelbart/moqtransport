@@ -153,12 +153,24 @@ func (h *moqHandler) getSubscribeHandler(sessionID uint64) moqtransport.Subscrib
 	})
 }
 
+func (h *moqHandler) getSubscribeUpdateHandler(sessionID uint64) moqtransport.SubscribeUpdateHandler {
+	return moqtransport.SubscribeUpdateHandlerFunc(func(m *moqtransport.SubscribeUpdateMessage) {
+		log.Printf("sessionNr: %d received SUBSCRIBE_UPDATE for requestID %d", sessionID, m.RequestID)
+		log.Printf("  new start: group=%d, object=%d", m.StartLocation.Group, m.StartLocation.Object)
+		log.Printf("  new end group: %d", m.EndGroup)
+		log.Printf("  new priority: %d", m.SubscriberPriority)
+		log.Printf("  new forward: %d", m.Forward)
+		log.Printf("  parameters: %d", len(m.Parameters))
+	})
+}
+
 func (h *moqHandler) handle(conn moqtransport.Connection) error {
 	id := h.nextSessionID.Add(1)
 	session := &moqtransport.Session{
-		Handler:             h.getHandler(id),
-		SubscribeHandler:    h.getSubscribeHandler(id),
-		InitialMaxRequestID: 100,
+		Handler:                h.getHandler(id),
+		SubscribeHandler:       h.getSubscribeHandler(id),
+		SubscribeUpdateHandler: h.getSubscribeUpdateHandler(id),
+		InitialMaxRequestID:    100,
 	}
 	if err := session.Run(conn); err != nil {
 		return err

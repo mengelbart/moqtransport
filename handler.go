@@ -83,7 +83,7 @@ type StatusRequestHandler interface {
 	SetStatus(statusCode, lastGroupID, lastObjectID uint64)
 }
 
-// A Handler responds to MoQ messages.
+// Handler is the handler interface for non-specific  MoQ messages.
 type Handler interface {
 	Handle(ResponseWriter, *Message)
 }
@@ -107,4 +107,17 @@ type SubscribeHandlerFunc func(*SubscribeResponseWriter, *SubscribeMessage)
 // HandleSubscribe implements SubscribeHandler.
 func (f SubscribeHandlerFunc) HandleSubscribe(rw *SubscribeResponseWriter, m *SubscribeMessage) {
 	f(rw, m)
+}
+
+// SubscribeUpdateHandler is the handler interface for handling SUBSCRIBE_UPDATE messages.
+type SubscribeUpdateHandler interface {
+	HandleSubscribeUpdate(*SubscribeUpdateMessage)
+}
+
+// SubscribeUpdateHandlerFunc is a type that implements SubscribeUpdateHandler.
+type SubscribeUpdateHandlerFunc func(*SubscribeUpdateMessage)
+
+// HandleSubscribeUpdate implements SubscribeUpdateHandler.
+func (f SubscribeUpdateHandlerFunc) HandleSubscribeUpdate(m *SubscribeUpdateMessage) {
+	f(m)
 }
