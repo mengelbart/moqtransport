@@ -29,6 +29,7 @@ type RemoteTrack struct {
 
 	logger          *slog.Logger
 	unsubscribeFunc func() error
+	updateFunc      func(context.Context, *SubscribeUpdateOptions) error
 	buffer          chan *Object
 
 	doneCtx       context.Context
@@ -38,14 +39,54 @@ type RemoteTrack struct {
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
 
 	responseChan chan error
+
+	subscriptionInfo *SubscriptionInfo
 }
 
-func newRemoteTrack(requestID uint64, unsubscribeFunc func() error) *RemoteTrack {
+func (t *RemoteTrack) RequestID() uint64 {
+	return t.requestID
+}
+
+// SubscriptionInfo returns the complete subscription information received from SUBSCRIBE_OK.
+// Returns nil if no SUBSCRIBE_OK has been received yet or the subscription is still pending.
+// This provides access to all metadata including expires, group order, content existence,
+// largest location, and any custom parameters from the publisher.
+func (t *RemoteTrack) SubscriptionInfo() *SubscriptionInfo {
+	return t.subscriptionInfo
+}
+
+// LargestLocation returns the largest location received from SUBSCRIBE_OK.
+// Returns nil if no location was provided in the SUBSCRIBE_OK response or if ContentExists is false.
+// This is a convenience method that extracts the LargestLocation from the full SubscriptionInfo.
+func (t *RemoteTrack) LargestLocation() *Location {
+	if t.subscriptionInfo == nil {
+		return nil
+	}
+	return t.subscriptionInfo.LargestLocation
+}
+
+// setSubscriptionInfo sets the complete subscription information from SUBSCRIBE_OK response.
+// This is called internally when processing SUBSCRIBE_OK messages.
+func (t *RemoteTrack) setSubscriptionInfo(info *SubscriptionInfo) {
+	t.subscriptionInfo = info
+}
+
+// UpdateSubscription updates the subscription parameters for this track.
+// No response is expected according to draft-11 specification.
+func (t *RemoteTrack) UpdateSubscription(ctx context.Context, opts *SubscribeUpdateOptions) error {
+	if t.updateFunc == nil {
+		return errors.New("update function not available")
+	}
+	return t.updateFunc(ctx, opts)
+}
+
+func newRemoteTrack(requestID uint64, unsubscribeFunc func() error, updateFunc func(context.Context, *SubscribeUpdateOptions) error) *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
 		requestID:       requestID,
 		logger:          defaultLogger,
 		unsubscribeFunc: unsubscribeFunc,
+		updateFunc:      updateFunc,
 		buffer:          make(chan *Object, 100),
 		doneCtx:         ctx,
 		doneCtxCancel:   cancel,
@@ -96,7 +137,7 @@ func (t *RemoteTrack) readStream(parser objectMessageParser) error {
 			}
 			return err
 		}
-		t.logger.Info("subgroup got new object message", "message", m)
+		t.logger.Debug("subgroup got new object message", "message", m)
 		payload := make([]byte, len(m.ObjectPayload))
 		n := copy(payload, m.ObjectPayload)
 		if n != len(m.ObjectPayload) {

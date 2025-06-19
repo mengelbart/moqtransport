@@ -14,12 +14,14 @@ func TestSubscribe(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+		subscribeHandler := moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "auth", m.Authorization)
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
 		})
-		_, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -31,12 +33,14 @@ func TestSubscribe(t *testing.T) {
 		sConn, cConn, cancel := connect(t)
 		defer cancel()
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+		subscribeHandler := moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "auth", m.Authorization)
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Reject(moqtransport.ErrorCodeSubscribeUnauthorized, "unauthorized"))
 		})
-		_, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -51,15 +55,15 @@ func TestSubscribe(t *testing.T) {
 
 		publisherCh := make(chan moqtransport.Publisher, 1)
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+		subscribeHandler := moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "auth", m.Authorization)
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
-			publisher, ok := w.(moqtransport.Publisher)
-			assert.True(t, ok)
-			publisherCh <- publisher
+			publisherCh <- w
 		})
-		_, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -114,15 +118,15 @@ func TestSubscribe(t *testing.T) {
 
 		publisherCh := make(chan moqtransport.Publisher, 1)
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+		subscribeHandler := moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "auth", m.Authorization)
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
-			publisher, ok := w.(moqtransport.Publisher)
-			assert.True(t, ok)
-			publisherCh <- publisher
+			publisherCh <- w
 		})
-		_, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
@@ -152,15 +156,15 @@ func TestSubscribe(t *testing.T) {
 
 		publisherCh := make(chan moqtransport.Publisher, 1)
 
-		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
-			assert.Equal(t, moqtransport.MessageSubscribe, m.Method)
+		subscribeHandler := moqtransport.SubscribeHandlerFunc(func(w *moqtransport.SubscribeResponseWriter, m *moqtransport.SubscribeMessage) {
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "auth", m.Authorization)
 			assert.NotNil(t, w)
 			assert.NoError(t, w.Accept())
-			publisher, ok := w.(moqtransport.Publisher)
-			assert.True(t, ok)
-			publisherCh <- publisher
+			publisherCh <- w
 		})
-		_, ct, cancel := setup(t, sConn, cConn, handler)
+		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
 		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
