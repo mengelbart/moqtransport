@@ -301,7 +301,7 @@ func TestSession(t *testing.T) {
 			RequestID:       0,
 			Expires:         0,
 			GroupOrder:      1,
-			ContentExists:   false,
+			ContentExists:   true,
 			LargestLocation: wire.Location{},
 			Parameters:      wire.KVPList{},
 		})

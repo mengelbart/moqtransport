@@ -262,8 +262,8 @@ func DefaultSubscribeOkOptions() *SubscribeOkOptions {
 	return &SubscribeOkOptions{
 		Expires:         0,
 		GroupOrder:      GroupOrderAscending,
-		ContentExists:   false,
-		LargestLocation: nil,
+		ContentExists:   true,
+		LargestLocation: &Location{Group: 0, Object: 0},
 		Parameters:      KVPList{},
 	}
 }
