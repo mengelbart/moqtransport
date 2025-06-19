@@ -40,6 +40,10 @@ type RemoteTrack struct {
 	responseChan chan error
 }
 
+func (t *RemoteTrack) RequestID() uint64 {
+	return t.requestID
+}
+
 func newRemoteTrack(requestID uint64, unsubscribeFunc func() error) *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
