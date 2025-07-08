@@ -1,109 +1,46 @@
 package moqtransport
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-// Location represents a MoQ object location consisting of Group and Object IDs.
-// This is used to specify positions within the media stream for subscriptions
-// and other operations that require location information.
-type Location struct {
-	Group  uint64 // Group ID (typically corresponds to GOP/segment)
-	Object uint64 // Object ID within the group
-}
-
-// toWireLocation converts a public Location to an internal wire.Location
-func (l *Location) toWireLocation() wire.Location {
-	return wire.Location{
-		Group:  l.Group,
-		Object: l.Object,
-	}
-}
+type Location = wire.Location
 
 // FilterType represents the subscription filter type used in SUBSCRIBE messages.
-type FilterType uint64
+type FilterType = wire.FilterType
 
 const (
 	// FilterTypeLatestObject starts from the latest available object.
-	FilterTypeLatestObject FilterType = 0x02
+	FilterTypeLatestObject FilterType = wire.FilterTypeLatestObject
 
 	// FilterTypeNextGroupStart starts from the beginning of the next group.
-	FilterTypeNextGroupStart FilterType = 0x01
+	FilterTypeNextGroupStart FilterType = wire.FilterTypeNextGroupStart
 
 	// FilterTypeAbsoluteStart starts from a specific absolute position.
-	FilterTypeAbsoluteStart FilterType = 0x03
+	FilterTypeAbsoluteStart FilterType = wire.FilterTypeAbsoluteStart
 
 	// FilterTypeAbsoluteRange subscribes to a specific range of groups/objects.
-	FilterTypeAbsoluteRange FilterType = 0x04
+	FilterTypeAbsoluteRange FilterType = wire.FilterTypeAbsoluteRange
 )
 
-// String returns a human-readable description of the FilterType.
-func (f FilterType) String() string {
-	switch f {
-	case FilterTypeLatestObject:
-		return "LatestObject"
-	case FilterTypeNextGroupStart:
-		return "NextGroupStart"
-	case FilterTypeAbsoluteStart:
-		return "AbsoluteStart"
-	case FilterTypeAbsoluteRange:
-		return "AbsoluteRange"
-	default:
-		return fmt.Sprintf("Unknown(%d)", uint64(f))
-	}
-}
-
-// toWireFilterType converts a public FilterType to an internal wire.FilterType
-func (f FilterType) toWireFilterType() wire.FilterType {
-	return wire.FilterType(f)
-}
-
 // GroupOrder represents the group delivery order preference used in SUBSCRIBE_OK messages.
-type GroupOrder uint8
+type GroupOrder = wire.GroupOrder
 
 const (
 	// GroupOrderNone indicates no specific ordering preference.
-	GroupOrderNone GroupOrder = 0x0
+	GroupOrderNone GroupOrder = wire.GroupOrderNone
 
 	// GroupOrderAscending indicates groups should be delivered in ascending order.
-	GroupOrderAscending GroupOrder = 0x1
+	GroupOrderAscending GroupOrder = wire.GroupOrderAscending
 
 	// GroupOrderDescending indicates groups should be delivered in descending order.
-	GroupOrderDescending GroupOrder = 0x2
+	GroupOrderDescending GroupOrder = wire.GroupOrderDescending
 )
 
-// String returns a human-readable description of the GroupOrder.
-func (g GroupOrder) String() string {
-	switch g {
-	case GroupOrderNone:
-		return "None"
-	case GroupOrderAscending:
-		return "Ascending"
-	case GroupOrderDescending:
-		return "Descending"
-	default:
-		return fmt.Sprintf("Invalid(%d)", uint8(g))
-	}
-}
-
 // KeyValuePair represents a key-value parameter pair.
-type KeyValuePair struct {
-	Type        uint64
-	ValueVarInt uint64
-	ValueBytes  []byte
-}
-
-// toWireKVP converts a public KeyValuePair to an internal wire.KeyValuePair
-func (kvp *KeyValuePair) toWireKVP() wire.KeyValuePair {
-	return wire.KeyValuePair{
-		Type:        kvp.Type,
-		ValueVarInt: kvp.ValueVarInt,
-		ValueBytes:  kvp.ValueBytes,
-	}
-}
+type KeyValuePair = wire.KeyValuePair
 
 // KVPList represents a list of key-value parameters.
 type KVPList []KeyValuePair
@@ -159,46 +96,6 @@ func (kvpl KVPList) GetAuthorizationToken() ([]byte, bool) {
 	return nil, false
 }
 
-// toWireKVPList converts a public KVPList to an internal wire.KVPList
-func (kvpl KVPList) toWireKVPList() wire.KVPList {
-	result := make(wire.KVPList, len(kvpl))
-	for i, kvp := range kvpl {
-		result[i] = kvp.toWireKVP()
-	}
-	return result
-}
-
-// fromWireLocation converts an internal wire.Location to a public Location
-func fromWireLocation(wl wire.Location) Location {
-	return Location{
-		Group:  wl.Group,
-		Object: wl.Object,
-	}
-}
-
-// fromWireFilterType converts an internal wire.FilterType to a public FilterType
-func fromWireFilterType(wf wire.FilterType) FilterType {
-	return FilterType(wf)
-}
-
-// fromWireKVP converts an internal wire.KeyValuePair to a public KeyValuePair
-func fromWireKVP(wkvp wire.KeyValuePair) KeyValuePair {
-	return KeyValuePair{
-		Type:        wkvp.Type,
-		ValueVarInt: wkvp.ValueVarInt,
-		ValueBytes:  wkvp.ValueBytes,
-	}
-}
-
-// fromWireKVPList converts an internal wire.KVPList to a public KVPList
-func fromWireKVPList(wkvpl wire.KVPList) KVPList {
-	result := make(KVPList, len(wkvpl))
-	for i, wkvp := range wkvpl {
-		result[i] = fromWireKVP(wkvp)
-	}
-	return result
-}
-
 // SubscribeOptions contains options for subscribing to a track with full control
 // over all subscribe message parameters.
 type SubscribeOptions struct {
@@ -233,7 +130,7 @@ func DefaultSubscribeOptions() *SubscribeOptions {
 		GroupOrder:         GroupOrderAscending,
 		Forward:            true,
 		FilterType:         FilterTypeLatestObject,
-		StartLocation:      Location{0, 0},
+		StartLocation:      Location{Group: 0, Object: 0},
 		EndGroup:           0,
 		Parameters:         KVPList{},
 	}
@@ -339,7 +236,7 @@ type SubscribeMessage struct {
 
 	// Subscribe message specific fields
 	SubscriberPriority uint8      // Delivery priority (0-255, higher is more important)
-	GroupOrder         uint8      // Group ordering preference: 0=None, 1=Ascending, 2=Descending
+	GroupOrder         GroupOrder // Group ordering preference: 0=None, 1=Ascending, 2=Descending
 	Forward            uint8      // Forward preference: 0=No, 1=Yes
 	FilterType         FilterType // Subscription filter type
 	StartLocation      *Location  // Start position for absolute filters

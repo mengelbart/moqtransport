@@ -287,7 +287,7 @@ func TestSession(t *testing.T) {
 
 		// Create a SubscribeHandler that accepts the subscription
 		sh := SubscribeHandlerFunc(func(w *SubscribeResponseWriter, m *SubscribeMessage) {
-			assert.Equal(t, uint64(0), m.RequestID)
+			assert.Equal(t, uint64(5), m.RequestID)
 			assert.Equal(t, uint64(0), m.TrackAlias)
 			assert.Equal(t, []string{"namespace"}, m.Namespace)
 			assert.Equal(t, "track", m.Track)
@@ -298,7 +298,7 @@ func TestSession(t *testing.T) {
 		s := newSessionWithHandlers(conn, cs, nil, sh)
 		s.handshakeDone.Store(true)
 		cs.EXPECT().write(&wire.SubscribeOkMessage{
-			RequestID:       0,
+			RequestID:       5,
 			Expires:         0,
 			GroupOrder:      1,
 			ContentExists:   true,
@@ -306,7 +306,7 @@ func TestSession(t *testing.T) {
 			Parameters:      wire.KVPList{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
-			RequestID:          0,
+			RequestID:          5,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
