@@ -14,9 +14,14 @@ import (
 )
 
 func newSession(conn Connection, cs controlMessageStream, h Handler) *Session {
+	return newSessionWithHandlers(conn, cs, h, nil)
+}
+
+func newSessionWithHandlers(conn Connection, cs controlMessageStream, h Handler, sh SubscribeHandler) *Session {
 	s := &Session{
 		InitialMaxRequestID:                      0,
 		Handler:                                  h,
+		SubscribeHandler:                         sh,
 		Qlogger:                                  &qlog.Logger{},
 		eg:                                       &errgroup.Group{},
 		ctx:                                      nil,
@@ -190,8 +195,8 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     wire.Tuple{"namespace"},
 			TrackName:          []byte("track1"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
 			Forward:            1,
 			FilterType:         wire.FilterTypeLatestObject,
 			StartLocation:      wire.Location{Group: 0, Object: 0},
@@ -244,8 +249,8 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
 			Forward:            1,
 			FilterType:         wire.FilterTypeLatestObject,
 			StartLocation:      wire.Location{Group: 0, Object: 0},
@@ -276,37 +281,32 @@ func TestSession(t *testing.T) {
 	t.Run("sends_subscribe_ok", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cs := NewMockControlMessageStream(ctrl)
-		mh := NewMockHandler(ctrl)
 		conn := NewMockConnection(ctrl)
 		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
 		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(conn, cs, mh)
-		s.handshakeDone.Store(true)
-
-		mh.EXPECT().Handle(gomock.Any(), &Message{
-			Method:        MessageSubscribe,
-			RequestID:     0,
-			TrackAlias:    0,
-			Namespace:     []string{"namespace"},
-			Track:         "track",
-			Authorization: "",
-			NewSessionURI: "",
-			ErrorCode:     0,
-			ReasonPhrase:  "",
-		}).Do(func(r ResponseWriter, m *Message) {
-			assert.NoError(t, r.Accept())
+		// Create a SubscribeHandler that accepts the subscription
+		sh := SubscribeHandlerFunc(func(w *SubscribeResponseWriter, m *SubscribeMessage) {
+			assert.Equal(t, uint64(5), m.RequestID)
+			assert.Equal(t, uint64(0), m.TrackAlias)
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
+			assert.Equal(t, "track", m.Track)
+			assert.Equal(t, "", m.Authorization)
+			assert.NoError(t, w.Accept())
 		})
+
+		s := newSessionWithHandlers(conn, cs, nil, sh)
+		s.handshakeDone.Store(true)
 		cs.EXPECT().write(&wire.SubscribeOkMessage{
-			RequestID:       0,
+			RequestID:       5,
 			Expires:         0,
 			GroupOrder:      1,
-			ContentExists:   false,
+			ContentExists:   true,
 			LargestLocation: wire.Location{},
 			Parameters:      wire.KVPList{},
 		})
 		err := s.receive(&wire.SubscribeMessage{
-			RequestID:          0,
+			RequestID:          5,
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("track"),
@@ -325,28 +325,23 @@ func TestSession(t *testing.T) {
 
 	t.Run("sends_subscribe_error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mh := NewMockHandler(ctrl)
 		cs := NewMockControlMessageStream(ctrl)
 		conn := NewMockConnection(ctrl)
 		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
 		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
-		s := newSession(conn, cs, mh)
-		s.handshakeDone.Store(true)
-
-		mh.EXPECT().Handle(
-			gomock.Any(),
-			&Message{
-				Method:        MessageSubscribe,
-				Namespace:     []string{},
-				Track:         "",
-				Authorization: "",
-				ErrorCode:     0,
-				ReasonPhrase:  "",
-			},
-		).DoAndReturn(func(rw ResponseWriter, m *Message) {
-			assert.NoError(t, rw.Reject(ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
+		// Create a SubscribeHandler that rejects the subscription
+		sh := SubscribeHandlerFunc(func(w *SubscribeResponseWriter, m *SubscribeMessage) {
+			assert.Equal(t, uint64(0), m.RequestID)
+			assert.Equal(t, uint64(0), m.TrackAlias)
+			assert.Equal(t, []string{}, m.Namespace)
+			assert.Equal(t, "", m.Track)
+			assert.Equal(t, "", m.Authorization)
+			assert.NoError(t, w.Reject(ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
 		})
+
+		s := newSessionWithHandlers(conn, cs, nil, sh)
+		s.handshakeDone.Store(true)
 		cs.EXPECT().write(&wire.SubscribeErrorMessage{
 			RequestID:    0,
 			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
@@ -466,8 +461,8 @@ func TestSession(t *testing.T) {
 			TrackAlias:         0,
 			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte("trackname"),
-			SubscriberPriority: 0,
-			GroupOrder:         0,
+			SubscriberPriority: 128,
+			GroupOrder:         1,
 			Forward:            1,
 			FilterType:         wire.FilterTypeLatestObject,
 			StartLocation:      wire.Location{Group: 0, Object: 0},
@@ -493,5 +488,90 @@ func TestSession(t *testing.T) {
 		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "trackname", "auth")
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
+	})
+}
+
+func TestSession_UpdateSubscription(t *testing.T) {
+	t.Run("UpdateSubscription sends SUBSCRIBE_UPDATE message", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
+		cs := NewMockControlMessageStream(ctrl)
+		h := HandlerFunc(func(rw ResponseWriter, m *Message) {})
+
+		s := newSession(conn, cs, h)
+		_ = s.remoteTracks.addPending(123, &RemoteTrack{requestID: 123})
+		s.remoteTracks.confirm(123)
+
+		// Expect SUBSCRIBE_UPDATE message to be written
+		cs.EXPECT().write(&wire.SubscribeUpdateMessage{
+			RequestID:          123,
+			StartLocation:      wire.Location{Group: 100, Object: 5},
+			EndGroup:           200,
+			SubscriberPriority: 64,
+			Forward:            1,
+			Parameters:         wire.KVPList{},
+		}).Return(nil)
+
+		// Test UpdateSubscription
+		opts := &SubscribeUpdateOptions{
+			StartLocation:      Location{Group: 100, Object: 5},
+			EndGroup:           200,
+			SubscriberPriority: 64,
+			Forward:            true,
+			Parameters:         KVPList{},
+		}
+
+		err := s.UpdateSubscription(context.Background(), 123, opts)
+		assert.NoError(t, err)
+	})
+
+	t.Run("UpdateSubscription returns error for unknown request ID", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		conn := NewMockConnection(ctrl)
+		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
+		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
+		cs := NewMockControlMessageStream(ctrl)
+		h := HandlerFunc(func(rw ResponseWriter, m *Message) {})
+
+		s := newSession(conn, cs, h)
+
+		err := s.UpdateSubscription(context.Background(), 999, nil)
+		assert.Error(t, err)
+		assert.Equal(t, errUnknownRequestID, err)
+	})
+}
+
+func TestRemoteTrack_UpdateSubscription(t *testing.T) {
+	t.Run("RemoteTrack UpdateSubscription calls session method", func(t *testing.T) {
+		callCount := 0
+		updateFunc := func(ctx context.Context, opts *SubscribeUpdateOptions) error {
+			callCount++
+			assert.Equal(t, uint64(150), opts.StartLocation.Group)
+			return nil
+		}
+
+		rt := newRemoteTrack(123, nil, updateFunc)
+
+		opts := &SubscribeUpdateOptions{
+			StartLocation: Location{Group: 150, Object: 0},
+		}
+
+		err := rt.UpdateSubscription(context.Background(), opts)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, callCount)
+	})
+
+	t.Run("RemoteTrack UpdateSubscription returns error when updateFunc is nil", func(t *testing.T) {
+		rt := newRemoteTrack(123, nil, nil)
+
+		err := rt.UpdateSubscription(context.Background(), nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "update function not available")
 	})
 }

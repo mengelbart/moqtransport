@@ -52,8 +52,7 @@ type ResponseWriter interface {
 	Reject(code uint64, reason string) error
 }
 
-// Publisher is the interface implemented by ResponseWriters of Subscribe
-// messages.
+// Publisher is the interface implemented by SubscribeResponseWriters
 type Publisher interface {
 	// SendDatagram sends an object in a datagram.
 	SendDatagram(Object) error
@@ -84,7 +83,7 @@ type StatusRequestHandler interface {
 	SetStatus(statusCode, lastGroupID, lastObjectID uint64)
 }
 
-// A Handler responds to MoQ messages.
+// Handler is the handler interface for non-specific  MoQ messages.
 type Handler interface {
 	Handle(ResponseWriter, *Message)
 }
@@ -95,4 +94,30 @@ type HandlerFunc func(ResponseWriter, *Message)
 // Handle implements Handler.
 func (f HandlerFunc) Handle(rw ResponseWriter, r *Message) {
 	f(rw, r)
+}
+
+// SubcribeHandler is the handler interface for handling SUBSCRIBE messages.
+type SubscribeHandler interface {
+	HandleSubscribe(*SubscribeResponseWriter, *SubscribeMessage)
+}
+
+// SubscribeHandlerFunc is a type that implements SubscribeHandler.
+type SubscribeHandlerFunc func(*SubscribeResponseWriter, *SubscribeMessage)
+
+// HandleSubscribe implements SubscribeHandler.
+func (f SubscribeHandlerFunc) HandleSubscribe(rw *SubscribeResponseWriter, m *SubscribeMessage) {
+	f(rw, m)
+}
+
+// SubscribeUpdateHandler is the handler interface for handling SUBSCRIBE_UPDATE messages.
+type SubscribeUpdateHandler interface {
+	HandleSubscribeUpdate(*SubscribeUpdateMessage)
+}
+
+// SubscribeUpdateHandlerFunc is a type that implements SubscribeUpdateHandler.
+type SubscribeUpdateHandlerFunc func(*SubscribeUpdateMessage)
+
+// HandleSubscribeUpdate implements SubscribeUpdateHandler.
+func (f SubscribeUpdateHandlerFunc) HandleSubscribeUpdate(m *SubscribeUpdateMessage) {
+	f(m)
 }

@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/mengelbart/qlog"
@@ -16,6 +17,22 @@ const (
 	FilterTypeAbsoluteRange  FilterType = 0x04
 )
 
+// String returns a human-readable description of the FilterType.
+func (f FilterType) String() string {
+	switch f {
+	case FilterTypeLatestObject:
+		return "LatestObject"
+	case FilterTypeNextGroupStart:
+		return "NextGroupStart"
+	case FilterTypeAbsoluteStart:
+		return "AbsoluteStart"
+	case FilterTypeAbsoluteRange:
+		return "AbsoluteRange"
+	default:
+		return fmt.Sprintf("Unknown(%d)", uint64(f))
+	}
+}
+
 // make sure we always set a valid value instead of the zero value (0)
 func (f FilterType) append(buf []byte) []byte {
 	switch f {
@@ -25,13 +42,40 @@ func (f FilterType) append(buf []byte) []byte {
 	return quicvarint.Append(buf, uint64(FilterTypeNextGroupStart))
 }
 
+type GroupOrder uint8
+
+const (
+	// GroupOrderNone indicates no specific ordering preference.
+	GroupOrderNone GroupOrder = 0x0
+
+	// GroupOrderAscending indicates groups should be delivered in ascending order.
+	GroupOrderAscending GroupOrder = 0x1
+
+	// GroupOrderDescending indicates groups should be delivered in descending order.
+	GroupOrderDescending GroupOrder = 0x2
+)
+
+// String returns a human-readable description of the GroupOrder.
+func (g GroupOrder) String() string {
+	switch g {
+	case GroupOrderNone:
+		return "None"
+	case GroupOrderAscending:
+		return "Ascending"
+	case GroupOrderDescending:
+		return "Descending"
+	default:
+		return fmt.Sprintf("Invalid(%d)", uint8(g))
+	}
+}
+
 type SubscribeMessage struct {
 	RequestID          uint64
 	TrackAlias         uint64
 	TrackNamespace     Tuple
 	TrackName          []byte
 	SubscriberPriority uint8
-	GroupOrder         uint8
+	GroupOrder         GroupOrder
 	Forward            uint8
 	FilterType         FilterType
 	StartLocation      Location
@@ -87,7 +131,7 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, m.TrackName)
 	buf = append(buf, m.SubscriberPriority)
-	buf = append(buf, m.GroupOrder)
+	buf = append(buf, byte(m.GroupOrder))
 	buf = append(buf, m.Forward)
 	buf = m.FilterType.append(buf)
 	if m.FilterType == FilterTypeAbsoluteStart || m.FilterType == FilterTypeAbsoluteRange {
@@ -129,7 +173,7 @@ func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
 		return errLengthMismatch
 	}
 	m.SubscriberPriority = data[0]
-	m.GroupOrder = data[1]
+	m.GroupOrder = GroupOrder(data[1])
 	if m.GroupOrder > 2 {
 		return errInvalidGroupOrder
 	}
