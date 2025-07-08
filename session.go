@@ -400,12 +400,12 @@ func (s *Session) SubscribeWithOptions(
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
 		SubscriberPriority: opts.SubscriberPriority,
-		GroupOrder:         uint8(opts.GroupOrder),
+		GroupOrder:         opts.GroupOrder,
 		Forward:            boolToUint8(opts.Forward),
-		FilterType:         opts.FilterType.toWireFilterType(),
-		StartLocation:      opts.StartLocation.toWireLocation(),
+		FilterType:         opts.FilterType,
+		StartLocation:      opts.StartLocation,
 		EndGroup:           opts.EndGroup,
-		Parameters:         opts.Parameters.toWireKVPList(),
+		Parameters:         wire.KVPList(opts.Parameters),
 	}
 	if err = s.controlStream.write(cm); err != nil {
 		return nil, err
@@ -439,11 +439,11 @@ func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opts
 	// Create and send SUBSCRIBE_UPDATE message
 	cm := &wire.SubscribeUpdateMessage{
 		RequestID:          requestID,
-		StartLocation:      opts.StartLocation.toWireLocation(),
+		StartLocation:      opts.StartLocation,
 		EndGroup:           opts.EndGroup,
 		SubscriberPriority: opts.SubscriberPriority,
 		Forward:            boolToUint8(opts.Forward),
-		Parameters:         opts.Parameters.toWireKVPList(),
+		Parameters:         wire.KVPList(opts.Parameters),
 	}
 
 	return s.controlStream.write(cm)
@@ -466,12 +466,12 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 		Expires:       opts.Expires,
 		GroupOrder:    uint8(opts.GroupOrder),
 		ContentExists: opts.ContentExists,
-		Parameters:    opts.Parameters.toWireKVPList(),
+		Parameters:    wire.KVPList(opts.Parameters),
 	}
 
 	// Set largest location if content exists and location is provided
 	if opts.ContentExists && opts.LargestLocation != nil {
-		msg.LargestLocation = opts.LargestLocation.toWireLocation()
+		msg.LargestLocation = *opts.LargestLocation
 	}
 
 	return s.controlStream.write(msg)
@@ -937,10 +937,10 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		SubscriberPriority: msg.SubscriberPriority,
 		GroupOrder:         msg.GroupOrder,
 		Forward:            msg.Forward,
-		FilterType:         fromWireFilterType(msg.FilterType),
+		FilterType:         msg.FilterType,
 		StartLocation:      nil,
 		EndGroup:           nil,
-		Parameters:         fromWireKVPList(msg.Parameters),
+		Parameters:         KVPList(msg.Parameters),
 	}
 	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
 		return s.subscriptionDone(m.RequestID, code, count, reason)
@@ -991,13 +991,12 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		Expires:       msg.Expires,
 		GroupOrder:    GroupOrder(msg.GroupOrder),
 		ContentExists: msg.ContentExists,
-		Parameters:    fromWireKVPList(msg.Parameters),
+		Parameters:    KVPList(msg.Parameters),
 	}
 
 	// Only set LargestLocation if content exists
 	if msg.ContentExists {
-		loc := fromWireLocation(msg.LargestLocation)
-		info.LargestLocation = &loc
+		info.LargestLocation = &msg.LargestLocation
 	}
 
 	rt.setSubscriptionInfo(info)
@@ -1042,11 +1041,11 @@ func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
 	// Convert wire message to public message struct
 	publicMsg := &SubscribeUpdateMessage{
 		RequestID:          msg.RequestID,
-		StartLocation:      fromWireLocation(msg.StartLocation),
+		StartLocation:      msg.StartLocation,
 		EndGroup:           msg.EndGroup,
 		SubscriberPriority: msg.SubscriberPriority,
 		Forward:            msg.Forward,
-		Parameters:         fromWireKVPList(msg.Parameters),
+		Parameters:         KVPList(msg.Parameters),
 	}
 
 	// Propagate to application handler if available
