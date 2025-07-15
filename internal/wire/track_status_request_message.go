@@ -27,7 +27,7 @@ func (m *TrackStatusRequestMessage) LogValue() slog.Value {
 }
 
 func (m TrackStatusRequestMessage) Type() controlMessageType {
-	return messageTypeTrackStatusRequest
+	return messageTypeTrackStatus
 }
 
 func (m *TrackStatusRequestMessage) Append(buf []byte) []byte {

@@ -6,32 +6,34 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
-// TODO: Add tests
-type SubscribeAnnouncesErrorMessage struct {
+type PublishErrorMessage struct {
 	RequestID    uint64
 	ErrorCode    uint64
 	ReasonPhrase string
 }
 
-func (m *SubscribeAnnouncesErrorMessage) LogValue() slog.Value {
+func (m *PublishErrorMessage) LogValue() slog.Value {
 	return slog.GroupValue(
-		slog.String("type", "subscribe_announces_error"),
+		slog.String("type", "subscribe_error"),
+		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("error_code", m.ErrorCode),
 		slog.String("reason", m.ReasonPhrase),
+		slog.Any("reason_bytes", []byte(m.ReasonPhrase)),
 	)
 }
 
-func (m SubscribeAnnouncesErrorMessage) Type() controlMessageType {
-	return messageTypeSubscribeNamespaceError
+func (m PublishErrorMessage) Type() controlMessageType {
+	return messageTypeSubscribeError
 }
 
-func (m *SubscribeAnnouncesErrorMessage) Append(buf []byte) []byte {
+func (m *PublishErrorMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
-	buf = quicvarint.Append(buf, m.ErrorCode)
-	return appendVarIntBytes(buf, []byte(m.ReasonPhrase))
+	buf = quicvarint.Append(buf, uint64(m.ErrorCode))
+	buf = appendVarIntBytes(buf, []byte(m.ReasonPhrase))
+	return buf
 }
 
-func (m *SubscribeAnnouncesErrorMessage) parse(_ Version, data []byte) (err error) {
+func (m *PublishErrorMessage) parse(_ Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
 	if err != nil {

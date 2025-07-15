@@ -140,10 +140,9 @@ func (h *moqHandler) getSubscribeHandler(sessionID uint64) moqtransport.Subscrib
 		}
 		log.Printf("sessionNr: %d accepted subscription for namespace %v track %v", sessionID, m.Namespace, m.Track)
 		datePublisher := &publisher{
-			p:           w,
-			sessionID:   sessionID,
-			subscribeID: m.RequestID,
-			trackAlias:  m.TrackAlias,
+			p:         w,
+			sessionID: sessionID,
+			requestID: m.RequestID,
 		}
 		h.lock.Lock()
 		h.publishers[datePublisher] = struct{}{}

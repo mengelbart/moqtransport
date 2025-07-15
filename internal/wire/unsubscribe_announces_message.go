@@ -17,7 +17,7 @@ func (m *UnsubscribeAnnouncesMessage) LogValue() slog.Value {
 }
 
 func (m UnsubscribeAnnouncesMessage) Type() controlMessageType {
-	return messageTypeUnsubscribeAnnounces
+	return messageTypeUnsubscribeNamespace
 }
 
 func (m *UnsubscribeAnnouncesMessage) Append(buf []byte) []byte {
