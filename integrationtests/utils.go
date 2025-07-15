@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func connect(t *testing.T) (server, client quic.Connection, cancel func()) {
+func connect(t *testing.T) (server, client *quic.Conn, cancel func()) {
 	tlsConfig, err := generateTLSConfig()
 	assert.NoError(t, err)
 	listener, err := quic.ListenAddr("localhost:0", tlsConfig, &quic.Config{
@@ -45,7 +45,7 @@ func connect(t *testing.T) (server, client quic.Connection, cancel func()) {
 	}
 }
 
-func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Handler) (
+func setup(t *testing.T, sConn, cConn *quic.Conn, handler moqtransport.Handler) (
 	serverSession *moqtransport.Session,
 	clientSession *moqtransport.Session,
 	cancel func(),
@@ -53,7 +53,7 @@ func setup(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Hand
 	return setupWithHandlers(t, sConn, cConn, handler, nil)
 }
 
-func setupWithHandlers(t *testing.T, sConn, cConn quic.Connection, handler moqtransport.Handler, subscribeHandler moqtransport.SubscribeHandler) (
+func setupWithHandlers(t *testing.T, sConn, cConn *quic.Conn, handler moqtransport.Handler, subscribeHandler moqtransport.SubscribeHandler) (
 	serverSession *moqtransport.Session,
 	clientSession *moqtransport.Session,
 	cancel func(),

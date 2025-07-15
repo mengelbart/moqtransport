@@ -30,12 +30,7 @@ func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Strea
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 
@@ -55,12 +50,7 @@ func (c *webTransportConn) OpenStream() (moqtransport.Stream, error) {
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 
@@ -70,12 +60,7 @@ func (c *webTransportConn) OpenStreamSync(ctx context.Context) (moqtransport.Str
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 

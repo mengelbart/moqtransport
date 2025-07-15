@@ -8,7 +8,7 @@ import (
 var _ moqtransport.ReceiveStream = (*ReceiveStream)(nil)
 
 type ReceiveStream struct {
-	stream webtransport.ReceiveStream
+	stream *webtransport.ReceiveStream
 }
 
 // Read implements moqtransport.ReceiveStream.
