@@ -292,7 +292,7 @@ func TestSession(t *testing.T) {
 			assert.Equal(t, []string{"namespace"}, m.Namespace)
 			assert.Equal(t, "track", m.Track)
 			assert.Equal(t, "", m.Authorization)
-			assert.NoError(t, w.Accept())
+			assert.NoError(t, w.Accept(WithLargestLocation(&Location{Group: 0, Object: 0})))
 		})
 
 		s := newSessionWithHandlers(conn, cs, nil, sh)

@@ -458,7 +458,13 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 
 	// Use defaults if opts is nil
 	if opts == nil {
-		opts = DefaultSubscribeOkOptions()
+		opts = &SubscribeOkOptions{
+			Expires:         0,
+			GroupOrder:      GroupOrderAscending,
+			ContentExists:   false,
+			LargestLocation: nil,
+			Parameters:      KVPList{},
+		}
 	}
 
 	msg := &wire.SubscribeOkMessage{

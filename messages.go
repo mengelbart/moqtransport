@@ -154,16 +154,6 @@ type SubscribeOkOptions struct {
 	Parameters KVPList
 }
 
-// DefaultSubscribeOkOptions returns a default set of options for SubscribeOk responses.
-func DefaultSubscribeOkOptions() *SubscribeOkOptions {
-	return &SubscribeOkOptions{
-		Expires:         0,
-		GroupOrder:      GroupOrderAscending,
-		ContentExists:   true,
-		LargestLocation: &Location{Group: 0, Object: 0},
-		Parameters:      KVPList{},
-	}
-}
 
 // SubscriptionInfo contains all information received from a SUBSCRIBE_OK response.
 // This provides clients with complete metadata about the accepted subscription.

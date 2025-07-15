@@ -129,13 +129,11 @@ func (h *moqHandler) getSubscribeHandler(sessionID uint64) moqtransport.Subscrib
 			return
 		}
 		largestGroup := h.largestGroup.Load()
-		options := moqtransport.DefaultSubscribeOkOptions()
-		options.ContentExists = true
-		options.LargestLocation = &moqtransport.Location{
-			Group:  largestGroup,
-			Object: 0,
-		}
-		err := w.AcceptWithOptions(options)
+		err := w.Accept(moqtransport.WithLargestLocation(
+			&moqtransport.Location{
+				Group:  largestGroup,
+				Object: 0,
+			}))
 		if err != nil {
 			log.Printf("failed to accept subscription: %v", err)
 			return
