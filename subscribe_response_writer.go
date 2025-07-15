@@ -1,5 +1,7 @@
 package moqtransport
 
+import "time"
+
 type SubscribeResponseWriter struct {
 	id         uint64
 	trackAlias uint64
@@ -8,14 +10,70 @@ type SubscribeResponseWriter struct {
 	handled    bool
 }
 
-// Accept accepts the subscription with default options for backward compatibility.
-func (w *SubscribeResponseWriter) Accept() error {
-	return w.AcceptWithOptions(DefaultSubscribeOkOptions())
+// SubscribeOKOption is a functional option for configuring SUBSCRIBE_OK responses.
+type SubscribeOKOption func(*SubscribeOkOptions)
+
+// WithExpires sets the subscription expiration duration.
+// A duration of 0 means the subscription never expires (default).
+func WithExpires(expires time.Duration) SubscribeOKOption {
+	return func(opts *SubscribeOkOptions) {
+		opts.Expires = expires
+	}
 }
 
-// AcceptWithOptions accepts the subscription with custom response options.
-func (w *SubscribeResponseWriter) AcceptWithOptions(opts *SubscribeOkOptions) error {
+// WithGroupOrder sets the group order for the subscription.
+// Default is GroupOrderAscending.
+func WithGroupOrder(groupOrder GroupOrder) SubscribeOKOption {
+	return func(opts *SubscribeOkOptions) {
+		opts.GroupOrder = groupOrder
+	}
+}
+
+// WithLargestLocation sets the largest available location for the track.
+// When set, ContentExists is automatically set to true.
+// When nil, ContentExists is automatically set to false.
+func WithLargestLocation(location *Location) SubscribeOKOption {
+	return func(opts *SubscribeOkOptions) {
+		opts.LargestLocation = location
+		opts.ContentExists = location != nil
+	}
+}
+
+// WithParameters sets additional key-value parameters for the response.
+func WithParameters(parameters KVPList) SubscribeOKOption {
+	return func(opts *SubscribeOkOptions) {
+		opts.Parameters = parameters
+	}
+}
+
+// Accept accepts the subscription with the given options.
+// 
+// Default behavior when no options are provided:
+//   - Expires: 0 (never expires)
+//   - GroupOrder: GroupOrderAscending
+//   - ContentExists: false (no content available)
+//   - LargestLocation: nil
+//   - Parameters: empty
+//
+// Use WithLargestLocation to indicate content exists and provide the largest location.
+// ContentExists is automatically set based on whether LargestLocation is provided.
+func (w *SubscribeResponseWriter) Accept(options ...SubscribeOKOption) error {
 	w.handled = true
+	
+	// Set default values
+	opts := &SubscribeOkOptions{
+		Expires:         0,
+		GroupOrder:      GroupOrderAscending,
+		ContentExists:   false,
+		LargestLocation: nil,
+		Parameters:      KVPList{},
+	}
+	
+	// Apply options
+	for _, option := range options {
+		option(opts)
+	}
+	
 	if err := w.session.acceptSubscriptionWithOptions(w.id, opts); err != nil {
 		return err
 	}
