@@ -344,7 +344,7 @@ func TestSession(t *testing.T) {
 		s.handshakeDone.Store(true)
 		cs.EXPECT().write(&wire.SubscribeErrorMessage{
 			RequestID:    0,
-			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
+			ErrorCode:    uint64(ErrorCodeSubscribeTrackDoesNotExist),
 			ReasonPhrase: "track not found",
 			TrackAlias:   0,
 		})
@@ -552,11 +552,11 @@ func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 			callCount++
 			// Convert options back to struct for testing
 			opts := &SubscribeUpdateOptions{
-				StartLocation: Location{Group: 0, Object: 0},
-				EndGroup: 0,
+				StartLocation:      Location{Group: 0, Object: 0},
+				EndGroup:           0,
 				SubscriberPriority: 128,
-				Forward: true,
-				Parameters: KVPList{},
+				Forward:            true,
+				Parameters:         KVPList{},
 			}
 			for _, option := range options {
 				option(opts)

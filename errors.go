@@ -2,93 +2,118 @@ package moqtransport
 
 import "fmt"
 
-// Generic error codes
+// ErrorCode is a generic error codes
+type ErrorCode uint64
+
 const (
-	ErrorCodeNoError                  uint64 = 0x00
-	ErrorCodeInternal                 uint64 = 0x01
-	ErrorCodeUnauthorized             uint64 = 0x02
-	ErrorCodeProtocolViolation        uint64 = 0x03
-	ErrorCodeInvalidRequestID         uint64 = 0x04
-	ErrorCodeDuplicateTrackAlias      uint64 = 0x05
-	ErrorCodeKeyValueFormattingError  uint64 = 0x06
-	ErrorCodeTooManyRequests          uint64 = 0x07
-	ErrorCodeInvalidPath              uint64 = 0x08
-	ErrorCodeMalformedPath            uint64 = 0x09
-	ErrorCodeGoAwayTimeout            uint64 = 0x10
-	ErrorCodeControlMessageTimeout    uint64 = 0x11
-	ErrorCodeDataStreamTimeout        uint64 = 0x12
-	ErrorCodeAuthTokenCacheOverflow   uint64 = 0x13
-	ErrorCodeDuplicateAuthTokenAlias  uint64 = 0x14
-	ErrorCodeVersionNegotiationFailed uint64 = 0x15
+	ErrorCodeNoError                  ErrorCode = 0x00
+	ErrorCodeInternal                 ErrorCode = 0x01
+	ErrorCodeUnauthorized             ErrorCode = 0x02
+	ErrorCodeProtocolViolation        ErrorCode = 0x03
+	ErrorCodeInvalidRequestID         ErrorCode = 0x04
+	ErrorCodeDuplicateTrackAlias      ErrorCode = 0x05
+	ErrorCodeKeyValueFormattingError  ErrorCode = 0x06
+	ErrorCodeTooManyRequests          ErrorCode = 0x07
+	ErrorCodeInvalidPath              ErrorCode = 0x08
+	ErrorCodeMalformedPath            ErrorCode = 0x09
+	ErrorCodeGoAwayTimeout            ErrorCode = 0x10
+	ErrorCodeControlMessageTimeout    ErrorCode = 0x11
+	ErrorCodeDataStreamTimeout        ErrorCode = 0x12
+	ErrorCodeAuthTokenCacheOverflow   ErrorCode = 0x13
+	ErrorCodeDuplicateAuthTokenAlias  ErrorCode = 0x14
+	ErrorCodeVersionNegotiationFailed ErrorCode = 0x15
+	ErrorCodeMalformedAuthToken       ErrorCode = 0x16
+	ErrorCodeUnknownAuthTokenAlias    ErrorCode = 0x17
+	ErrorCodeExpiredAuthToken         ErrorCode = 0x18
 )
 
-// Subscribe error codes
+// ErrorCodeSubscribe is a Subscribe error code
+type ErrorCodeSubscribe uint64
+
 const (
-	ErrorCodeSubscribeInternal              uint64 = 0x00
-	ErrorCodeSubscribeUnauthorized          uint64 = 0x01
-	ErrorCodeSubscribeTimeout               uint64 = 0x02
-	ErrorCodeSubscribeNotSupported          uint64 = 0x03
-	ErrorCodeSubscribeTrackDoesNotExist     uint64 = 0x04
-	ErrorCodeSubscribeInvalidRange          uint64 = 0x05
-	ErrorCodeSubscribeRetryTrackAlias       uint64 = 0x06
-	ErrorCodeSubscribeMalformedAuthToken    uint64 = 0x10
-	ErrorCodeSubscribeUnknownAuthTokenAlias uint64 = 0x11
-	ErrorCodeSubscribeExpiredAuthToken      uint64 = 0x12
+	ErrorCodeSubscribeInternal           ErrorCodeSubscribe = 0x00
+	ErrorCodeSubscribeUnauthorized       ErrorCodeSubscribe = 0x01
+	ErrorCodeSubscribeTimeout            ErrorCodeSubscribe = 0x02
+	ErrorCodeSubscribeNotSupported       ErrorCodeSubscribe = 0x03
+	ErrorCodeSubscribeTrackDoesNotExist  ErrorCodeSubscribe = 0x04
+	ErrorCodeSubscribeInvalidRange       ErrorCodeSubscribe = 0x05
+	ErrorCodeSubscribeMalformedAuthToken ErrorCodeSubscribe = 0x10
+	ErrorCodeSubscribeExpiredAuthToken   ErrorCodeSubscribe = 0x12
 )
 
-// Subscribe done error codes
+// ErrorCodeSubscribeDone is a subscribe done error code
+type ErrorCodeSubscribeDone uint64
+
 const (
-	ErrorCodeSubscribeDoneInternal          uint64 = 0x00
-	ErrorCodeSubscribeDoneUnauthorized      uint64 = 0x01
-	ErrorCodeSubscribeDoneTrackEnded        uint64 = 0x02
-	ErrorCodeSubscribeDoneSubscriptionEnded uint64 = 0x03
-	ErrorCodeSubscribeDoneGoingAway         uint64 = 0x04
-	ErrorCodeSubscribeDoneExpired           uint64 = 0x05
-	ErrorCodeSubscribeDoneTooFarBehind      uint64 = 0x06
+	ErrorCodeSubscribeDoneInternal          ErrorCodeSubscribeDone = 0x00
+	ErrorCodeSubscribeDoneUnauthorized      ErrorCodeSubscribeDone = 0x01
+	ErrorCodeSubscribeDoneTrackEnded        ErrorCodeSubscribeDone = 0x02
+	ErrorCodeSubscribeDoneSubscriptionEnded ErrorCodeSubscribeDone = 0x03
+	ErrorCodeSubscribeDoneGoingAway         ErrorCodeSubscribeDone = 0x04
+	ErrorCodeSubscribeDoneExpired           ErrorCodeSubscribeDone = 0x05
+	ErrorCodeSubscribeDoneTooFarBehind      ErrorCodeSubscribeDone = 0x06
+	ErrorCodeSubscribeDoneMalformedTrack    ErrorCodeSubscribeDone = 0x07
 )
 
-// Fetch error codes
+// ErrorCodePublish is a publish error code
+type ErrorCodePublish uint64
+
 const (
-	ErrorCodeFetchInternal                  uint64 = 0x00
-	ErrorCodeFetchUnauthorized              uint64 = 0x01
-	ErrorCodeFetchTimeout                   uint64 = 0x02
-	ErrorCodeFetchNotSupported              uint64 = 0x03
-	ErrorCodeFetchTrackDoesNotExist         uint64 = 0x04
-	ErrorCodeFetchNoObjects                 uint64 = 0x06
-	ErrorCodeFetchInvalidJoiningSubscribeID uint64 = 0x07
-	ErrorCodeFetchMalformedAuthToken        uint64 = 0x10
-	ErrorCodeFetchUnknownAuthTokenAlias     uint64 = 0x11
-	ErrorCodeFetchExpiredAuthToken          uint64 = 0x12
+	ErrorCodePublishInternalError ErrorCodePublish = 0x00
+	ErrorCodePublishUnauthorized  ErrorCodePublish = 0x01
+	ErrorCodePublishTimeout       ErrorCodePublish = 0x02
+	ErrorCodePublishNotSupported  ErrorCodePublish = 0x03
+	ErrorCodePublishUninterested  ErrorCodePublish = 0x04
 )
 
-// Announcement error codes
+// ErrorCodeFetch is a fetch error code
+type ErrorCodeFetch uint64
+
 const (
-	ErrorCodeAnnouncementInternal              uint64 = 0x00
-	ErrorCodeAnnouncementUnauthorized          uint64 = 0x01
-	ErrorCodeAnnouncementTimeout               uint64 = 0x02
-	ErrorCodeAnnouncementNotSupported          uint64 = 0x03
-	ErrorCodeAnnouncementUninterested          uint64 = 0x04
-	ErrorCodeAnnouncementMalformedAuthToken    uint64 = 0x10
-	ErrorCodeAnnouncementUnknownAuthTokenAlias uint64 = 0x11
-	ErrorCodeAnnouncementExpiredAuthToken      uint64 = 0x12
+	ErrorCodeFetchInternal                  ErrorCodeFetch = 0x00
+	ErrorCodeFetchUnauthorized              ErrorCodeFetch = 0x01
+	ErrorCodeFetchTimeout                   ErrorCodeFetch = 0x02
+	ErrorCodeFetchNotSupported              ErrorCodeFetch = 0x03
+	ErrorCodeFetchTrackDoesNotExist         ErrorCodeFetch = 0x04
+	ErrorCodeFetchInvalidRange              ErrorCodeFetch = 0x05
+	ErrorCodeFetchNoObjects                 ErrorCodeFetch = 0x06
+	ErrorCodeFetchInvalidJoiningSubscribeID ErrorCodeFetch = 0x07
+	ErrorCodeFetchUnknownStatusInRange      ErrorCodeFetch = 0x08
+	ErrorCodeFetchMalformedTrack            ErrorCodeFetch = 0x09
+	ErrorCodeFetchMalformedAuthToken        ErrorCodeFetch = 0x10
+	ErrorCodeFetchExpiredAuthToken          ErrorCodeFetch = 0x12
 )
 
-// Subscribe Announces error codes
+// ErrorCodeAnnounce is an announcement error code
+type ErrorCodeAnnounce uint64
+
 const (
-	ErrorCodeSubscribeAnnouncesInternal               uint64 = 0x00
-	ErrorCodeSubscribeAnnouncesUnauthorized           uint64 = 0x01
-	ErrorCodeSubscribeAnnouncesTimeout                uint64 = 0x02
-	ErrorCodeSubscribeAnnouncesNotSupported           uint64 = 0x03
-	ErrorCodeSubscribeAnnouncesNamespacePrefixUnknown uint64 = 0x04
-	ErrorCodeSubscribeAnnouncesNamespacePrefixOverlap uint64 = 0x05
-	ErrorCodeSubscribeAnnouncesMalformedAuthToken     uint64 = 0x10
-	ErrorCodeSubscribeAnnouncesUnknownAuthTokenAlias  uint64 = 0x11
-	ErrorCodeSubscribeAnnouncesExpiredAuthToken       uint64 = 0x12
+	ErrorCodeAnnounceInternal             ErrorCodeAnnounce = 0x00
+	ErrorCodeAnnounceUnauthorized         ErrorCodeAnnounce = 0x01
+	ErrorCodeAnnounceTimeout              ErrorCodeAnnounce = 0x02
+	ErrorCodeAnnounceNotSupported         ErrorCodeAnnounce = 0x03
+	ErrorCodeAnnounceUninterested         ErrorCodeAnnounce = 0x04
+	ErrorCodeAnnounceMalformedAuthToken   ErrorCodeAnnounce = 0x10
+	ErrorCodeAnnouncementExpiredAuthToken ErrorCodeAnnounce = 0x12
+)
+
+// ErrorCodeSubscribeNamespace is a subscribe namespaces error code
+type ErrorCodeSubscribeNamespace uint64
+
+const (
+	ErrorCodeSubscribeNamespaceInternal               ErrorCodeSubscribeNamespace = 0x00
+	ErrorCodeSubscribeNamespaceUnauthorized           ErrorCodeSubscribeNamespace = 0x01
+	ErrorCodeSubscribeNamespaceTimeout                ErrorCodeSubscribeNamespace = 0x02
+	ErrorCodeSubscribeNamespaceNotSupported           ErrorCodeSubscribeNamespace = 0x03
+	ErrorCodeSubscribeNamespaceNamespacePrefixUnknown ErrorCodeSubscribeNamespace = 0x04
+	ErrorCodeSubscribeNamespaceNamespacePrefixOverlap ErrorCodeSubscribeNamespace = 0x05
+	ErrorCodeSubscribeNamespaceMalformedAuthToken     ErrorCodeSubscribeNamespace = 0x10
+	ErrorCodeSubscribeNamespaceExpiredAuthToken       ErrorCodeSubscribeNamespace = 0x12
 )
 
 // ProtocolError is a MoQ protocol error
 type ProtocolError struct {
-	code    uint64
+	code    ErrorCode
 	message string
 }
 
@@ -101,7 +126,7 @@ func (e ProtocolError) Error() string {
 }
 
 func (e ProtocolError) Code() uint64 {
-	return e.code
+	return uint64(e.code)
 }
 
 var (
