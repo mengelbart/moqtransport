@@ -17,7 +17,6 @@ func TestSubscribeMessageAppend(t *testing.T) {
 		{
 			sm: SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{""},
 				TrackName:          []byte(""),
 				SubscriberPriority: 0,
@@ -33,13 +32,12 @@ func TestSubscribeMessageAppend(t *testing.T) {
 			},
 			buf: []byte{},
 			expect: []byte{
-				0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+				0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
 			},
 		},
 		{
 			sm: SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
@@ -54,12 +52,11 @@ func TestSubscribeMessageAppend(t *testing.T) {
 				Parameters: KVPList{},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x03, 0x01, 0x01, 0x00),
+			expect: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x03, 0x01, 0x01, 0x00),
 		},
 		{
 			sm: SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
@@ -74,12 +71,11 @@ func TestSubscribeMessageAppend(t *testing.T) {
 				Parameters: KVPList{KeyValuePair{Type: AuthorizationTokenParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{},
-			expect: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x03, 0x01, 'A'}...),
 		},
 		{
 			sm: SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
@@ -94,7 +90,7 @@ func TestSubscribeMessageAppend(t *testing.T) {
 				Parameters: KVPList{KeyValuePair{Type: AuthorizationTokenParameterKey, ValueBytes: []byte("A")}},
 			},
 			buf:    []byte{0x01, 0x02, 0x03, 0x04},
-			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'}...),
+			expect: append(append([]byte{0x01, 0x02, 0x03, 0x04, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), []byte{0x02, 0x02, 0x00, 0x01, 0x01, 0x03, 0x01, 'A'}...),
 		},
 	}
 	for i, tc := range cases {
@@ -122,20 +118,18 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err:    io.EOF,
 		},
 		{
-			data: append([]byte{0x09, 0x00, 0x01, byte(len("trackname"))}, "trackname"...),
+			data: append([]byte{0x09, 0x01, byte(len("trackname"))}, "trackname"...),
 			expect: &SubscribeMessage{
 				RequestID:      9,
-				TrackAlias:     0,
 				TrackNamespace: []string{"trackname"},
 				TrackName:      []byte{},
 			},
 			err: io.EOF,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00),
+			data: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x00, 0x00, 0x00, 0x00),
 			expect: &SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 0,
@@ -144,10 +138,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: errInvalidFilterType,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x01, 0x00),
+			data: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x01, 0x00),
 			expect: &SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
@@ -160,10 +153,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: nil,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x03, 0x01, 0x01),
+			data: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x03, 0x01, 0x01),
 			expect: &SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
@@ -180,10 +172,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: io.EOF,
 		},
 		{
-			data: append(append([]byte{0x011, 0x012, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x01, 0x01, 0x01, 0x01, 'A'),
+			data: append(append([]byte{0x011, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x02, 0x02, 0x00, 0x01, 0x01, 0x03, 0x01, 'A'),
 			expect: &SubscribeMessage{
 				RequestID:          17,
-				TrackAlias:         18,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 2,
@@ -203,10 +194,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: nil,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+			data: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x02, 0x00, 0x04, 0x01, 0x02, 0x03, 0x01, 0x03, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,
@@ -226,10 +216,9 @@ func TestParseSubscribeMessage(t *testing.T) {
 			err: nil,
 		},
 		{
-			data: append(append([]byte{0x00, 0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x03, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x01, 0x01, 'A', 0x0a, 0x0b, 0x0c),
+			data: append(append([]byte{0x00, 0x01, 0x02, 'n', 's', 0x09}, "trackname"...), 0x01, 0x03, 0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x01, 0x03, 0x01, 'A', 0x0a, 0x0b, 0x0c),
 			expect: &SubscribeMessage{
 				RequestID:          0,
-				TrackAlias:         0,
 				TrackNamespace:     []string{"ns"},
 				TrackName:          []byte("trackname"),
 				SubscriberPriority: 1,

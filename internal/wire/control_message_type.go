@@ -20,17 +20,22 @@ const (
 	messageTypeSubscribe       controlMessageType = 0x03
 	messageTypeSubscribeOk     controlMessageType = 0x04
 	messageTypeSubscribeError  controlMessageType = 0x05
-	messageTypeUnsubscribe     controlMessageType = 0x0a
 	messageTypeSubscribeUpdate controlMessageType = 0x02
+	messageTypeUnsubscribe     controlMessageType = 0x0a
 	messageTypeSubscribeDone   controlMessageType = 0x0b
+
+	messageTypePublish      controlMessageType = 0x1d
+	messageTypePublishOk    controlMessageType = 0x1e
+	messageTypePublishError controlMessageType = 0x1f
 
 	messageTypeFetch       controlMessageType = 0x16
 	messageTypeFetchOk     controlMessageType = 0x18
 	messageTypeFetchError  controlMessageType = 0x19
 	messageTypeFetchCancel controlMessageType = 0x17
 
-	messageTypeTrackStatusRequest controlMessageType = 0x0d
-	messageTypeTrackStatus        controlMessageType = 0x0e
+	messageTypeTrackStatus      controlMessageType = 0x0d
+	messageTypeTrackStatusOk    controlMessageType = 0x0e
+	messageTypeTrackStatusError controlMessageType = 0x0f
 
 	messageTypeAnnounce       controlMessageType = 0x06
 	messageTypeAnnounceOk     controlMessageType = 0x07
@@ -38,73 +43,82 @@ const (
 	messageTypeUnannounce     controlMessageType = 0x09
 	messageTypeAnnounceCancel controlMessageType = 0x0c
 
-	messageTypeSubscribeAnnounces      controlMessageType = 0x11
-	messageTypeSubscribeAnnouncesOk    controlMessageType = 0x12
-	messageTypeSubscribeAnnouncesError controlMessageType = 0x13
-	messageTypeUnsubscribeAnnounces    controlMessageType = 0x14
+	messageTypeSubscribeNamespace      controlMessageType = 0x11
+	messageTypeSubscribeNamespaceOk    controlMessageType = 0x12
+	messageTypeSubscribeNamespaceError controlMessageType = 0x13
+	messageTypeUnsubscribeNamespace    controlMessageType = 0x14
 )
 
 func (mt controlMessageType) String() string {
 	switch mt {
 	case messageTypeClientSetup:
-		return "ClientSetupMessage"
+		return "ClientSetup"
 	case messageTypeServerSetup:
-		return "ServerSetupMessage"
+		return "ServerSetup"
 
 	case messageTypeGoAway:
-		return "GoAwayMessage"
+		return "GoAway"
 
 	case messageTypeMaxRequestID:
-		return "MaxRequestIDMessage"
+		return "MaxRequestID"
 	case messageTypeRequestsBlocked:
-		return "RequestsBlockedMessage"
+		return "RequestsBlocked"
 
 	case messageTypeSubscribe:
-		return "SubscribeMessage"
+		return "Subscribe"
 	case messageTypeSubscribeOk:
-		return "SubscribeOkMessage"
+		return "SubscribeOk"
 	case messageTypeSubscribeError:
-		return "SubscribeErrorMessage"
+		return "SubscribeError"
 	case messageTypeUnsubscribe:
-		return "UnsubscribeMessage"
+		return "Unsubscribe"
 	case messageTypeSubscribeUpdate:
-		return "SubscribeUpdateMessage"
+		return "SubscribeUpdate"
 	case messageTypeSubscribeDone:
-		return "SubscribeDoneMessage"
+		return "SubscribeDone"
+
+	case messageTypePublish:
+		return "Publish"
+	case messageTypePublishOk:
+		return "PublishOk"
+	case messageTypePublishError:
+		return "PublishError"
 
 	case messageTypeFetch:
-		return "FetchMessage"
+		return "Fetch"
 	case messageTypeFetchOk:
-		return "FetchOkMessage"
+		return "FetchOk"
 	case messageTypeFetchError:
-		return "FetchErrorMessage"
+		return "FetchError"
 	case messageTypeFetchCancel:
-		return "FetchCancelMessage"
+		return "FetchCancel"
 
-	case messageTypeTrackStatusRequest:
-		return "TrackStatusRequestMessage"
 	case messageTypeTrackStatus:
-		return "TrackStatusMessage"
+		return "TrackStatus"
+	case messageTypeTrackStatusOk:
+		return "TrackStatusOk"
+	case messageTypeTrackStatusError:
+		return "TrackStatusError"
 
 	case messageTypeAnnounce:
-		return "AnnounceMessage"
+		return "Announce"
 	case messageTypeAnnounceOk:
-		return "AnnounceOkMessage"
+		return "AnnounceOk"
 	case messageTypeAnnounceError:
-		return "AnnounceErrorMessage"
+		return "AnnounceError"
 	case messageTypeUnannounce:
-		return "UnannounceMessage"
+		return "Unannounce"
 	case messageTypeAnnounceCancel:
-		return "AnnounceCancelMessage"
+		return "AnnounceCancel"
 
-	case messageTypeSubscribeAnnounces:
-		return "SubscribeAnnouncesMessage"
-	case messageTypeSubscribeAnnouncesOk:
-		return "SubscribeAnnouncesOkMessage"
-	case messageTypeSubscribeAnnouncesError:
-		return "SubscribeAnnouncesErrorMessage"
-	case messageTypeUnsubscribeAnnounces:
-		return "UnsubscribeAnnouncesMessage"
+	case messageTypeSubscribeNamespace:
+		return "SubscribeNamespace"
+	case messageTypeSubscribeNamespaceOk:
+		return "SubscribeNamespaceOk"
+	case messageTypeSubscribeNamespaceError:
+		return "SubscribeNamespaceError"
+	case messageTypeUnsubscribeNamespace:
+		return "UnsubscribeNamespace"
 	}
 	return "unknown message type"
 }

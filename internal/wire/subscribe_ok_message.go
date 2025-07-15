@@ -9,6 +9,7 @@ import (
 
 type SubscribeOkMessage struct {
 	RequestID       uint64
+	TrackAlias      uint64
 	Expires         time.Duration
 	GroupOrder      uint8
 	ContentExists   bool
@@ -23,6 +24,7 @@ func (m *SubscribeOkMessage) LogValue() slog.Value {
 	}
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe_ok"),
+		slog.Uint64("track_alias", m.TrackAlias),
 		slog.Uint64("request_id", m.RequestID),
 		slog.Uint64("expires", uint64(m.Expires.Milliseconds())),
 		slog.Any("group_order", m.GroupOrder),
@@ -52,6 +54,7 @@ func (m SubscribeOkMessage) Type() controlMessageType {
 
 func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
+	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = quicvarint.Append(buf, uint64(m.Expires))
 	buf = append(buf, m.GroupOrder)
 	if m.ContentExists {
@@ -66,6 +69,12 @@ func (m *SubscribeOkMessage) Append(buf []byte) []byte {
 func (m *SubscribeOkMessage) parse(v Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
+	if err != nil {
+		return
+	}
+	data = data[n:]
+
+	m.TrackAlias, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return
 	}

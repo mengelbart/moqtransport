@@ -19,11 +19,10 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 				RequestID:    0,
 				ErrorCode:    0,
 				ReasonPhrase: "",
-				TrackAlias:   0,
 			},
 			buf: []byte{0x0a, 0x0b},
 			expect: []byte{
-				0x0a, 0x0b, 0x00, 0x00, 0x00, 0x00,
+				0x0a, 0x0b, 0x00, 0x00, 0x00,
 			},
 		},
 		{
@@ -31,10 +30,9 @@ func TestSubscribeErrorMessageAppend(t *testing.T) {
 				RequestID:    17,
 				ErrorCode:    12,
 				ReasonPhrase: "reason",
-				TrackAlias:   0,
 			},
 			buf:    []byte{},
-			expect: []byte{0x11, 0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n', 0x00},
+			expect: []byte{0x11, 0x0c, 0x06, 'r', 'e', 'a', 's', 'o', 'n'},
 		},
 	}
 	for i, tc := range cases {
@@ -62,17 +60,15 @@ func TestParseSubscribeErrorMessage(t *testing.T) {
 				RequestID:    1,
 				ErrorCode:    2,
 				ReasonPhrase: "",
-				TrackAlias:   0,
 			},
 			err: io.ErrUnexpectedEOF,
 		},
 		{
-			data: []byte{0x00, 0x01, 0x05, 'e', 'r', 'r', 'o', 'r', 0x11},
+			data: []byte{0x00, 0x01, 0x05, 'e', 'r', 'r', 'o', 'r'},
 			expect: &SubscribeErrorMessage{
 				RequestID:    0,
 				ErrorCode:    1,
 				ReasonPhrase: "error",
-				TrackAlias:   17,
 			},
 			err: nil,
 		},

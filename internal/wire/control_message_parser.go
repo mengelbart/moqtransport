@@ -79,9 +79,9 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	case messageTypeFetchCancel:
 		m = &FetchCancelMessage{}
 
-	case messageTypeTrackStatusRequest:
-		m = &TrackStatusRequestMessage{}
 	case messageTypeTrackStatus:
+		m = &TrackStatusRequestMessage{}
+	case messageTypeTrackStatusOk:
 		m = &TrackStatusMessage{}
 
 	case messageTypeAnnounce:
@@ -95,13 +95,13 @@ func (p *ControlMessageParser) Parse() (ControlMessage, error) {
 	case messageTypeAnnounceCancel:
 		m = &AnnounceCancelMessage{}
 
-	case messageTypeSubscribeAnnounces:
+	case messageTypeSubscribeNamespace:
 		m = &SubscribeAnnouncesMessage{}
-	case messageTypeSubscribeAnnouncesOk:
+	case messageTypeSubscribeNamespaceOk:
 		m = &SubscribeAnnouncesOkMessage{}
-	case messageTypeSubscribeAnnouncesError:
+	case messageTypeSubscribeNamespaceError:
 		m = &SubscribeAnnouncesErrorMessage{}
-	case messageTypeUnsubscribeAnnounces:
+	case messageTypeUnsubscribeNamespace:
 		m = &UnsubscribeAnnouncesMessage{}
 	default:
 		return nil, fmt.Errorf("%w: %v", errInvalidMessageType, mt)

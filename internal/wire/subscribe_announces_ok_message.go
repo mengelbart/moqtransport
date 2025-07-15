@@ -18,7 +18,7 @@ func (m *SubscribeAnnouncesOkMessage) LogValue() slog.Value {
 }
 
 func (m SubscribeAnnouncesOkMessage) Type() controlMessageType {
-	return messageTypeSubscribeAnnouncesOk
+	return messageTypeSubscribeNamespaceOk
 }
 
 func (m *SubscribeAnnouncesOkMessage) Append(buf []byte) []byte {

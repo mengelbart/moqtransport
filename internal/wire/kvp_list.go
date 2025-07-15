@@ -8,16 +8,18 @@ import (
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
+// Setup parameters
 const (
 	PathParameterKey                  = 0x01
 	MaxRequestIDParameterKey          = 0x02
-	MaxAuthTokenCacheSizeParameterKey = 0x03
+	MaxAuthTokenCacheSizeParameterKey = 0x04
 )
 
+// Version specific parameters
 const (
-	AuthorizationTokenParameterKey = 0x01
 	DeliveryTimeoutParameterKey    = 0x02
-	MaxCacheDurationParameterKey   = 0x03
+	AuthorizationTokenParameterKey = 0x03
+	MaxCacheDurationParameterKey   = 0x04
 )
 
 type KVPList []KeyValuePair

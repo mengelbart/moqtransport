@@ -22,8 +22,6 @@ type Message struct {
 
 	// RequestID is set if the message references a request.
 	RequestID uint64
-	// TrackAlias corresponding to the subscription.
-	TrackAlias uint64
 
 	// Namespace is set if the message references a namespace.
 	Namespace []string
