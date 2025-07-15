@@ -224,11 +224,11 @@ func TestSession(t *testing.T) {
 		}).Times(1)
 
 		s.requestIDs.max = 2
-		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", "auth")
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
-		rt, err = s.Subscribe(context.Background(), []string{"namespace"}, "track2", "auth")
+		rt, err = s.Subscribe(context.Background(), []string{"namespace"}, "track2", WithAuthorizationToken("auth"))
 		assert.Error(t, err)
 		assert.Nil(t, rt)
 	})
@@ -273,7 +273,7 @@ func TestSession(t *testing.T) {
 			assert.NoError(t, err)
 			return nil
 		})
-		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track", WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
@@ -485,7 +485,7 @@ func TestSession(t *testing.T) {
 			}))
 			return nil
 		})
-		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "trackname", "auth")
+		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "trackname", WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})

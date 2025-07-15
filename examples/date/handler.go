@@ -187,7 +187,7 @@ func (h *moqHandler) handle(conn moqtransport.Connection) error {
 }
 
 func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []string, trackname string) error {
-	rs, err := s.Subscribe(context.Background(), namespace, trackname, "")
+	rs, err := s.Subscribe(context.Background(), namespace, trackname)
 	if err != nil {
 		return err
 	}

@@ -123,18 +123,6 @@ type SubscribeOptions struct {
 	Parameters KVPList
 }
 
-// DefaultSubscribeOptions returns a reasonable default set of options for subscriptions.
-func DefaultSubscribeOptions() *SubscribeOptions {
-	return &SubscribeOptions{
-		SubscriberPriority: 128,
-		GroupOrder:         GroupOrderAscending,
-		Forward:            true,
-		FilterType:         FilterTypeLatestObject,
-		StartLocation:      Location{Group: 0, Object: 0},
-		EndGroup:           0,
-		Parameters:         KVPList{},
-	}
-}
 
 // SubscribeOkOptions contains options for customizing subscription acceptance responses.
 type SubscribeOkOptions struct {
