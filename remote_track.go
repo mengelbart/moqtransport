@@ -48,11 +48,14 @@ func (t *RemoteTrack) RequestID() uint64 {
 }
 
 // SubscriptionInfo returns the complete subscription information received from SUBSCRIBE_OK.
-// Returns nil if no SUBSCRIBE_OK has been received yet or the subscription is still pending.
+// The second return value indicates whether the subscription information is available.
 // This provides access to all metadata including expires, group order, content existence,
-// largest location, and any custom parameters from the publisher.
-func (t *RemoteTrack) SubscriptionInfo() *SubscriptionInfo {
-	return t.subscriptionInfo
+// largest location, and any parameters from the publisher.
+func (t *RemoteTrack) SubscriptionInfo() (SubscriptionInfo, bool) {
+	if t.subscriptionInfo == nil {
+		return SubscriptionInfo{}, false
+	}
+	return *t.subscriptionInfo, true
 }
 
 // LargestLocation returns the largest location received from SUBSCRIBE_OK.
