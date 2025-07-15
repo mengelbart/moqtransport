@@ -188,19 +188,6 @@ type SubscribeUpdateOptions struct {
 	Parameters KVPList
 }
 
-// DefaultSubscribeUpdateOptions returns a reasonable default set of options for subscription updates.
-func DefaultSubscribeUpdateOptions() *SubscribeUpdateOptions {
-	return &SubscribeUpdateOptions{
-		StartLocation: Location{
-			Group:  0,
-			Object: 0,
-		},
-		EndGroup:           0,
-		SubscriberPriority: 128,
-		Forward:            true,
-		Parameters:         KVPList{},
-	}
-}
 
 // SubscribeMessage represents a SUBSCRIBE message from the peer.
 type SubscribeMessage struct {

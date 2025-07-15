@@ -401,6 +401,51 @@ func WithSubscribeParameters(parameters KVPList) SubscribeOption {
 	}
 }
 
+// SubscribeUpdateOption is a functional option for configuring SUBSCRIBE_UPDATE requests.
+type SubscribeUpdateOption func(*SubscribeUpdateOptions)
+
+// WithUpdateStartLocation sets the new start position for the subscription update.
+// Default is Location{Group: 0, Object: 0}. Note, should not decrease compared
+// to the previous start location.
+func WithUpdateStartLocation(location Location) SubscribeUpdateOption {
+	return func(opts *SubscribeUpdateOptions) {
+		opts.StartLocation = location
+	}
+}
+
+// WithUpdateEndGroup sets the new end group for the subscription update.
+// EndGroup = 0 means open-ended (no end group limit). Default is 0.
+func WithUpdateEndGroup(endGroup uint64) SubscribeUpdateOption {
+	return func(opts *SubscribeUpdateOptions) {
+		opts.EndGroup = endGroup
+	}
+}
+
+// WithUpdateSubscriberPriority sets the new delivery priority for the subscription update.
+// Priority range is 0-255, with lower values indicating higher priority (0 is highest).
+// Default is 128.
+func WithUpdateSubscriberPriority(priority uint8) SubscribeUpdateOption {
+	return func(opts *SubscribeUpdateOptions) {
+		opts.SubscriberPriority = priority
+	}
+}
+
+// WithUpdateForward sets the new forward preference for the subscription update.
+// When true, indicates forward preference. Default is true.
+func WithUpdateForward(forward bool) SubscribeUpdateOption {
+	return func(opts *SubscribeUpdateOptions) {
+		opts.Forward = forward
+	}
+}
+
+// WithUpdateParameters sets additional key-value parameters for the subscription update.
+// This replaces any existing parameters.
+func WithUpdateParameters(parameters KVPList) SubscribeUpdateOption {
+	return func(opts *SubscribeUpdateOptions) {
+		opts.Parameters = parameters
+	}
+}
+
 // Session message senders
 
 func (s *Session) sendClientSetup() error {
@@ -451,8 +496,8 @@ func (s *Session) Subscribe(
 	}
 	rt := newRemoteTrack(requestID, func() error {
 		return s.unsubscribe(requestID)
-	}, func(ctx context.Context, opts *SubscribeUpdateOptions) error {
-		return s.UpdateSubscription(ctx, requestID, opts)
+	}, func(ctx context.Context, options ...SubscribeUpdateOption) error {
+		return s.UpdateSubscription(ctx, requestID, options...)
 	})
 	trackAlias := s.trackAliases.next()
 	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
@@ -506,15 +551,34 @@ func (s *Session) Subscribe(
 
 // UpdateSubscription sends a SUBSCRIBE_UPDATE message to update an existing subscription.
 // No response is expected according to draft-11 specification.
-func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opts *SubscribeUpdateOptions) error {
+//
+// Default behavior when no options are provided:
+//   - StartLocation: Location{Group: 0, Object: 0}
+//   - EndGroup: 0 (open-ended, no end group limit)
+//   - SubscriberPriority: 128 (medium priority)
+//   - Forward: true (forward preference)
+//   - Parameters: empty
+func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, options ...SubscribeUpdateOption) error {
 	// Validate that the subscription exists
 	if _, exists := s.remoteTracks.findByRequestID(requestID); !exists {
 		return errUnknownRequestID
 	}
 
-	// Use defaults if opts is nil
-	if opts == nil {
-		opts = DefaultSubscribeUpdateOptions()
+	// Set default values
+	opts := &SubscribeUpdateOptions{
+		StartLocation: Location{
+			Group:  0,
+			Object: 0,
+		},
+		EndGroup:           0,
+		SubscriberPriority: 128,
+		Forward:            true,
+		Parameters:         KVPList{},
+	}
+	
+	// Apply options
+	for _, option := range options {
+		option(opts)
 	}
 
 	// Create and send SUBSCRIBE_UPDATE message

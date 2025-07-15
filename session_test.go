@@ -517,15 +517,13 @@ func TestSession_UpdateSubscription(t *testing.T) {
 		}).Return(nil)
 
 		// Test UpdateSubscription
-		opts := &SubscribeUpdateOptions{
-			StartLocation:      Location{Group: 100, Object: 5},
-			EndGroup:           200,
-			SubscriberPriority: 64,
-			Forward:            true,
-			Parameters:         KVPList{},
-		}
-
-		err := s.UpdateSubscription(context.Background(), 123, opts)
+		err := s.UpdateSubscription(context.Background(), 123,
+			WithUpdateStartLocation(Location{Group: 100, Object: 5}),
+			WithUpdateEndGroup(200),
+			WithUpdateSubscriberPriority(64),
+			WithUpdateForward(true),
+			WithUpdateParameters(KVPList{}),
+		)
 		assert.NoError(t, err)
 	})
 
@@ -541,7 +539,7 @@ func TestSession_UpdateSubscription(t *testing.T) {
 
 		s := newSession(conn, cs, h)
 
-		err := s.UpdateSubscription(context.Background(), 999, nil)
+		err := s.UpdateSubscription(context.Background(), 999)
 		assert.Error(t, err)
 		assert.Equal(t, errUnknownRequestID, err)
 	})
@@ -550,19 +548,26 @@ func TestSession_UpdateSubscription(t *testing.T) {
 func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 	t.Run("RemoteTrack UpdateSubscription calls session method", func(t *testing.T) {
 		callCount := 0
-		updateFunc := func(ctx context.Context, opts *SubscribeUpdateOptions) error {
+		updateFunc := func(ctx context.Context, options ...SubscribeUpdateOption) error {
 			callCount++
+			// Convert options back to struct for testing
+			opts := &SubscribeUpdateOptions{
+				StartLocation: Location{Group: 0, Object: 0},
+				EndGroup: 0,
+				SubscriberPriority: 128,
+				Forward: true,
+				Parameters: KVPList{},
+			}
+			for _, option := range options {
+				option(opts)
+			}
 			assert.Equal(t, uint64(150), opts.StartLocation.Group)
 			return nil
 		}
 
 		rt := newRemoteTrack(123, nil, updateFunc)
 
-		opts := &SubscribeUpdateOptions{
-			StartLocation: Location{Group: 150, Object: 0},
-		}
-
-		err := rt.UpdateSubscription(context.Background(), opts)
+		err := rt.UpdateSubscription(context.Background(), WithUpdateStartLocation(Location{Group: 150, Object: 0}))
 		assert.NoError(t, err)
 		assert.Equal(t, 1, callCount)
 	})
@@ -570,7 +575,7 @@ func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 	t.Run("RemoteTrack UpdateSubscription returns error when updateFunc is nil", func(t *testing.T) {
 		rt := newRemoteTrack(123, nil, nil)
 
-		err := rt.UpdateSubscription(context.Background(), nil)
+		err := rt.UpdateSubscription(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "update function not available")
 	})
