@@ -45,6 +45,38 @@ type KeyValuePair = wire.KeyValuePair
 // KVPList represents a list of key-value parameters.
 type KVPList []KeyValuePair
 
+// ToWire creates a deep copy of KVPList as wire.KVPList to prevent mutation.
+func (kvpl KVPList) ToWire() wire.KVPList {
+	if kvpl == nil {
+		return nil
+	}
+	result := make(wire.KVPList, len(kvpl))
+	for i, param := range kvpl {
+		result[i] = wire.KeyValuePair{
+			Type:        param.Type,
+			ValueVarInt: param.ValueVarInt,
+			ValueBytes:  append([]byte(nil), param.ValueBytes...),
+		}
+	}
+	return result
+}
+
+// FromWire creates a deep copy of wire.KVPList as KVPList to prevent mutation.
+func FromWire(wireKVP wire.KVPList) KVPList {
+	if wireKVP == nil {
+		return nil
+	}
+	result := make(KVPList, len(wireKVP))
+	for i, param := range wireKVP {
+		result[i] = KeyValuePair{
+			Type:        param.Type,
+			ValueVarInt: param.ValueVarInt,
+			ValueBytes:  append([]byte(nil), param.ValueBytes...),
+		}
+	}
+	return result
+}
+
 // GetParameter extracts a specific parameter by key from the parameter list.
 func (kvpl KVPList) GetParameter(key uint64) (KeyValuePair, bool) {
 	for _, param := range kvpl {

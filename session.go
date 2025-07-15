@@ -531,7 +531,7 @@ func (s *Session) Subscribe(
 		FilterType:         opts.FilterType,
 		StartLocation:      opts.StartLocation,
 		EndGroup:           opts.EndGroup,
-		Parameters:         wire.KVPList(opts.Parameters),
+		Parameters:         opts.Parameters.ToWire(),
 	}
 	if err = s.controlStream.write(cm); err != nil {
 		return nil, err
@@ -588,7 +588,7 @@ func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opti
 		EndGroup:           opts.EndGroup,
 		SubscriberPriority: opts.SubscriberPriority,
 		Forward:            boolToUint8(opts.Forward),
-		Parameters:         wire.KVPList(opts.Parameters),
+		Parameters:         opts.Parameters.ToWire(),
 	}
 
 	return s.controlStream.write(cm)
@@ -617,7 +617,7 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 		Expires:       opts.Expires,
 		GroupOrder:    uint8(opts.GroupOrder),
 		ContentExists: opts.ContentExists,
-		Parameters:    wire.KVPList(opts.Parameters),
+		Parameters:    opts.Parameters.ToWire(),
 	}
 
 	// Set largest location if content exists and location is provided
@@ -1091,7 +1091,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		FilterType:         msg.FilterType,
 		StartLocation:      nil,
 		EndGroup:           nil,
-		Parameters:         KVPList(msg.Parameters),
+		Parameters:         FromWire(msg.Parameters),
 	}
 	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
 		return s.subscriptionDone(m.RequestID, code, count, reason)
@@ -1142,7 +1142,7 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 		Expires:       msg.Expires,
 		GroupOrder:    GroupOrder(msg.GroupOrder),
 		ContentExists: msg.ContentExists,
-		Parameters:    KVPList(msg.Parameters),
+		Parameters:    FromWire(msg.Parameters),
 	}
 
 	// Only set LargestLocation if content exists
@@ -1196,7 +1196,7 @@ func (s *Session) onSubscribeUpdate(msg *wire.SubscribeUpdateMessage) error {
 		EndGroup:           msg.EndGroup,
 		SubscriberPriority: msg.SubscriberPriority,
 		Forward:            msg.Forward,
-		Parameters:         KVPList(msg.Parameters),
+		Parameters:         FromWire(msg.Parameters),
 	}
 
 	// Propagate to application handler if available
