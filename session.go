@@ -320,6 +320,87 @@ func (s *Session) Path() string {
 	return s.path
 }
 
+// SubscribeOption is a functional option for configuring Subscribe requests.
+type SubscribeOption func(*SubscribeOptions)
+
+// WithSubscriberPriority sets the delivery priority for the subscription.
+// Priority range is 0-255, with lower values indicating higher priority (0 is highest).
+// Default is 128.
+func WithSubscriberPriority(priority uint8) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.SubscriberPriority = priority
+	}
+}
+
+// WithSubscribeGroupOrder sets the group ordering preference for the subscription.
+// Default is GroupOrderAscending.
+func WithSubscribeGroupOrder(groupOrder GroupOrder) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.GroupOrder = groupOrder
+	}
+}
+
+// WithForward sets the forward preference for the subscription.
+// When true, indicates forward preference. Default is true.
+func WithForward(forward bool) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.Forward = forward
+	}
+}
+
+// WithFilterType sets the subscription filter type.
+// Default is FilterTypeLatestObject.
+func WithFilterType(filterType FilterType) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.FilterType = filterType
+	}
+}
+
+// WithStartLocation sets the start position for absolute filters.
+// Default is Location{Group: 0, Object: 0}.
+func WithStartLocation(location Location) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.StartLocation = location
+	}
+}
+
+// WithEndGroup sets the end group for range filters.
+// Default is 0.
+func WithEndGroup(endGroup uint64) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.EndGroup = endGroup
+	}
+}
+
+// WithAuthorizationToken sets the authorization token for the subscription.
+// This is a convenience method that adds the authorization token to parameters.
+func WithAuthorizationToken(token string) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		if len(token) > 0 {
+			// Replace existing auth token or add new one
+			for i, param := range opts.Parameters {
+				if param.Type == wire.AuthorizationTokenParameterKey {
+					opts.Parameters[i].ValueBytes = []byte(token)
+					return
+				}
+			}
+			// Add new auth token
+			opts.Parameters = append(opts.Parameters, KeyValuePair{
+				Type:       wire.AuthorizationTokenParameterKey,
+				ValueBytes: []byte(token),
+			})
+		}
+	}
+}
+
+// WithSubscribeParameters sets additional key-value parameters for the subscription.
+// This replaces any existing parameters.
+func WithSubscribeParameters(parameters KVPList) SubscribeOption {
+	return func(opts *SubscribeOptions) {
+		opts.Parameters = parameters
+	}
+}
+
 // Session message senders
 
 func (s *Session) sendClientSetup() error {
@@ -342,39 +423,26 @@ func (s *Session) sendClientSetup() error {
 	})
 }
 
-// Subscribe subscribes to track in namespace. It blocks until a response from
-// the peer was received or ctx is cancelled.
-// This is a convenience wrapper around SubscribeWithOptions with default settings.
-// Note. auth should not be a simple string, but a structured object containing
+// Subscribe subscribes to a track with the given options.
+// It blocks until a response from the peer was received or ctx is cancelled.
+//
+// Default behavior when no options are provided:
+//   - SubscriberPriority: 128 (medium priority)
+//   - GroupOrder: GroupOrderAscending
+//   - Forward: true (forward preference)
+//   - FilterType: FilterTypeLatestObject
+//   - StartLocation: Location{Group: 0, Object: 0}
+//   - EndGroup: 0
+//   - Parameters: empty
+//
+// Use WithAuthorizationToken(auth) to add authorization.
+// Note: auth should not be a simple string, but a structured object containing
 // an optional session-specific alias (draft-11 8.2.1.1)
 func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace []string,
 	name string,
-	auth string,
-) (*RemoteTrack, error) {
-	opts := DefaultSubscribeOptions()
-
-	// Add authorization parameter if provided
-	if len(auth) > 0 {
-		opts.Parameters = KVPList{
-			{
-				Type:       wire.AuthorizationTokenParameterKey,
-				ValueBytes: []byte(auth),
-			},
-		}
-	}
-
-	return s.SubscribeWithOptions(ctx, namespace, name, opts)
-}
-
-// SubscribeWithOptions subscribes to a track with full control over subscription parameters.
-// It blocks until a response from the peer was received or ctx is cancelled.
-func (s *Session) SubscribeWithOptions(
-	ctx context.Context,
-	namespace []string,
-	name string,
-	opts *SubscribeOptions,
+	options ...SubscribeOption,
 ) (*RemoteTrack, error) {
 
 	requestID, err := s.getRequestID()
@@ -391,9 +459,22 @@ func (s *Session) SubscribeWithOptions(
 		return nil, err
 	}
 
-	if opts == nil {
-		opts = DefaultSubscribeOptions()
+	// Set default values
+	opts := &SubscribeOptions{
+		SubscriberPriority: 128,
+		GroupOrder:         GroupOrderAscending,
+		Forward:            true,
+		FilterType:         FilterTypeLatestObject,
+		StartLocation:      Location{Group: 0, Object: 0},
+		EndGroup:           0,
+		Parameters:         KVPList{},
 	}
+	
+	// Apply options
+	for _, option := range options {
+		option(opts)
+	}
+
 	cm := &wire.SubscribeMessage{
 		RequestID:          requestID,
 		TrackAlias:         trackAlias,

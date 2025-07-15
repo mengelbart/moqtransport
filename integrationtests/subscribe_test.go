@@ -24,7 +24,7 @@ func TestSubscribe(t *testing.T) {
 		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", moqtransport.WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 	})
@@ -43,7 +43,7 @@ func TestSubscribe(t *testing.T) {
 		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", moqtransport.WithAuthorizationToken("auth"))
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "unauthorized")
 		assert.Nil(t, rt)
@@ -66,7 +66,7 @@ func TestSubscribe(t *testing.T) {
 		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", moqtransport.WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
@@ -129,7 +129,7 @@ func TestSubscribe(t *testing.T) {
 		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", moqtransport.WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
@@ -167,7 +167,7 @@ func TestSubscribe(t *testing.T) {
 		_, ct, cancel := setupWithHandlers(t, sConn, cConn, nil, subscribeHandler)
 		defer cancel()
 
-		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", "auth")
+		rt, err := ct.Subscribe(context.Background(), []string{"namespace"}, "track", moqtransport.WithAuthorizationToken("auth"))
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 
