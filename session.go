@@ -628,14 +628,14 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 	return s.controlStream.write(msg)
 }
 
-func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string) error {
+func (s *Session) rejectSubscription(id uint64, errorCode ErrorCodeSubscribe, reason string) error {
 	lt, ok := s.localTracks.reject(id)
 	if !ok {
 		return errUnknownRequestID
 	}
 	return s.controlStream.write(&wire.SubscribeErrorMessage{
 		RequestID:    lt.requestID,
-		ErrorCode:    errorCode,
+		ErrorCode:    uint64(errorCode),
 		ReasonPhrase: reason,
 		TrackAlias:   lt.trackAlias,
 	})
@@ -1109,7 +1109,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		}
 		return s.controlStream.write(&wire.SubscribeErrorMessage{
 			RequestID:    lt.requestID,
-			ErrorCode:    code,
+			ErrorCode:    uint64(code),
 			ReasonPhrase: reason,
 			TrackAlias:   lt.trackAlias,
 		})
@@ -1168,7 +1168,7 @@ func (s *Session) onSubscribeError(msg *wire.SubscribeErrorMessage) error {
 		return errUnknownRequestID
 	}
 	err := ProtocolError{
-		code:    msg.ErrorCode,
+		code:    ErrorCode(msg.ErrorCode),
 		message: msg.ReasonPhrase,
 	}
 	select {
@@ -1247,7 +1247,7 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 	}
 	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, nil, s.Qlogger)
 	if err := s.addLocalTrack(lt); err != nil {
-		if rejectErr := s.rejectFetch(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
+		if rejectErr := s.rejectFetch(m.RequestID, uint64(ErrorCodeSubscribeInternal), ""); rejectErr != nil {
 			return rejectErr
 		}
 		return err
@@ -1288,7 +1288,7 @@ func (s *Session) onFetchError(msg *wire.FetchErrorMessage) error {
 	}
 	select {
 	case rt.responseChan <- ProtocolError{
-		code:    msg.ErrorCode,
+		code:    ErrorCode(msg.ErrorCode),
 		message: msg.ReasonPhrase,
 	}:
 	default:
@@ -1399,7 +1399,7 @@ func (s *Session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 	}
 	select {
 	case announcement.response <- ProtocolError{
-		code:    msg.ErrorCode,
+		code:    ErrorCode(msg.ErrorCode),
 		message: msg.ReasonPhrase,
 	}:
 	default:
@@ -1480,7 +1480,7 @@ func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMes
 	select {
 	case as.response <- announcementSubscriptionResponse{
 		err: ProtocolError{
-			code:    msg.ErrorCode,
+			code:    ErrorCode(msg.ErrorCode),
 			message: msg.ReasonPhrase,
 		},
 	}:

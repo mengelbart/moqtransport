@@ -344,7 +344,7 @@ func TestSession(t *testing.T) {
 		s.handshakeDone.Store(true)
 		cs.EXPECT().write(&wire.SubscribeErrorMessage{
 			RequestID:    0,
-			ErrorCode:    ErrorCodeSubscribeTrackDoesNotExist,
+			ErrorCode:    uint64(ErrorCodeSubscribeTrackDoesNotExist),
 			ReasonPhrase: "track not found",
 			TrackAlias:   0,
 		})

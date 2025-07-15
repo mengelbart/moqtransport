@@ -47,7 +47,7 @@ func WithParameters(parameters KVPList) SubscribeOKOption {
 }
 
 // Accept accepts the subscription with the given options.
-// 
+//
 // Default behavior when no options are provided:
 //   - Expires: 0 (never expires)
 //   - GroupOrder: GroupOrderAscending
@@ -59,7 +59,7 @@ func WithParameters(parameters KVPList) SubscribeOKOption {
 // ContentExists is automatically set based on whether LargestLocation is provided.
 func (w *SubscribeResponseWriter) Accept(options ...SubscribeOKOption) error {
 	w.handled = true
-	
+
 	// Set default values
 	opts := &SubscribeOkOptions{
 		Expires:         0,
@@ -68,19 +68,19 @@ func (w *SubscribeResponseWriter) Accept(options ...SubscribeOKOption) error {
 		LargestLocation: nil,
 		Parameters:      KVPList{},
 	}
-	
+
 	// Apply options
 	for _, option := range options {
 		option(opts)
 	}
-	
+
 	if err := w.session.acceptSubscriptionWithOptions(w.id, opts); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (w *SubscribeResponseWriter) Reject(code uint64, reason string) error {
+func (w *SubscribeResponseWriter) Reject(code ErrorCodeSubscribe, reason string) error {
 	w.handled = true
 	return w.session.rejectSubscription(w.id, code, reason)
 }
