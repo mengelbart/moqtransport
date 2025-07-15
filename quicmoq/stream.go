@@ -1,40 +1,42 @@
 package quicmoq
 
-import "github.com/mengelbart/moqtransport"
+import (
+	"github.com/mengelbart/moqtransport"
+	"github.com/quic-go/quic-go"
+)
 
 var _ moqtransport.Stream = (*Stream)(nil)
 
 type Stream struct {
-	send    *SendStream
-	receive *ReceiveStream
+	stream *quic.Stream
 }
 
 // Read implements moqtransport.Stream.
 func (s *Stream) Read(p []byte) (n int, err error) {
-	return s.receive.Read(p)
+	return s.stream.Read(p)
 }
 
 // Write implements moqtransport.Stream.
 func (s *Stream) Write(p []byte) (n int, err error) {
-	return s.send.Write(p)
+	return s.stream.Write(p)
 }
 
 // Close implements moqtransport.Stream.
 func (s *Stream) Close() error {
-	return s.send.Close()
+	return s.stream.Close()
 }
 
 // Reset implements moqtransport.Stream.
 func (s *Stream) Reset(code uint32) {
-	s.send.Reset(code)
+	s.stream.CancelWrite(quic.StreamErrorCode(code))
 }
 
 // Stop implements moqtransport.Stream.
 func (s *Stream) Stop(code uint32) {
-	s.receive.Stop(code)
+	s.stream.CancelRead(quic.StreamErrorCode(code))
 }
 
 // StreamID implements moqtransport.Stream.
 func (s *Stream) StreamID() uint64 {
-	return s.send.StreamID()
+	return uint64(s.stream.StreamID())
 }

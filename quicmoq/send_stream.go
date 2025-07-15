@@ -8,7 +8,7 @@ import (
 var _ moqtransport.SendStream = (*SendStream)(nil)
 
 type SendStream struct {
-	stream quic.SendStream
+	stream *quic.SendStream
 }
 
 // Write implements moqtransport.SendStream.

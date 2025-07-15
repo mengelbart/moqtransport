@@ -8,19 +8,19 @@ import (
 )
 
 type connection struct {
-	connection  quic.Connection
+	connection  *quic.Conn
 	perspective moqtransport.Perspective
 }
 
-func NewServer(conn quic.Connection) moqtransport.Connection {
+func NewServer(conn *quic.Conn) moqtransport.Connection {
 	return New(conn, moqtransport.PerspectiveServer)
 }
 
-func NewClient(conn quic.Connection) moqtransport.Connection {
+func NewClient(conn *quic.Conn) moqtransport.Connection {
 	return New(conn, moqtransport.PerspectiveClient)
 }
 
-func New(conn quic.Connection, perspective moqtransport.Perspective) moqtransport.Connection {
+func New(conn *quic.Conn, perspective moqtransport.Perspective) moqtransport.Connection {
 	return &connection{conn, perspective}
 }
 
@@ -30,12 +30,7 @@ func (c *connection) AcceptStream(ctx context.Context) (moqtransport.Stream, err
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 
@@ -55,12 +50,7 @@ func (c *connection) OpenStream() (moqtransport.Stream, error) {
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 
@@ -70,12 +60,7 @@ func (c *connection) OpenStreamSync(ctx context.Context) (moqtransport.Stream, e
 		return nil, err
 	}
 	return &Stream{
-		send: &SendStream{
-			stream: s,
-		},
-		receive: &ReceiveStream{
-			stream: s,
-		},
+		stream: s,
 	}, nil
 }
 

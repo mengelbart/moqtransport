@@ -52,7 +52,7 @@ type Stream interface {
 	SendStream
 }
 
-// A Stream is the interface implemented by the receiving end of unidirectional
+// ReceiveStream is the interface implemented by the receiving end of unidirectional
 // streams.
 type ReceiveStream interface {
 	// Read reads from the stream.
@@ -66,7 +66,7 @@ type ReceiveStream interface {
 	StreamID() uint64
 }
 
-// A Stream is the interface implemented by the sending end of unidirectional
+// SendStream is the interface implemented by the sending end of unidirectional
 // streams.
 type SendStream interface {
 	// Write writes to the stream.
