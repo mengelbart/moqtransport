@@ -155,7 +155,6 @@ type SubscribeOptions struct {
 	Parameters KVPList
 }
 
-
 // SubscribeOkOptions contains options for customizing subscription acceptance responses.
 type SubscribeOkOptions struct {
 	// Expires specifies how long the subscription is valid
@@ -171,33 +170,6 @@ type SubscribeOkOptions struct {
 	LargestLocation *Location
 
 	// Parameters contains response parameters
-	Parameters KVPList
-}
-
-
-// SubscriptionInfo contains all information received from a SUBSCRIBE_OK response.
-// This provides clients with complete metadata about the accepted subscription.
-type SubscriptionInfo struct {
-	// Expires specifies how long the subscription is valid in milliseconds.
-	// A value of 0 indicates that the subscription does not expire or expires at an unknown time.
-	// Expires is advisory and a subscription can end prior to the expiry time or last longer.
-	Expires time.Duration
-
-	// GroupOrder indicates the subscription will be delivered in a specific order by group.
-	// See GroupOrder constants for valid values.
-	GroupOrder GroupOrder
-
-	// ContentExists indicates whether content has been published on this track.
-	// true if an object has been published, false if not.
-	ContentExists bool
-
-	// LargestLocation contains the location of the largest object available for this track.
-	// This field is only present if ContentExists is true.
-	// Can be used for optimal track switching by calculating switching boundaries.
-	LargestLocation *Location
-
-	// Parameters contains the key-value parameters from the SUBSCRIBE_OK response.
-	// These may include publisher-specific metadata or delivery preferences.
 	Parameters KVPList
 }
 
@@ -219,7 +191,6 @@ type SubscribeUpdateOptions struct {
 	// Parameters contains key-value parameters for the update
 	Parameters KVPList
 }
-
 
 // SubscribeMessage represents a SUBSCRIBE message from the peer.
 type SubscribeMessage struct {
