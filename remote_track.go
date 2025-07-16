@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"sync/atomic"
+	"time"
 )
 
 var errTooManyFetchStreams = errors.New("got too many fetch streams for remote track")
@@ -27,6 +28,14 @@ func (e ErrSubscribeDone) Error() string {
 type RemoteTrack struct {
 	requestID uint64
 
+	// Expires, groupOrder, ..., parameters are returned in the SUBSCRIBE_OK.
+	// They are not updated when sending a SUBSCRIBE_UPDATE message.
+	expires         time.Duration
+	groupOrder      GroupOrder
+	contentExists   bool
+	largestLocation *Location // Only set iff ContentExists is true
+	parameters      KVPList
+
 	logger          *slog.Logger
 	unsubscribeFunc func() error
 	updateFunc      func(context.Context, ...SubscribeUpdateOption) error
@@ -39,39 +48,36 @@ type RemoteTrack struct {
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
 
 	responseChan chan error
-
-	subscriptionInfo *SubscriptionInfo
 }
 
+// RequestID returns the request ID of the subscription request.
 func (t *RemoteTrack) RequestID() uint64 {
 	return t.requestID
 }
 
-// SubscriptionInfo returns the complete subscription information received from SUBSCRIBE_OK.
-// The second return value indicates whether the subscription information is available.
-// This provides access to all metadata including expires, group order, content existence,
-// largest location, and any parameters from the publisher.
-func (t *RemoteTrack) SubscriptionInfo() (SubscriptionInfo, bool) {
-	if t.subscriptionInfo == nil {
-		return SubscriptionInfo{}, false
-	}
-	return *t.subscriptionInfo, true
+// Expires returns the duration for which the subscription is valid.
+// A value of 0 indicates that the subscription does not expire or expires at an unknown time.
+func (t *RemoteTrack) Expires() time.Duration {
+	return t.expires
 }
 
-// LargestLocation returns the largest location received from SUBSCRIBE_OK.
-// Returns nil if no location was provided in the SUBSCRIBE_OK response or if ContentExists is false.
-// This is a convenience method that extracts the LargestLocation from the full SubscriptionInfo.
-func (t *RemoteTrack) LargestLocation() *Location {
-	if t.subscriptionInfo == nil {
-		return nil
-	}
-	return t.subscriptionInfo.LargestLocation
+// GroupOrder returns the group order for this track.
+func (t *RemoteTrack) GroupOrder() GroupOrder {
+	return t.groupOrder
 }
 
-// setSubscriptionInfo sets the complete subscription information from SUBSCRIBE_OK response.
-// This is called internally when processing SUBSCRIBE_OK messages.
-func (t *RemoteTrack) setSubscriptionInfo(info *SubscriptionInfo) {
-	t.subscriptionInfo = info
+// LargestLocation returns the largest location for this track if content exists.
+// Returns false if ContentExists is false or if no LargestLocation was provided.
+func (t *RemoteTrack) LargestLocation() (Location, bool) {
+	if t.contentExists && t.largestLocation != nil {
+		return *t.largestLocation, true
+	}
+	return Location{}, false
+}
+
+// Parameters returns the key-value parameters for this track.
+func (t *RemoteTrack) Parameters() KVPList {
+	return t.parameters
 }
 
 // UpdateSubscription updates the subscription parameters for this track.

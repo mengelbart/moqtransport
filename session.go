@@ -514,7 +514,7 @@ func (s *Session) Subscribe(
 		EndGroup:           0,
 		Parameters:         KVPList{},
 	}
-	
+
 	// Apply options
 	for _, option := range options {
 		option(opts)
@@ -575,7 +575,7 @@ func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opti
 		Forward:            true,
 		Parameters:         KVPList{},
 	}
-	
+
 	// Apply options
 	for _, option := range options {
 		option(opts)
@@ -1138,19 +1138,15 @@ func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
 	}
 
 	// Store complete subscription information from SUBSCRIBE_OK
-	info := &SubscriptionInfo{
-		Expires:       msg.Expires,
-		GroupOrder:    GroupOrder(msg.GroupOrder),
-		ContentExists: msg.ContentExists,
-		Parameters:    FromWire(msg.Parameters),
+	rt.expires = msg.Expires
+	rt.groupOrder = GroupOrder(msg.GroupOrder)
+	rt.contentExists = msg.ContentExists
+	if rt.contentExists {
+		rt.largestLocation = &msg.LargestLocation
+	} else {
+		rt.largestLocation = nil
 	}
-
-	// Only set LargestLocation if content exists
-	if msg.ContentExists {
-		info.LargestLocation = &msg.LargestLocation
-	}
-
-	rt.setSubscriptionInfo(info)
+	rt.parameters = FromWire(msg.Parameters)
 
 	select {
 	case rt.responseChan <- nil:
