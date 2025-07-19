@@ -499,8 +499,7 @@ func (s *Session) Subscribe(
 	}, func(ctx context.Context, options ...SubscribeUpdateOption) error {
 		return s.UpdateSubscription(ctx, requestID, options...)
 	})
-	trackAlias := s.trackAliases.next()
-	if err = s.remoteTracks.addPendingWithAlias(requestID, trackAlias, rt); err != nil {
+	if err = s.remoteTracks.addPendingWithAlias(requestID, rt); err != nil {
 		return nil, err
 	}
 
@@ -522,7 +521,6 @@ func (s *Session) Subscribe(
 
 	cm := &wire.SubscribeMessage{
 		RequestID:          requestID,
-		TrackAlias:         trackAlias,
 		TrackNamespace:     namespace,
 		TrackName:          []byte(name),
 		SubscriberPriority: opts.SubscriberPriority,
@@ -637,7 +635,6 @@ func (s *Session) rejectSubscription(id uint64, errorCode uint64, reason string)
 		RequestID:    lt.requestID,
 		ErrorCode:    errorCode,
 		ReasonPhrase: reason,
-		TrackAlias:   lt.trackAlias,
 	})
 }
 
@@ -1081,7 +1078,6 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 
 	m := &SubscribeMessage{
 		RequestID:          msg.RequestID,
-		TrackAlias:         msg.TrackAlias,
 		Namespace:          msg.TrackNamespace,
 		Track:              string(msg.TrackName),
 		Authorization:      auth,
@@ -1093,7 +1089,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		EndGroup:           nil,
 		Parameters:         FromWire(msg.Parameters),
 	}
-	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, func(code, count uint64, reason string) error {
+	lt := newLocalTrack(s.conn, m.RequestID, s.trackAliases.next(), func(code, count uint64, reason string) error {
 		return s.subscriptionDone(m.RequestID, code, count, reason)
 	}, s.Qlogger)
 
@@ -1108,12 +1104,11 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 			RequestID:    lt.requestID,
 			ErrorCode:    code,
 			ReasonPhrase: reason,
-			TrackAlias:   lt.trackAlias,
 		})
 	}
 	srw := &SubscribeResponseWriter{
 		id:         m.RequestID,
-		trackAlias: m.TrackAlias,
+		trackAlias: lt.trackAlias,
 		session:    s,
 		localTrack: lt,
 		handled:    false,
@@ -1132,9 +1127,13 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 }
 
 func (s *Session) onSubscribeOk(msg *wire.SubscribeOkMessage) error {
-	rt, ok := s.remoteTracks.confirm(msg.RequestID)
-	if !ok {
-		return errUnknownRequestID
+	rt, err := s.remoteTracks.confirm(msg.RequestID)
+	if err != nil {
+		return err
+	}
+	if err = s.remoteTracks.setAlias(msg.RequestID, msg.TrackAlias); err != nil {
+		// TODO: Protocol violation
+		return err
 	}
 
 	// Store complete subscription information from SUBSCRIBE_OK
@@ -1233,13 +1232,12 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		Namespace:     msg.TrackNamespace,
 		Track:         string(msg.TrackName),
 		RequestID:     msg.RequestID,
-		TrackAlias:    0,
 		Authorization: "",
 		NewSessionURI: "",
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	lt := newLocalTrack(s.conn, m.RequestID, m.TrackAlias, nil, s.Qlogger)
+	lt := newLocalTrack(s.conn, m.RequestID, s.trackAliases.next(), nil, s.Qlogger)
 	if err := s.addLocalTrack(lt); err != nil {
 		if rejectErr := s.rejectFetch(m.RequestID, ErrorCodeSubscribeInternal, ""); rejectErr != nil {
 			return rejectErr
@@ -1260,9 +1258,9 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 }
 
 func (s *Session) onFetchOk(msg *wire.FetchOkMessage) error {
-	rt, ok := s.remoteTracks.confirm(msg.RequestID)
-	if !ok {
-		return errUnknownRequestID
+	rt, err := s.remoteTracks.confirm(msg.RequestID)
+	if err != nil {
+		return err
 	}
 	select {
 	case rt.responseChan <- nil:

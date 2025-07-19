@@ -71,7 +71,6 @@ func (g GroupOrder) String() string {
 
 type SubscribeMessage struct {
 	RequestID          uint64
-	TrackAlias         uint64
 	TrackNamespace     Tuple
 	TrackName          []byte
 	SubscriberPriority uint8
@@ -87,7 +86,6 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("type", "subscribe"),
 		slog.Uint64("request_id", m.RequestID),
-		slog.Uint64("track_alias", m.TrackAlias),
 		slog.Any("track_namespace", m.TrackNamespace),
 		slog.Any("track_name", qlog.RawInfo{
 			Length:        uint64(len(m.TrackName)),
@@ -127,7 +125,6 @@ func (m SubscribeMessage) Type() controlMessageType {
 
 func (m *SubscribeMessage) Append(buf []byte) []byte {
 	buf = quicvarint.Append(buf, m.RequestID)
-	buf = quicvarint.Append(buf, m.TrackAlias)
 	buf = m.TrackNamespace.append(buf)
 	buf = appendVarIntBytes(buf, m.TrackName)
 	buf = append(buf, m.SubscriberPriority)
@@ -146,12 +143,6 @@ func (m *SubscribeMessage) Append(buf []byte) []byte {
 func (m *SubscribeMessage) parse(v Version, data []byte) (err error) {
 	var n int
 	m.RequestID, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.TrackAlias, n, err = quicvarint.Parse(data)
 	if err != nil {
 		return err
 	}
