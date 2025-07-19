@@ -33,7 +33,7 @@ func TestFetch(t *testing.T) {
 		handler := moqtransport.HandlerFunc(func(w moqtransport.ResponseWriter, m *moqtransport.Message) {
 			assert.Equal(t, moqtransport.MessageFetch, m.Method)
 			assert.NotNil(t, w)
-			assert.NoError(t, w.Reject(moqtransport.ErrorCodeFetchUnauthorized, "unauthorized"))
+			assert.NoError(t, w.Reject(uint64(moqtransport.ErrorCodeFetchUnauthorized), "unauthorized"))
 		})
 		_, ct, cancel := setup(t, sConn, cConn, handler)
 		defer cancel()
