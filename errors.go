@@ -121,4 +121,8 @@ var (
 		code:    ErrorCodeProtocolViolation,
 		message: "unknown announcement",
 	}
+	errInvalidNamespaceLength = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "invalid namespace length",
+	}
 )

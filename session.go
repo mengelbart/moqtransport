@@ -978,7 +978,7 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	case *wire.UnannounceMessage:
 		err = s.onUnannounce(m)
 	case *wire.AnnounceCancelMessage:
-		s.onAnnounceCancel(m)
+		err = s.onAnnounceCancel(m)
 	case *wire.SubscribeAnnouncesMessage:
 		err = s.onSubscribeAnnounces(m)
 	case *wire.SubscribeAnnouncesOkMessage:
@@ -1079,6 +1079,9 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 		return err
 	}
 
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	m := &SubscribeMessage{
 		RequestID:          msg.RequestID,
 		TrackAlias:         msg.TrackAlias,
@@ -1228,6 +1231,9 @@ func (s *Session) onSubscribeDone(msg *wire.SubscribeDoneMessage) error {
 }
 
 func (s *Session) onFetch(msg *wire.FetchMessage) error {
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	m := &Message{
 		Method:        MessageFetch,
 		Namespace:     msg.TrackNamespace,
@@ -1301,6 +1307,9 @@ func (s *Session) onFetchCancel(msg *wire.FetchCancelMessage) error {
 }
 
 func (s *Session) onTrackStatusRequest(msg *wire.TrackStatusRequestMessage) error {
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	tsrw := &trackStatusResponseWriter{
 		session: s,
 		handled: false,
@@ -1343,6 +1352,9 @@ func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 }
 
 func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	a := &announcement{
 		requestID:  msg.RequestID,
 		namespace:  msg.TrackNamespace,
@@ -1397,6 +1409,9 @@ func (s *Session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
 }
 
 func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
 		return errUnknownAnnouncement
 	}
@@ -1407,13 +1422,17 @@ func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
 	return nil
 }
 
-func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) {
+func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
+	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
+		return errInvalidNamespaceLength
+	}
 	s.Handler.Handle(nil, &Message{
 		Method:       MessageAnnounceCancel,
 		Namespace:    msg.TrackNamespace,
 		ErrorCode:    msg.ErrorCode,
 		ReasonPhrase: msg.ReasonPhrase,
 	})
+	return nil
 }
 
 func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {

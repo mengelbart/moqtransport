@@ -334,7 +334,7 @@ func TestSession(t *testing.T) {
 		sh := SubscribeHandlerFunc(func(w *SubscribeResponseWriter, m *SubscribeMessage) {
 			assert.Equal(t, uint64(0), m.RequestID)
 			assert.Equal(t, uint64(0), m.TrackAlias)
-			assert.Equal(t, []string{}, m.Namespace)
+			assert.Equal(t, []string{"namespace"}, m.Namespace)
 			assert.Equal(t, "", m.Track)
 			assert.Equal(t, "", m.Authorization)
 			assert.NoError(t, w.Reject(ErrorCodeSubscribeTrackDoesNotExist, "track not found"))
@@ -351,7 +351,7 @@ func TestSession(t *testing.T) {
 		err := s.receive(&wire.SubscribeMessage{
 			RequestID:          0,
 			TrackAlias:         0,
-			TrackNamespace:     []string{},
+			TrackNamespace:     []string{"namespace"},
 			TrackName:          []byte{},
 			SubscriberPriority: 0,
 			GroupOrder:         0,
@@ -552,11 +552,11 @@ func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 			callCount++
 			// Convert options back to struct for testing
 			opts := &SubscribeUpdateOptions{
-				StartLocation: Location{Group: 0, Object: 0},
-				EndGroup: 0,
+				StartLocation:      Location{Group: 0, Object: 0},
+				EndGroup:           0,
 				SubscriberPriority: 128,
-				Forward: true,
-				Parameters: KVPList{},
+				Forward:            true,
+				Parameters:         KVPList{},
 			}
 			for _, option := range options {
 				option(opts)
