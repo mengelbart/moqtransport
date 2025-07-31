@@ -216,7 +216,7 @@ func (h *moqHandler) setupDateTrack() {
 			sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
 			if err != nil {
 				log.Printf("failed to open new subgroup: %v", err)
-				p.CloseWithError(moqtransport.ErrorCodeSubscribeDoneSubscriptionEnded, "")
+				p.CloseWithError(uint64(moqtransport.ErrorCodeSubscribeDoneSubscriptionEnded), "")
 				delete(h.publishers, p)
 				continue
 			}
