@@ -262,7 +262,7 @@ func (s *Session) receiveDatagram(msg *wire.ObjectDatagramMessage) error {
 	subscription.push(&Object{
 		GroupID:              msg.GroupID,
 		ObjectID:             msg.ObjectID,
-		ForwardingPreference: ObjectForwardingPreferenceDatagarm,
+		ForwardingPreference: ObjectForwardingPreferenceDatagram,
 		Payload:              msg.ObjectPayload,
 	})
 	return nil

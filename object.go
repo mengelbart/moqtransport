@@ -4,7 +4,7 @@ type ObjectForwardingPreference int
 
 const (
 	ObjectForwardingPreferenceSubgroup ObjectForwardingPreference = 0x00
-	ObjectForwardingPreferenceDatagarm
+	ObjectForwardingPreferenceDatagram
 )
 
 // An Object is a MoQ Object.
