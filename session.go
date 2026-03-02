@@ -594,7 +594,7 @@ func (s *Session) UpdateSubscription(ctx context.Context, requestID uint64, opti
 
 // acceptSubscriptionWithOptions accepts a subscription with relevant options.
 func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOptions) error {
-	_, ok := s.localTracks.confirm(id)
+	lt, ok := s.localTracks.confirm(id)
 	if !ok {
 		return errUnknownRequestID
 	}
@@ -612,6 +612,7 @@ func (s *Session) acceptSubscriptionWithOptions(id uint64, opts *SubscribeOkOpti
 
 	msg := &wire.SubscribeOkMessage{
 		RequestID:     id,
+		TrackAlias:    lt.trackAlias,
 		Expires:       opts.Expires,
 		GroupOrder:    uint8(opts.GroupOrder),
 		ContentExists: opts.ContentExists,
