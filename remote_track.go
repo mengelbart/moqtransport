@@ -27,6 +27,8 @@ func (e ErrSubscribeDone) Error() string {
 // RemoteTrack is a track provided by the remote peer.
 type RemoteTrack struct {
 	requestID uint64
+	namespace []string
+	trackname string
 
 	// Expires, groupOrder, ..., parameters are returned in the SUBSCRIBE_OK.
 	// They are not updated when sending a SUBSCRIBE_UPDATE message.
@@ -46,6 +48,7 @@ type RemoteTrack struct {
 
 	subGroupCount atomic.Uint64
 	fetchCount    atomic.Uint64 // should never grow larger than one for now.
+	migrating     atomic.Bool
 
 	responseChan chan error
 }
@@ -53,6 +56,16 @@ type RemoteTrack struct {
 // RequestID returns the request ID of the subscription request.
 func (t *RemoteTrack) RequestID() uint64 {
 	return t.requestID
+}
+
+// Namespace returns the namespace this track is subscribed to.
+func (t *RemoteTrack) Namespace() []string {
+	return t.namespace
+}
+
+// TrackName returns the track name this track is subscribed to.
+func (t *RemoteTrack) TrackName() string {
+	return t.trackname
 }
 
 // Expires returns the duration for which the subscription is valid.
@@ -89,10 +102,12 @@ func (t *RemoteTrack) UpdateSubscription(ctx context.Context, options ...Subscri
 	return t.updateFunc(ctx, options...)
 }
 
-func newRemoteTrack(requestID uint64, unsubscribeFunc func() error, updateFunc func(context.Context, ...SubscribeUpdateOption) error) *RemoteTrack {
+func newRemoteTrack(requestID uint64, namespace []string, trackname string, unsubscribeFunc func() error, updateFunc func(context.Context, ...SubscribeUpdateOption) error) *RemoteTrack {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	t := &RemoteTrack{
 		requestID:       requestID,
+		namespace:       namespace,
+		trackname:       trackname,
 		logger:          defaultLogger,
 		unsubscribeFunc: unsubscribeFunc,
 		updateFunc:      updateFunc,
@@ -164,6 +179,9 @@ func (t *RemoteTrack) readStream(parser objectMessageParser) error {
 }
 
 func (t *RemoteTrack) done(status uint64, reason string) {
+	if t.migrating.Load() {
+		return
+	}
 	t.doneCtxCancel(&ErrSubscribeDone{
 		Status: status,
 		Reason: reason,

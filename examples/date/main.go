@@ -13,6 +13,9 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/mengelbart/moqtransport"
 	"github.com/mengelbart/moqtransport/quicmoq"
@@ -42,6 +45,7 @@ type options struct {
 	webtransport bool
 	namespace    string
 	trackname    string
+	goawayURI    string
 }
 
 func parseOptions(fs *flag.FlagSet, args []string) (*options, error) {
@@ -61,6 +65,7 @@ func parseOptions(fs *flag.FlagSet, args []string) (*options, error) {
 	fs.BoolVar(&opts.webtransport, "webtransport", false, "Use webtransport instead of QUIC (client only)")
 	fs.StringVar(&opts.namespace, "namespace", "clock", "Namespace to subscribe to")
 	fs.StringVar(&opts.trackname, "trackname", "second", "Track to subscribe to")
+	fs.StringVar(&opts.goawayURI, "goaway-uri", "", "URI to send in GOAWAY message (server only)")
 	err := fs.Parse(args[1:])
 	return &opts, err
 }
@@ -82,10 +87,16 @@ func run(args []string) error {
 		}
 		return err
 	}
+	var runErr error
 	if opts.server {
-		return runServer(opts)
+		runErr = runServer(opts)
+	} else {
+		runErr = runClient(opts)
 	}
-	return runClient(opts)
+	if runErr != nil && errors.Is(runErr, context.Canceled) {
+		return nil
+	}
+	return runErr
 }
 
 func runServer(opts *options) error {
@@ -100,17 +111,66 @@ func runServer(opts *options) error {
 	h := &moqHandler{
 		server:     true,
 		addr:       opts.addr,
+		goawayURI:  opts.goawayURI,
 		tlsConfig:  tlsConfig,
 		namespace:  []string{opts.namespace},
 		trackname:  opts.trackname,
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
 		publishers: make(map[moqtransport.Publisher]struct{}),
+		sessions:   make(map[uint64]*moqtransport.Session),
 	}
-	return h.runServer(context.TODO())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigCh
+		log.Printf("received signal %v, sending GOAWAY to all sessions", sig)
+		h.sessionsLock.Lock()
+		for id, s := range h.sessions {
+			log.Printf("sending GOAWAY to session %d", id)
+			if err := s.GoAway(h.goawayURI); err != nil {
+				log.Printf("failed to send GOAWAY to session %d: %v", id, err)
+			}
+		}
+		h.sessionsLock.Unlock()
+		deadline := time.After(5 * time.Second)
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-deadline:
+				log.Printf("grace period expired, shutting down")
+				cancel()
+				return
+			case <-ticker.C:
+				h.lock.Lock()
+				remaining := len(h.publishers)
+				h.lock.Unlock()
+				if remaining == 0 {
+					log.Printf("all subscribers migrated, shutting down")
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	return h.runServer(ctx)
 }
 
 func runClient(opts *options) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+
 	h := &moqHandler{
 		server:     false,
 		quic:       !opts.webtransport,
@@ -121,8 +181,9 @@ func runClient(opts *options) error {
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
 		publishers: make(map[moqtransport.Publisher]struct{}),
+		sessions:   make(map[uint64]*moqtransport.Session),
 	}
-	return h.runClient(context.TODO(), opts.webtransport)
+	return h.runClient(ctx, opts.webtransport)
 }
 
 func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, error) {

@@ -1,6 +1,9 @@
 package moqtransport
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrorCode is a generic error codes
 type ErrorCode uint64
@@ -146,4 +149,17 @@ var (
 		code:    ErrorCodeProtocolViolation,
 		message: "invalid namespace length",
 	}
+	errMultipleGoAways = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "multiple GOAWAY messages received",
+	}
+	errGoAwayWithURIOnServer = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "GOAWAY with URI received on server",
+	}
+	errGoAwayURITooLong = ProtocolError{
+		code:    ErrorCodeProtocolViolation,
+		message: "GOAWAY URI length exceeds 8192 bytes",
+	}
+	errSessionDraining = errors.New("session is draining after GOAWAY")
 )

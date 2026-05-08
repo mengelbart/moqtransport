@@ -23,6 +23,7 @@ type moqHandler struct {
 	server        bool
 	quic          bool
 	addr          string
+	goawayURI     string
 	tlsConfig     *tls.Config
 	namespace     []string
 	trackname     string
@@ -32,6 +33,8 @@ type moqHandler struct {
 	publishers    map[moqtransport.Publisher]struct{}
 	lock          sync.Mutex
 	largestGroup  atomic.Uint64
+	sessions      map[uint64]*moqtransport.Session
+	sessionsLock  sync.Mutex
 }
 
 func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
@@ -51,7 +54,8 @@ func (h *moqHandler) runClient(ctx context.Context, wt bool) error {
 	if err = h.handle(conn); err != nil {
 		return err
 	}
-	select {}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (h *moqHandler) runServer(ctx context.Context) error {
@@ -112,6 +116,9 @@ func (h *moqHandler) getHandler(sessionID uint64) moqtransport.Handler {
 				log.Printf("failed to accept announcement: %v", err)
 				return
 			}
+		case moqtransport.MessageGoAway:
+			log.Printf("sessionNr: %d received GOAWAY, new session URI: %v", sessionID, r.NewSessionURI)
+			go h.handleGoAway(sessionID, r.NewSessionURI)
 		}
 	})
 }
@@ -172,6 +179,11 @@ func (h *moqHandler) handle(conn moqtransport.Connection) error {
 	if err := session.Run(conn); err != nil {
 		return err
 	}
+
+	h.sessionsLock.Lock()
+	h.sessions[id] = session
+	h.sessionsLock.Unlock()
+
 	if h.publish {
 		if err := session.Announce(context.Background(), h.namespace); err != nil {
 			log.Printf("faild to announce namespace '%v': %v", h.namespace, err)
@@ -183,6 +195,66 @@ func (h *moqHandler) handle(conn moqtransport.Connection) error {
 		}
 	}
 	return nil
+}
+
+func (h *moqHandler) handleGoAway(oldSessionID uint64, newURI string) {
+	h.sessionsLock.Lock()
+	oldSession, ok := h.sessions[oldSessionID]
+	h.sessionsLock.Unlock()
+	if !ok {
+		log.Printf("GOAWAY: could not find session %d", oldSessionID)
+		return
+	}
+
+	addr := newURI
+	if addr == "" {
+		addr = h.addr
+	}
+
+	log.Printf("GOAWAY: connecting to new relay at %v", addr)
+	var conn moqtransport.Connection
+	var err error
+	if h.quic {
+		conn, err = dialQUIC(context.Background(), addr)
+	} else {
+		conn, err = dialWebTransport(context.Background(), addr)
+	}
+	if err != nil {
+		log.Printf("GOAWAY: failed to dial new relay: %v", err)
+		return
+	}
+
+	newID := h.nextSessionID.Add(1)
+	newSession := &moqtransport.Session{
+		Handler:                h.getHandler(newID),
+		SubscribeHandler:       h.getSubscribeHandler(newID),
+		SubscribeUpdateHandler: h.getSubscribeUpdateHandler(newID),
+		InitialMaxRequestID:    100,
+	}
+
+	go func() {
+		if err := newSession.Run(conn); err != nil {
+			log.Printf("GOAWAY: new session Run failed: %v", err)
+			return
+		}
+
+		h.sessionsLock.Lock()
+		h.sessions[newID] = newSession
+		h.sessionsLock.Unlock()
+
+		log.Printf("GOAWAY: new session %d established, migrating subscriptions", newID)
+		n, err := oldSession.Migrate(newSession)
+		if err != nil {
+			log.Printf("GOAWAY: migration failed: %v", err)
+			return
+		}
+
+		log.Printf("GOAWAY: migrating %d subscriptions from session %d to %d", n, oldSessionID, newID)
+
+		h.sessionsLock.Lock()
+		delete(h.sessions, oldSessionID)
+		h.sessionsLock.Unlock()
+	}()
 }
 
 func (h *moqHandler) subscribeAndRead(s *moqtransport.Session, namespace []string, trackname string) error {

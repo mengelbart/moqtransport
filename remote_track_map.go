@@ -121,3 +121,13 @@ func (m *remoteTrackMap) findByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 	}
 	return m.findByRequestID(id)
 }
+
+func (m *remoteTrackMap) openTracks() []*RemoteTrack {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	tracks := make([]*RemoteTrack, 0, len(m.open))
+	for _, rt := range m.open {
+		tracks = append(tracks, rt)
+	}
+	return tracks
+}

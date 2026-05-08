@@ -562,7 +562,7 @@ func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 			return nil
 		}
 
-		rt := newRemoteTrack(123, nil, updateFunc)
+		rt := newRemoteTrack(123, nil, "", nil, updateFunc)
 
 		err := rt.UpdateSubscription(context.Background(), WithUpdateStartLocation(Location{Group: 150, Object: 0}))
 		assert.NoError(t, err)
@@ -570,7 +570,7 @@ func TestRemoteTrack_UpdateSubscription(t *testing.T) {
 	})
 
 	t.Run("RemoteTrack UpdateSubscription returns error when updateFunc is nil", func(t *testing.T) {
-		rt := newRemoteTrack(123, nil, nil)
+		rt := newRemoteTrack(123, nil, "", nil, nil)
 
 		err := rt.UpdateSubscription(context.Background())
 		assert.Error(t, err)
