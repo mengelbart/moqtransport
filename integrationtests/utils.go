@@ -39,7 +39,7 @@ func connect(t *testing.T) (server, client *quic.Conn, cancel func()) {
 	assert.NoError(t, err)
 
 	return serverConn, clientConn, func() {
-		listener.Close()
+		listener.Close() //nolint:errcheck
 		assert.NoError(t, clientConn.CloseWithError(0, ""))
 		assert.NoError(t, serverConn.CloseWithError(0, ""))
 	}
@@ -87,8 +87,8 @@ func setupWithHandlers(t *testing.T, sConn, cConn *quic.Conn, handler moqtranspo
 	}()
 
 	cancel = func() {
-		serverSession.Close()
-		clientSession.Close()
+		serverSession.Close() //nolint:errcheck
+		clientSession.Close() //nolint:errcheck
 	}
 	wg.Wait()
 	return
