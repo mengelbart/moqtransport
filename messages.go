@@ -128,33 +128,6 @@ func (kvpl KVPList) GetAuthorizationToken() ([]byte, bool) {
 	return nil, false
 }
 
-// SubscribeOptions contains options for subscribing to a track with full control
-// over all subscribe message parameters.
-type SubscribeOptions struct {
-	// SubscriberPriority indicates the delivery priority (0-255, higher is more important)
-	SubscriberPriority uint8
-
-	// GroupOrder indicates group ordering preference:
-	// 0 = None (no specific ordering), 1 = Ascending, 2 = Descending
-	GroupOrder GroupOrder
-
-	// Forward indicates forward preference:
-	// false = No forward preference, true Forward preference
-	Forward bool // (true = 1, false = 0)
-
-	// FilterType specifies the subscription filter type
-	FilterType FilterType
-
-	// StartLocation specifies the start position for absolute filters
-	StartLocation Location
-
-	// EndGroup specifies the end group for range filters
-	EndGroup uint64
-
-	// Parameters contains key-value parameters for the subscription
-	Parameters KVPList
-}
-
 // SubscribeOkOptions contains options for customizing subscription acceptance responses.
 type SubscribeOkOptions struct {
 	// Expires specifies how long the subscription is valid
