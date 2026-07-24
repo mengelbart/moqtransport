@@ -17,10 +17,10 @@ func newRequestIDGenerator(initialID, maxID, interval uint64) *requestIDGenerato
 	}
 }
 
-func (g *requestIDGenerator) next() (uint64, error) {
+func (g *requestIDGenerator) next() uint64 {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	next := g.id
 	g.id += g.interval
-	return next, nil
+	return next
 }

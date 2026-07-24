@@ -97,7 +97,7 @@ func runServer(opts *options) error {
 			log.Fatal(err)
 		}
 	}
-	h := &moqHandler{
+	h := &endpoint{
 		server:     true,
 		addr:       opts.addr,
 		tlsConfig:  tlsConfig,
@@ -105,13 +105,13 @@ func runServer(opts *options) error {
 		trackname:  opts.trackname,
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
-		publishers: make(map[moqtransport.Publisher]struct{}),
+		publishers: make(map[*moqtransport.IncomingSubscribeRequest]struct{}),
 	}
 	return h.runServer(context.TODO())
 }
 
 func runClient(opts *options) error {
-	h := &moqHandler{
+	h := &endpoint{
 		server:     false,
 		quic:       !opts.webtransport,
 		addr:       opts.addr,
@@ -120,7 +120,7 @@ func runClient(opts *options) error {
 		trackname:  opts.trackname,
 		publish:    opts.publish,
 		subscribe:  opts.subscribe,
-		publishers: make(map[moqtransport.Publisher]struct{}),
+		publishers: make(map[*moqtransport.IncomingSubscribeRequest]struct{}),
 	}
 	return h.runClient(context.TODO(), opts.webtransport)
 }
