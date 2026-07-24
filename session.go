@@ -9,8 +9,6 @@ import (
 
 	"github.com/mengelbart/moqtransport/internal/slices"
 	"github.com/mengelbart/moqtransport/internal/wire"
-	"github.com/mengelbart/qlog"
-	"github.com/mengelbart/qlog/moqt"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -48,9 +46,6 @@ type Session struct {
 
 	// SubscribeUpdateHandler is Handler for SubscribeUpdate messages
 	SubscribeUpdateHandler SubscribeUpdateHandler
-
-	// QLOG Logger
-	Qlogger *qlog.Logger
 
 	eg              *errgroup.Group
 	ctx             context.Context
@@ -102,9 +97,8 @@ func (s *Session) Run(conn Connection) error {
 	s.localTracks = newLocalTrackMap()
 	s.outgoingTrackStatusRequests = newTrackStatusRequestMap()
 	s.controlStream = &controlStream{
-		stream:  cs,
-		logger:  defaultLogger.With("perspective", conn.Perspective()),
-		qlogger: nil,
+		stream: cs,
+		logger: defaultLogger.With("perspective", conn.Perspective()),
 	}
 
 	s.eg.Go(s.readControlStream)
@@ -154,7 +148,7 @@ func (s *Session) readStreams(ctx context.Context) error {
 		// stream and close all remote streams when the sesssion closes.
 		go func() {
 			s.logger.Info("handling new uni stream")
-			parser, err := wire.NewObjectStreamParser(stream, stream.StreamID(), s.Qlogger)
+			parser, err := wire.NewObjectStreamParser(stream, stream.StreamID())
 			if err != nil {
 				return
 			}
@@ -175,34 +169,6 @@ func (s *Session) readDatagrams(ctx context.Context) error {
 		msg := new(wire.ObjectDatagramMessage)
 		if _, err = msg.Parse(dgram); err != nil {
 			return err
-		}
-		if s.Qlogger != nil {
-			eth := slices.Collect(slices.Map(
-				msg.ObjectExtensionHeaders,
-				func(e wire.KeyValuePair) moqt.ExtensionHeader {
-					return moqt.ExtensionHeader{
-						HeaderType:   0, // TODO
-						HeaderValue:  0, // TODO
-						HeaderLength: 0, // TODO
-						Payload:      qlog.RawInfo{},
-					}
-				}),
-			)
-			s.Qlogger.Log(moqt.ObjectDatagramEvent{
-				EventName:              moqt.ObjectDatagramEventparsed,
-				TrackAlias:             msg.TrackAlias,
-				GroupID:                msg.GroupID,
-				ObjectID:               msg.ObjectID,
-				PublisherPriority:      msg.PublisherPriority,
-				ExtensionHeadersLength: uint64(len(msg.ObjectExtensionHeaders)),
-				ExtensionHeaders:       eth,
-				ObjectStatus:           uint64(msg.ObjectStatus),
-				Payload: qlog.RawInfo{
-					Length:        uint64(len(msg.ObjectPayload)),
-					PayloadLength: uint64(len(msg.ObjectPayload)),
-					Data:          msg.ObjectPayload,
-				},
-			})
 		}
 		if err := s.receiveDatagram(msg); err != nil {
 			return err
@@ -869,7 +835,7 @@ func (s *Session) onSubscribe(msg *wire.SubscribeMessage) error {
 	}
 	lt := newLocalTrack(s.conn, m.RequestID, s.trackAliases.next(), func(code, count uint64, reason string) error {
 		return s.subscriptionDone(m.RequestID, code, count, reason)
-	}, s.Qlogger)
+	})
 
 	if err := s.addLocalTrack(lt); err != nil {
 		code := ErrorCodeInternal
@@ -1018,7 +984,7 @@ func (s *Session) onFetch(msg *wire.FetchMessage) error {
 		ErrorCode:     0,
 		ReasonPhrase:  "",
 	}
-	lt := newLocalTrack(s.conn, m.RequestID, s.trackAliases.next(), nil, s.Qlogger)
+	lt := newLocalTrack(s.conn, m.RequestID, s.trackAliases.next(), nil)
 	if err := s.addLocalTrack(lt); err != nil {
 		if rejectErr := s.rejectFetch(m.RequestID, uint64(ErrorCodeSubscribeInternal), ""); rejectErr != nil {
 			return rejectErr

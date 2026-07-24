@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -87,11 +86,6 @@ func (m *SubscribeMessage) LogValue() slog.Value {
 		slog.String("type", "subscribe"),
 		slog.Uint64("request_id", m.RequestID),
 		slog.Any("track_namespace", m.TrackNamespace),
-		slog.Any("track_name", qlog.RawInfo{
-			Length:        uint64(len(m.TrackName)),
-			PayloadLength: uint64(len(m.TrackName)),
-			Data:          m.TrackName,
-		}),
 		slog.Any("subscriber_priority", m.SubscriberPriority),
 		slog.Any("group_order", m.GroupOrder),
 		slog.Any("forward", m.Forward),

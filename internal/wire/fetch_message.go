@@ -3,7 +3,6 @@ package wire
 import (
 	"log/slog"
 
-	"github.com/mengelbart/qlog"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -43,11 +42,6 @@ func (m *FetchMessage) LogValue() slog.Value {
 	if m.FetchType == FetchTypeStandalone {
 		attrs = append(attrs,
 			slog.Any("track_namespace", m.TrackNamespace),
-			slog.Any("track_name", qlog.RawInfo{
-				Length:        uint64(len(m.TrackName)),
-				PayloadLength: uint64(len(m.TrackName)),
-				Data:          m.TrackName,
-			}),
 			slog.Uint64("start_group", m.StartGroup),
 			slog.Uint64("start_object", m.StartObject),
 			slog.Uint64("end_group", m.EndGroup),

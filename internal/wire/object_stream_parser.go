@@ -7,9 +7,6 @@ import (
 	"io"
 	"iter"
 
-	"github.com/mengelbart/moqtransport/internal/slices"
-	"github.com/mengelbart/qlog"
-	"github.com/mengelbart/qlog/moqt"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -30,7 +27,6 @@ var (
 )
 
 type ObjectStreamParser struct {
-	qlogger  *qlog.Logger
 	streamID uint64
 
 	reader        messageReader
@@ -52,7 +48,7 @@ func (p *ObjectStreamParser) Identifier() uint64 {
 	return p.identifier
 }
 
-func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (*ObjectStreamParser, error) {
+func NewObjectStreamParser(r io.Reader, streamID uint64) (*ObjectStreamParser, error) {
 	br := bufio.NewReader(r)
 	st, err := quicvarint.Read(br)
 	if err != nil {
@@ -61,19 +57,11 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 	streamType := StreamType(st)
 
 	if streamType == StreamTypeFetch {
-		if qlogger != nil {
-			qlogger.Log(moqt.StreamTypeSetEvent{
-				Owner:      moqt.GetOwner(moqt.OwnerRemote),
-				StreamID:   streamID,
-				StreamType: moqt.StreamTypeFetchHeader,
-			})
-		}
 		var fhm FetchHeaderMessage
 		if err := fhm.parse(br); err != nil {
 			return nil, err
 		}
 		return &ObjectStreamParser{
-			qlogger:           qlogger,
 			streamID:          streamID,
 			reader:            br,
 			typ:               streamType,
@@ -84,13 +72,6 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 		}, nil
 	}
 	if streamType >= 0x08 && streamType <= 0x0d {
-		if qlogger != nil {
-			qlogger.Log(moqt.StreamTypeSetEvent{
-				Owner:      moqt.GetOwner(moqt.OwnerRemote),
-				StreamID:   streamID,
-				StreamType: moqt.StreamTypeSubgroupHeader,
-			})
-		}
 		// least significant bit indicates if we have to read extensions on
 		// objects
 		ext := streamType&0x01 > 0
@@ -104,7 +85,6 @@ func NewObjectStreamParser(r io.Reader, streamID uint64, qlogger *qlog.Logger) (
 			return nil, err
 		}
 		return &ObjectStreamParser{
-			qlogger:    qlogger,
 			streamID:   streamID,
 			reader:     br,
 			typ:        streamType,
@@ -153,39 +133,6 @@ func (p *ObjectStreamParser) parseSubgroupObject() (*ObjectMessage, error) {
 		p.SubgroupID = m.SubgroupID
 		p.hasSubgroupID = true
 	}
-	if p.qlogger != nil {
-		eth := slices.Collect(slices.Map(
-			m.ObjectExtensionHeaders,
-			func(e KeyValuePair) moqt.ExtensionHeader {
-				return moqt.ExtensionHeader{
-					HeaderType:   e.Type,
-					HeaderValue:  0, // TODO
-					HeaderLength: 0, // TODO
-					Payload:      qlog.RawInfo{},
-				}
-			}),
-		)
-		gid := new(uint64)
-		sid := new(uint64)
-		*gid = p.GroupID
-		*sid = p.SubgroupID
-		p.qlogger.Log(moqt.SubgroupObjectEvent{
-			EventName:              moqt.SubgroupObjectEventParsed,
-			StreamID:               p.streamID,
-			GroupID:                gid,
-			SubgroupID:             sid,
-			ObjectID:               m.ObjectID,
-			ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
-			ExtensionHeaders:       eth,
-			ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
-			ObjectStatus:           uint64(m.ObjectStatus),
-			ObjectPayload: qlog.RawInfo{
-				Length:        uint64(len(m.ObjectPayload)),
-				PayloadLength: uint64(len(m.ObjectPayload)),
-				Data:          m.ObjectPayload,
-			},
-		})
-	}
 	return m, nil
 }
 
@@ -201,36 +148,6 @@ func (p *ObjectStreamParser) parseFetchObject() (*ObjectMessage, error) {
 	}
 	if err := m.readFetch(p.reader); err != nil {
 		return nil, err
-	}
-	if p.qlogger != nil {
-		eth := slices.Collect(slices.Map(
-			m.ObjectExtensionHeaders,
-			func(e KeyValuePair) moqt.ExtensionHeader {
-				return moqt.ExtensionHeader{
-					HeaderType:   e.Type,
-					HeaderValue:  0, // TODO
-					HeaderLength: 0, // TODO
-					Payload:      qlog.RawInfo{},
-				}
-			}),
-		)
-		p.qlogger.Log(moqt.FetchObjectEvent{
-			EventName:              moqt.FetchObjectEventParsed,
-			StreamID:               p.streamID,
-			GroupID:                m.GroupID,
-			SubgroupID:             m.SubgroupID,
-			ObjectID:               m.ObjectID,
-			PublisherPriority:      m.PublisherPriority,
-			ExtensionHeadersLength: uint64(len(m.ObjectExtensionHeaders)),
-			ExtensionHeaders:       eth,
-			ObjectPayloadLength:    uint64(len(m.ObjectPayload)),
-			ObjectStatus:           uint64(m.ObjectStatus),
-			ObjectPayload: qlog.RawInfo{
-				Length:        uint64(len(m.ObjectPayload)),
-				PayloadLength: uint64(len(m.ObjectPayload)),
-				Data:          m.ObjectPayload,
-			},
-		})
 	}
 	return m, nil
 }
