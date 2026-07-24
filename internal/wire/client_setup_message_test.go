@@ -134,15 +134,11 @@ func TestParseClientSetupMessage(t *testing.T) {
 		{
 			data: []byte{
 				0x01, 0x00,
-				0x02, 0x02, 0x02, 0x01, 0x01, 'a',
+				0x01, 0x01, 0x01, 'a',
 			},
 			expect: &ClientSetupMessage{
 				SupportedVersions: []Version{0x00},
 				SetupParameters: KVPList{
-					KeyValuePair{
-						Type:        MaxRequestIDParameterKey,
-						ValueVarInt: 2,
-					},
 					KeyValuePair{
 						Type:       1,
 						ValueBytes: []byte("a"),

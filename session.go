@@ -42,9 +42,6 @@ type objectMessageParser interface {
 
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
-	// Initial MAX_REQUEST_ID value
-	InitialMaxRequestID uint64
-
 	// Handler
 	Handler Handler
 
@@ -71,10 +68,7 @@ type Session struct {
 	version wire.Version
 	path    string
 
-	localMaxRequestID atomic.Uint64
-
-	requestIDs             *requestIDGenerator
-	highestRequestsBlocked atomic.Uint64
+	requestIDs *requestIDGenerator
 
 	outgoingAnnouncements *announcementMap
 	incomingAnnouncements *announcementMap
@@ -110,7 +104,6 @@ func (s *Session) Run(conn Connection) error {
 	s.handshakeDoneCh = make(chan struct{})
 	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	s.conn = conn
-	s.localMaxRequestID.Store(s.InitialMaxRequestID)
 	s.requestIDs = newRequestIDGenerator(uint64(conn.Perspective()), 0 /*max*/, 2 /*step*/)
 	s.outgoingAnnouncements = newAnnouncementMap()
 	s.incomingAnnouncements = newAnnouncementMap()
@@ -269,20 +262,6 @@ func (s *Session) receiveDatagram(msg *wire.ObjectDatagramMessage) error {
 }
 
 func (s *Session) addLocalTrack(lt *localTrack) error {
-	if lt.requestID >= s.localMaxRequestID.Load() {
-		return errMaxRequestIDViolated
-	}
-	// Update max request ID for peer
-	oldMax := s.localMaxRequestID.Load()
-	if lt.requestID >= oldMax/2 {
-		newMax := 2 * oldMax
-		s.localMaxRequestID.CompareAndSwap(oldMax, newMax)
-		if err := s.controlStream.write(&wire.MaxRequestIDMessage{
-			RequestID: newMax,
-		}); err != nil {
-			s.logger.Warn("skipping sending of max_request_id due to control message queue overflow")
-		}
-	}
 	ok := s.localTracks.addPending(lt)
 	if !ok {
 		return errDuplicateRequestID
@@ -302,15 +281,6 @@ func (s *Session) remoteTrackByTrackAlias(alias uint64) (*RemoteTrack, bool) {
 
 func (s *Session) getRequestID() (uint64, error) {
 	requestID, err := s.requestIDs.next()
-	if err != nil {
-		if err == errRequestIDblocked {
-			if queueErr := s.controlStream.write(&wire.RequestsBlockedMessage{
-				MaximumRequestID: requestID,
-			}); queueErr != nil {
-				s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
-			}
-		}
-	}
 	return requestID, err
 }
 
@@ -449,12 +419,7 @@ func WithUpdateParameters(parameters KVPList) SubscribeUpdateOption {
 // Session message senders
 
 func (s *Session) sendClientSetup() error {
-	params := wire.KVPList{
-		wire.KeyValuePair{
-			Type:        wire.MaxRequestIDParameterKey,
-			ValueVarInt: s.localMaxRequestID.Load(),
-		},
-	}
+	params := wire.KVPList{}
 	if s.conn.Protocol() == ProtocolQUIC {
 		path := s.path
 		params = append(params, wire.KeyValuePair{
@@ -672,17 +637,6 @@ func (s *Session) Fetch(
 		return s.fetchCancel(requestID)
 	}, nil)
 	if err = s.remoteTracks.addPending(requestID, rt); err != nil {
-		var tooManySubscribes errRequestsBlocked
-		if errors.As(err, &tooManySubscribes) {
-			previous := s.highestRequestsBlocked.Swap(tooManySubscribes.maxRequestID)
-			if previous < tooManySubscribes.maxRequestID {
-				if queueErr := s.controlStream.write(&wire.RequestsBlockedMessage{
-					MaximumRequestID: tooManySubscribes.maxRequestID,
-				}); queueErr != nil {
-					s.logger.Warn("skipping sending of requests_blocked message", "error", queueErr)
-				}
-			}
-		}
 		return nil, err
 	}
 	cm := &wire.FetchMessage{
@@ -938,8 +892,6 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 	switch m := msg.(type) {
 	case *wire.GoAwayMessage:
 		s.onGoAway(m)
-	case *wire.MaxRequestIDMessage:
-		err = s.onMaxRequestID(m)
 	case *wire.RequestsBlockedMessage:
 		err = s.onRequestsBlocked(m)
 	case *wire.SubscribeMessage:
@@ -1012,21 +964,9 @@ func (s *Session) onClientSetup(m *wire.ClientSetupMessage) error {
 	}
 	s.path = path
 
-	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
-	if remoteMaxRequestID > 0 {
-		if err := s.requestIDs.setMax(remoteMaxRequestID); err != nil {
-			return err
-		}
-	}
-
 	if err := s.controlStream.write(&wire.ServerSetupMessage{
 		SelectedVersion: wire.Version(selectedVersion),
-		SetupParameters: wire.KVPList{
-			wire.KeyValuePair{
-				Type:        wire.MaxRequestIDParameterKey,
-				ValueVarInt: 100,
-			},
-		},
+		SetupParameters: wire.KVPList{},
 	}); err != nil {
 		return err
 	}
@@ -1044,11 +984,6 @@ func (s *Session) onServerSetup(m *wire.ServerSetupMessage) (err error) {
 		return errIncompatibleVersions
 	}
 	s.version = m.SelectedVersion
-
-	remoteMaxRequestID := getMaxRequestIDParameter(m.SetupParameters)
-	if err := s.requestIDs.setMax(remoteMaxRequestID); err != nil {
-		return err
-	}
 	close(s.handshakeDoneCh)
 	s.handshakeDone.Store(true)
 	return nil
@@ -1059,10 +994,6 @@ func (s *Session) onGoAway(msg *wire.GoAwayMessage) {
 		Method:        MessageGoAway,
 		NewSessionURI: msg.NewSessionURI,
 	})
-}
-
-func (s *Session) onMaxRequestID(msg *wire.MaxRequestIDMessage) error {
-	return s.requestIDs.setMax(msg.RequestID)
 }
 
 func (s *Session) onRequestsBlocked(msg *wire.RequestsBlockedMessage) error {

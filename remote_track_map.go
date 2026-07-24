@@ -2,17 +2,8 @@ package moqtransport
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 )
-
-type errRequestsBlocked struct {
-	maxRequestID uint64
-}
-
-func (e errRequestsBlocked) Error() string {
-	return fmt.Sprintf("too many subscribes, max_request_id=%v", e.maxRequestID)
-}
 
 var (
 	errUnknownRequestID       = errors.New("unknown request ID")

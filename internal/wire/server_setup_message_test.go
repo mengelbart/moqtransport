@@ -37,21 +37,6 @@ func TestServerSetupMessageAppend(t *testing.T) {
 		{
 			ssm: ServerSetupMessage{
 				SelectedVersion: 0,
-				SetupParameters: KVPList{
-					KeyValuePair{
-						Type:        MaxRequestIDParameterKey,
-						ValueVarInt: 2,
-					},
-				},
-			},
-			buf: []byte{},
-			expect: []byte{
-				0x00, 0x01, 0x02, 0x02,
-			},
-		},
-		{
-			ssm: ServerSetupMessage{
-				SelectedVersion: 0,
 				SetupParameters: KVPList{KeyValuePair{
 					Type:       PathParameterKey,
 					ValueBytes: []byte("A"),

@@ -19,7 +19,6 @@ func newSession(conn Connection, cs controlMessageStream, h Handler) *Session {
 
 func newSessionWithHandlers(conn Connection, cs controlMessageStream, h Handler, sh SubscribeHandler) *Session {
 	s := &Session{
-		InitialMaxRequestID:                      0,
 		Handler:                                  h,
 		SubscribeHandler:                         sh,
 		Qlogger:                                  &qlog.Logger{},
@@ -38,14 +37,11 @@ func newSessionWithHandlers(conn Connection, cs controlMessageStream, h Handler,
 		incomingAnnouncements:                    newAnnouncementMap(),
 		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
 		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		highestRequestsBlocked:                   atomic.Uint64{},
 		remoteTracks:                             newRemoteTrackMap(),
 		localTracks:                              newLocalTrackMap(),
 		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
-		localMaxRequestID:                        atomic.Uint64{},
 		trackAliases:                             newSequence(0, 1),
 	}
-	s.localMaxRequestID.Store(100)
 	return s
 }
 
@@ -61,10 +57,6 @@ func TestSession(t *testing.T) {
 			&wire.ClientSetupMessage{
 				SupportedVersions: wire.SupportedVersions,
 				SetupParameters: wire.KVPList{
-					wire.KeyValuePair{
-						Type:        wire.MaxRequestIDParameterKey,
-						ValueVarInt: 100,
-					},
 					wire.KeyValuePair{
 						Type:       wire.PathParameterKey,
 						ValueBytes: []byte("/path"),
@@ -88,12 +80,7 @@ func TestSession(t *testing.T) {
 
 		cs.EXPECT().write(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: wire.KVPList{
-				wire.KeyValuePair{
-					Type:        wire.MaxRequestIDParameterKey,
-					ValueVarInt: 100,
-				},
-			},
+			SetupParameters:   wire.KVPList{},
 		},
 		)
 
@@ -114,12 +101,7 @@ func TestSession(t *testing.T) {
 
 		cs.EXPECT().write(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: wire.KVPList{
-				wire.KeyValuePair{
-					Type:        wire.MaxRequestIDParameterKey,
-					ValueVarInt: 100,
-				},
-			},
+			SetupParameters: wire.KVPList{},
 		})
 
 		err := s.receive(&wire.ClientSetupMessage{
@@ -145,22 +127,12 @@ func TestSession(t *testing.T) {
 
 		cs.EXPECT().write(&wire.ServerSetupMessage{
 			SelectedVersion: wire.CurrentVersion,
-			SetupParameters: wire.KVPList{
-				wire.KeyValuePair{
-					Type:        wire.MaxRequestIDParameterKey,
-					ValueVarInt: 100,
-				},
-			},
+			SetupParameters: wire.KVPList{},
 		})
 
 		err := s.receive(&wire.ClientSetupMessage{
 			SupportedVersions: wire.SupportedVersions,
-			SetupParameters: wire.KVPList{
-				wire.KeyValuePair{
-					Type:        wire.MaxRequestIDParameterKey,
-					ValueVarInt: 100,
-				},
-			},
+			SetupParameters:   wire.KVPList{},
 		})
 		assert.NoError(t, err)
 	})
@@ -180,58 +152,6 @@ func TestSession(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("rejects_subscribe_on_max_request_id", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		cs := NewMockControlMessageStream(ctrl)
-		conn := NewMockConnection(ctrl)
-		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
-		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
-
-		s := newSession(conn, cs, nil)
-		s.handshakeDone.Store(true)
-
-		cs.EXPECT().write(&wire.SubscribeMessage{
-			RequestID:          0,
-			TrackNamespace:     wire.Tuple{"namespace"},
-			TrackName:          []byte("track1"),
-			SubscriberPriority: 128,
-			GroupOrder:         1,
-			Forward:            1,
-			FilterType:         wire.FilterTypeLatestObject,
-			StartLocation:      wire.Location{Group: 0, Object: 0},
-			EndGroup:           0,
-			Parameters: wire.KVPList{
-				wire.KeyValuePair{
-					Type:       wire.AuthorizationTokenParameterKey,
-					ValueBytes: []byte("auth"),
-				},
-			},
-		}).DoAndReturn(func(_ wire.ControlMessage) error {
-			err := s.onSubscribeOk(&wire.SubscribeOkMessage{
-				RequestID:       0,
-				Expires:         0,
-				GroupOrder:      0,
-				ContentExists:   false,
-				LargestLocation: wire.Location{},
-				Parameters:      wire.KVPList{},
-			})
-			assert.NoError(t, err)
-			return nil
-		}).Times(1)
-		cs.EXPECT().write(&wire.RequestsBlockedMessage{
-			MaximumRequestID: 2,
-		}).Times(1)
-
-		s.requestIDs.max = 2
-		rt, err := s.Subscribe(context.Background(), []string{"namespace"}, "track1", WithAuthorizationToken("auth"))
-		assert.NoError(t, err)
-		assert.NotNil(t, rt)
-
-		rt, err = s.Subscribe(context.Background(), []string{"namespace"}, "track2", WithAuthorizationToken("auth"))
-		assert.Error(t, err)
-		assert.Nil(t, rt)
-	})
-
 	t.Run("sends_subscribe", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cs := NewMockControlMessageStream(ctrl)
@@ -240,7 +160,6 @@ func TestSession(t *testing.T) {
 		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
 
 		s := newSession(conn, cs, nil)
-		s.requestIDs.max = 1
 		s.handshakeDone.Store(true)
 
 		cs.EXPECT().write(&wire.SubscribeMessage{
@@ -448,10 +367,6 @@ func TestSession(t *testing.T) {
 		s := newSession(conn, cs, mh)
 		s.handshakeDone.Store(true)
 
-		err := s.onMaxRequestID(&wire.MaxRequestIDMessage{
-			RequestID: 100,
-		})
-		assert.NoError(t, err)
 		cs.EXPECT().write(&wire.SubscribeMessage{
 			RequestID:          0,
 			TrackNamespace:     []string{"namespace"},

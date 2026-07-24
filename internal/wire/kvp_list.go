@@ -11,7 +11,6 @@ import (
 // Setup parameters
 const (
 	PathParameterKey                  = 0x01
-	MaxRequestIDParameterKey          = 0x02
 	MaxAuthTokenCacheSizeParameterKey = 0x04
 )
 

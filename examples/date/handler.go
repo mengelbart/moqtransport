@@ -167,7 +167,6 @@ func (h *moqHandler) handle(conn moqtransport.Connection) error {
 		Handler:                h.getHandler(id),
 		SubscribeHandler:       h.getSubscribeHandler(id),
 		SubscribeUpdateHandler: h.getSubscribeUpdateHandler(id),
-		InitialMaxRequestID:    100,
 	}
 	if err := session.Run(conn); err != nil {
 		return err
