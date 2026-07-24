@@ -42,16 +42,6 @@ func validatePathParameter(setupParameters wire.KVPList, protocolIsQUIC bool) (s
 	return string(setupParameters[index].ValueBytes), nil
 }
 
-func getMaxRequestIDParameter(setupParameters wire.KVPList) uint64 {
-	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
-		return p.Type == wire.MaxRequestIDParameterKey
-	})
-	if index < 0 {
-		return 0
-	}
-	return setupParameters[index].ValueVarInt
-}
-
 func validateAuthParameter(subscribeParameters wire.KVPList) (string, error) {
 	index := slices.IndexFunc(subscribeParameters, func(p wire.KeyValuePair) bool {
 		return p.Type == wire.AuthorizationTokenParameterKey
