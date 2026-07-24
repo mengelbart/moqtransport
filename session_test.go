@@ -19,28 +19,24 @@ func newSession(conn Connection, cs controlMessageStream, h Handler) *Session {
 
 func newSessionWithHandlers(conn Connection, cs controlMessageStream, h Handler, sh SubscribeHandler) *Session {
 	s := &Session{
-		Handler:                                  h,
-		SubscribeHandler:                         sh,
-		Qlogger:                                  &qlog.Logger{},
-		eg:                                       &errgroup.Group{},
-		ctx:                                      nil,
-		cancelCtx:                                nil,
-		handshakeDoneCh:                          make(chan struct{}),
-		handshakeDone:                            atomic.Bool{},
-		logger:                                   defaultLogger,
-		conn:                                     conn,
-		controlStream:                            cs,
-		version:                                  0,
-		path:                                     "/path",
-		requestIDs:                               newRequestIDGenerator(uint64(conn.Perspective()), 100, 2),
-		outgoingAnnouncements:                    newAnnouncementMap(),
-		incomingAnnouncements:                    newAnnouncementMap(),
-		pendingOutgointAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		pendingIncomingAnnouncementSubscriptions: newAnnouncementSubscriptionMap(),
-		remoteTracks:                             newRemoteTrackMap(),
-		localTracks:                              newLocalTrackMap(),
-		outgoingTrackStatusRequests:              newTrackStatusRequestMap(),
-		trackAliases:                             newSequence(0, 1),
+		Handler:                     h,
+		SubscribeHandler:            sh,
+		Qlogger:                     &qlog.Logger{},
+		eg:                          &errgroup.Group{},
+		ctx:                         nil,
+		cancelCtx:                   nil,
+		handshakeDoneCh:             make(chan struct{}),
+		handshakeDone:               atomic.Bool{},
+		logger:                      defaultLogger,
+		conn:                        conn,
+		controlStream:               cs,
+		version:                     0,
+		path:                        "/path",
+		requestIDs:                  newRequestIDGenerator(uint64(conn.Perspective()), 100, 2),
+		remoteTracks:                newRemoteTrackMap(),
+		localTracks:                 newLocalTrackMap(),
+		outgoingTrackStatusRequests: newTrackStatusRequestMap(),
+		trackAliases:                newSequence(0, 1),
 	}
 	return s
 }
@@ -276,60 +272,6 @@ func TestSession(t *testing.T) {
 			},
 			EndGroup:   0,
 			Parameters: wire.KVPList{},
-		})
-		assert.NoError(t, err)
-	})
-
-	t.Run("sends_announce", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		cs := NewMockControlMessageStream(ctrl)
-		conn := NewMockConnection(ctrl)
-		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
-		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
-
-		s := newSession(conn, cs, nil)
-		s.handshakeDone.Store(true)
-
-		cs.EXPECT().write(&wire.AnnounceMessage{
-			RequestID:      0,
-			TrackNamespace: []string{"namespace"},
-			Parameters:     wire.KVPList{},
-		}).DoAndReturn(func(_ wire.ControlMessage) error {
-			err := s.receive(&wire.AnnounceOkMessage{
-				RequestID: 0,
-			})
-			assert.NoError(t, err)
-			return nil
-		})
-		err := s.Announce(context.Background(), []string{"namespace"})
-		assert.NoError(t, err)
-	})
-
-	t.Run("sends_announce_ok", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		cs := NewMockControlMessageStream(ctrl)
-		mh := NewMockHandler(ctrl)
-		conn := NewMockConnection(ctrl)
-		conn.EXPECT().Perspective().AnyTimes().Return(PerspectiveClient)
-		conn.EXPECT().Protocol().AnyTimes().Return(ProtocolQUIC)
-
-		s := newSession(conn, cs, mh)
-		s.handshakeDone.Store(true)
-
-		mh.EXPECT().Handle(gomock.Any(), &Message{
-			RequestID: 2,
-			Method:    MessageAnnounce,
-			Namespace: []string{"namespace"},
-		}).DoAndReturn(func(rw ResponseWriter, req *Message) {
-			assert.NoError(t, rw.Accept())
-		})
-		cs.EXPECT().write(&wire.AnnounceOkMessage{
-			RequestID: 2,
-		})
-		err := s.receive(&wire.AnnounceMessage{
-			RequestID:      2,
-			TrackNamespace: []string{"namespace"},
-			Parameters:     wire.KVPList{},
 		})
 		assert.NoError(t, err)
 	})
