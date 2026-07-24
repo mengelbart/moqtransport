@@ -61,7 +61,6 @@ func setupWithHandlers(t *testing.T, sConn, cConn *quic.Conn, handler moqtranspo
 	serverSession = &moqtransport.Session{
 		Handler:          handler,
 		SubscribeHandler: subscribeHandler,
-		Qlogger:          nil,
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -74,7 +73,6 @@ func setupWithHandlers(t *testing.T, sConn, cConn *quic.Conn, handler moqtranspo
 	clientSession = &moqtransport.Session{
 		Handler:          handler,
 		SubscribeHandler: subscribeHandler,
-		Qlogger:          nil,
 	}
 
 	wg.Add(1)

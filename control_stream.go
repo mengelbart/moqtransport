@@ -5,14 +5,11 @@ import (
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
-	"github.com/mengelbart/qlog"
-	"github.com/mengelbart/qlog/moqt"
 )
 
 type controlStream struct {
-	stream  Stream
-	logger  *slog.Logger
-	qlogger *qlog.Logger
+	stream Stream
+	logger *slog.Logger
 }
 
 func (s *controlStream) read() iter.Seq2[wire.ControlMessage, error] {
@@ -31,14 +28,6 @@ func (s *controlStream) write(msg wire.ControlMessage) error {
 	buf, err := compileMessage(msg)
 	if err != nil {
 		return err
-	}
-	if s.qlogger != nil {
-		s.qlogger.Log(moqt.ControlMessageEvent{
-			EventName: moqt.ControlMessageEventCreated,
-			StreamID:  s.stream.StreamID(),
-			Length:    uint64(len(buf)),
-			Message:   msg,
-		})
 	}
 	s.logger.Info("sending message", "type", msg.Type().String(), "msg", msg)
 	_, err = s.stream.Write(buf)

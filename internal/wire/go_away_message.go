@@ -2,8 +2,6 @@ package wire
 
 import (
 	"log/slog"
-
-	"github.com/mengelbart/qlog"
 )
 
 type GoAwayMessage struct {
@@ -13,11 +11,6 @@ type GoAwayMessage struct {
 func (m *GoAwayMessage) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("type", "goaway"),
-		slog.Any("new_session_uri", qlog.RawInfo{
-			Length:        uint64(len(m.NewSessionURI)),
-			PayloadLength: uint64(len(m.NewSessionURI)),
-			Data:          []byte(m.NewSessionURI),
-		}),
 	)
 }
 

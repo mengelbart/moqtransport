@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
-	"github.com/mengelbart/qlog"
 	"github.com/stretchr/testify/assert"
 	gomock "go.uber.org/mock/gomock"
 	"golang.org/x/sync/errgroup"
@@ -21,7 +20,6 @@ func newSessionWithHandlers(conn Connection, cs controlMessageStream, h Handler,
 	s := &Session{
 		Handler:                     h,
 		SubscribeHandler:            sh,
-		Qlogger:                     &qlog.Logger{},
 		eg:                          &errgroup.Group{},
 		ctx:                         nil,
 		cancelCtx:                   nil,
