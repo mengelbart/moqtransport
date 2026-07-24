@@ -134,10 +134,6 @@ var (
 		code:    ErrorCodeProtocolViolation,
 		message: "duplicate request ID",
 	}
-	errUnknownAnnouncement = ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: "unknown announcement",
-	}
 	errInvalidNamespaceLength = ProtocolError{
 		code:    ErrorCodeProtocolViolation,
 		message: "invalid namespace length",

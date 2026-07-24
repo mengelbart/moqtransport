@@ -15,14 +15,12 @@ import (
 )
 
 var (
-	errUnknownAnnouncementNamespace     = errors.New("unknown announcement namespace")
 	errMaxRequestIDViolated             = errors.New("max request ID violated")
 	errClientReceivedClientSetup        = errors.New("client received client setup message")
 	errServerReceveidServerSetup        = errors.New("server received server setup message")
 	errIncompatibleVersions             = errors.New("incompatible versions")
 	errUnexpectedMessageType            = errors.New("unexpected message type")
 	errUnexpectedMessageTypeBeforeSetup = errors.New("unexpected message type before setup")
-	errUnknownSubscribeAnnouncesPrefix  = errors.New("unknown subscribe_announces prefix")
 	errUnknownTrackAlias                = errors.New("unknown track alias")
 	errMissingPathParameter             = errors.New("missing path parameter")
 	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
@@ -70,12 +68,6 @@ type Session struct {
 
 	requestIDs *requestIDGenerator
 
-	outgoingAnnouncements *announcementMap
-	incomingAnnouncements *announcementMap
-
-	pendingOutgointAnnouncementSubscriptions *announcementSubscriptionMap
-	pendingIncomingAnnouncementSubscriptions *announcementSubscriptionMap
-
 	trackAliases *sequence
 	remoteTracks *remoteTrackMap
 	localTracks  *localTrackMap
@@ -105,10 +97,6 @@ func (s *Session) Run(conn Connection) error {
 	s.logger = defaultLogger.With("perspective", conn.Perspective())
 	s.conn = conn
 	s.requestIDs = newRequestIDGenerator(uint64(conn.Perspective()), 0 /*max*/, 2 /*step*/)
-	s.outgoingAnnouncements = newAnnouncementMap()
-	s.incomingAnnouncements = newAnnouncementMap()
-	s.pendingOutgointAnnouncementSubscriptions = newAnnouncementSubscriptionMap()
-	s.pendingIncomingAnnouncementSubscriptions = newAnnouncementSubscriptionMap()
 	s.trackAliases = newSequence(0, 1)
 	s.remoteTracks = newRemoteTrackMap()
 	s.localTracks = newLocalTrackMap()
@@ -747,132 +735,6 @@ func (s *Session) sendTrackStatus(ts TrackStatus) error {
 	})
 }
 
-// Announce announces namespace to the peer. It blocks until a response from the
-// peer was received or ctx is cancelled and returns an error if the
-// announcement was rejected.
-func (s *Session) Announce(ctx context.Context, namespace []string) error {
-	requestID, err := s.getRequestID()
-	if err != nil {
-		return err
-	}
-	a := &announcement{
-		requestID:  requestID,
-		namespace:  namespace,
-		parameters: wire.KVPList{},
-		response:   make(chan error, 1),
-	}
-	s.outgoingAnnouncements.add(a)
-	am := &wire.AnnounceMessage{
-		RequestID:      a.requestID,
-		TrackNamespace: a.namespace,
-		Parameters:     a.parameters,
-	}
-	if err := s.controlStream.write(am); err != nil {
-		_, _ = s.outgoingAnnouncements.reject(a.requestID)
-		return err
-	}
-	select {
-	case <-ctx.Done():
-		return context.Cause(ctx)
-	case res := <-a.response:
-		return res
-	}
-}
-
-func (s *Session) acceptAnnouncement(requestID uint64) error {
-	if _, err := s.incomingAnnouncements.confirmAndGet(requestID); err != nil {
-		return err
-	}
-	if err := s.controlStream.write(&wire.AnnounceOkMessage{
-		RequestID: requestID,
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Session) rejectAnnouncement(requestID uint64, c uint64, r string) error {
-	return s.controlStream.write(&wire.AnnounceErrorMessage{
-		RequestID:    requestID,
-		ErrorCode:    c,
-		ReasonPhrase: r,
-	})
-}
-
-func (s *Session) Unannounce(ctx context.Context, namespace []string) error {
-	if ok := s.outgoingAnnouncements.delete(namespace); ok {
-		return errUnknownAnnouncementNamespace
-	}
-	u := &wire.UnannounceMessage{
-		TrackNamespace: namespace,
-	}
-	return s.controlStream.write(u)
-}
-
-func (s *Session) AnnounceCancel(ctx context.Context, namespace []string, errorCode uint64, reason string) error {
-	if !s.incomingAnnouncements.delete(namespace) {
-		return errUnknownAnnouncementNamespace
-	}
-	acm := &wire.AnnounceCancelMessage{
-		TrackNamespace: namespace,
-		ErrorCode:      errorCode,
-		ReasonPhrase:   reason,
-	}
-	return s.controlStream.write(acm)
-}
-
-// SubscribeAnnouncements subscribes to announcements of namespaces with prefix.
-// It blocks until a response from the peer is received or ctx is cancelled.
-func (s *Session) SubscribeAnnouncements(ctx context.Context, prefix []string) error {
-	requestID, err := s.getRequestID()
-	if err != nil {
-		return err
-	}
-	as := &announcementSubscription{
-		requestID: requestID,
-		namespace: prefix,
-		response:  make(chan announcementSubscriptionResponse, 1),
-	}
-	s.pendingOutgointAnnouncementSubscriptions.add(as)
-	sam := &wire.SubscribeAnnouncesMessage{
-		RequestID:            as.requestID,
-		TrackNamespacePrefix: as.namespace,
-		Parameters:           wire.KVPList{},
-	}
-	if err := s.controlStream.write(sam); err != nil {
-		_, _ = s.pendingOutgointAnnouncementSubscriptions.deleteByID(as.requestID)
-		return err
-	}
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case resp := <-as.response:
-		return resp.err
-	}
-}
-
-func (s *Session) acceptAnnouncementSubscription(requestID uint64) error {
-	return s.controlStream.write(&wire.SubscribeAnnouncesOkMessage{
-		RequestID: requestID,
-	})
-}
-
-func (s *Session) rejectAnnouncementSubscription(requestID uint64, c uint64, r string) error {
-	return s.controlStream.write(&wire.SubscribeAnnouncesErrorMessage{
-		RequestID:    requestID,
-		ErrorCode:    c,
-		ReasonPhrase: r,
-	})
-}
-
-func (s *Session) UnsubscribeAnnouncements(ctx context.Context, namespace []string) error {
-	s.pendingOutgointAnnouncementSubscriptions.delete(namespace)
-	uam := &wire.UnsubscribeAnnouncesMessage{
-		TrackNamespacePrefix: namespace,
-	}
-	return s.controlStream.write(uam)
-}
-
 // Session message handlers
 
 func (s *Session) receive(msg wire.ControlMessage) error {
@@ -918,24 +780,6 @@ func (s *Session) receive(msg wire.ControlMessage) error {
 		err = s.onTrackStatusRequest(m)
 	case *wire.TrackStatusMessage:
 		err = s.onTrackStatus(m)
-	case *wire.AnnounceMessage:
-		err = s.onAnnounce(m)
-	case *wire.AnnounceOkMessage:
-		err = s.onAnnounceOk(m)
-	case *wire.AnnounceErrorMessage:
-		err = s.onAnnounceError(m)
-	case *wire.UnannounceMessage:
-		err = s.onUnannounce(m)
-	case *wire.AnnounceCancelMessage:
-		err = s.onAnnounceCancel(m)
-	case *wire.SubscribeAnnouncesMessage:
-		err = s.onSubscribeAnnounces(m)
-	case *wire.SubscribeAnnouncesOkMessage:
-		err = s.onSubscribeAnnouncesOk(m)
-	case *wire.SubscribeAnnouncesErrorMessage:
-		err = s.onSubscribeAnnouncesError(m)
-	case *wire.UnsubscribeAnnouncesMessage:
-		s.onUnsubscribeAnnounces(m)
 	default:
 		err = errUnexpectedMessageType
 	}
@@ -1278,152 +1122,6 @@ func (s *Session) onTrackStatus(msg *wire.TrackStatusMessage) error {
 		s.logger.Info("dropping unhandled track status")
 	}
 	return nil
-}
-
-func (s *Session) onAnnounce(msg *wire.AnnounceMessage) error {
-	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
-		return errInvalidNamespaceLength
-	}
-	a := &announcement{
-		requestID:  msg.RequestID,
-		namespace:  msg.TrackNamespace,
-		parameters: msg.Parameters,
-		response:   make(chan error),
-	}
-	s.incomingAnnouncements.add(a)
-	message := &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageAnnounce,
-		Namespace: a.namespace,
-	}
-	arw := &announcementResponseWriter{
-		requestID: message.RequestID,
-		session:   s,
-		handled:   false,
-	}
-	s.Handler.Handle(arw, message)
-	if !arw.handled {
-		return arw.Reject(0, "unhandlded announcement")
-	}
-	return nil
-}
-
-func (s *Session) onAnnounceOk(msg *wire.AnnounceOkMessage) error {
-	announcement, err := s.outgoingAnnouncements.confirmAndGet(msg.RequestID)
-	if err != nil {
-		return errUnknownAnnouncement
-	}
-	select {
-	case announcement.response <- nil:
-	default:
-		s.logger.Info("dopping unhandled AnnounceOk response")
-	}
-	return nil
-}
-
-func (s *Session) onAnnounceError(msg *wire.AnnounceErrorMessage) error {
-	announcement, ok := s.outgoingAnnouncements.reject(msg.RequestID)
-	if !ok {
-		return errUnknownAnnouncement
-	}
-	select {
-	case announcement.response <- ProtocolError{
-		code:    ErrorCode(msg.ErrorCode),
-		message: msg.ReasonPhrase,
-	}:
-	default:
-		s.logger.Info("dropping unhandled AnnounceError response")
-	}
-	return nil
-}
-
-func (s *Session) onUnannounce(msg *wire.UnannounceMessage) error {
-	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
-		return errInvalidNamespaceLength
-	}
-	if !s.incomingAnnouncements.delete(msg.TrackNamespace) {
-		return errUnknownAnnouncement
-	}
-	s.Handler.Handle(nil, &Message{
-		Method:    MessageUnannounce,
-		Namespace: msg.TrackNamespace,
-	})
-	return nil
-}
-
-func (s *Session) onAnnounceCancel(msg *wire.AnnounceCancelMessage) error {
-	if len(msg.TrackNamespace) == 0 || len(msg.TrackNamespace) > 32 {
-		return errInvalidNamespaceLength
-	}
-	s.Handler.Handle(nil, &Message{
-		Method:       MessageAnnounceCancel,
-		Namespace:    msg.TrackNamespace,
-		ErrorCode:    msg.ErrorCode,
-		ReasonPhrase: msg.ReasonPhrase,
-	})
-	return nil
-}
-
-func (s *Session) onSubscribeAnnounces(msg *wire.SubscribeAnnouncesMessage) error {
-	s.pendingIncomingAnnouncementSubscriptions.add(&announcementSubscription{
-		requestID: msg.RequestID,
-		namespace: msg.TrackNamespacePrefix,
-	})
-	asrw := &announcementSubscriptionResponseWriter{
-		requestID: msg.RequestID,
-		session:   s,
-		handled:   false,
-	}
-	m := &Message{
-		RequestID: msg.RequestID,
-		Method:    MessageSubscribeAnnounces,
-		Namespace: msg.TrackNamespacePrefix,
-	}
-	s.Handler.Handle(asrw, m)
-	if !asrw.handled {
-		return asrw.Reject(0, "unhandled announcement subscription")
-	}
-	return nil
-}
-
-func (s *Session) onSubscribeAnnouncesOk(msg *wire.SubscribeAnnouncesOkMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.deleteByID(msg.RequestID)
-	if !ok {
-		return errUnknownSubscribeAnnouncesPrefix
-	}
-	select {
-	case as.response <- announcementSubscriptionResponse{
-		err: nil,
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeAnnounces response")
-	}
-	return nil
-}
-
-func (s *Session) onSubscribeAnnouncesError(msg *wire.SubscribeAnnouncesErrorMessage) error {
-	as, ok := s.pendingOutgointAnnouncementSubscriptions.deleteByID(msg.RequestID)
-	if !ok {
-		return errUnknownSubscribeAnnouncesPrefix
-	}
-	select {
-	case as.response <- announcementSubscriptionResponse{
-		err: ProtocolError{
-			code:    ErrorCode(msg.ErrorCode),
-			message: msg.ReasonPhrase,
-		},
-	}:
-	default:
-		s.logger.Info("dropping unhandled SubscribeAnnounces response")
-	}
-	return nil
-}
-
-func (s *Session) onUnsubscribeAnnounces(msg *wire.UnsubscribeAnnouncesMessage) {
-	s.Handler.Handle(nil, &Message{
-		Method:    MessageUnsubscribeAnnounces,
-		Namespace: msg.TrackNamespacePrefix,
-	})
 }
 
 func boolToUint8(b bool) uint8 {
