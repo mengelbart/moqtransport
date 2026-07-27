@@ -1,10 +1,7 @@
 package wire2
 
 const (
-	ControlMessageTypeSetup ControlMessageType = 0x2f00
-
-	ControlMessageTypeGoAway ControlMessageType = 0x10
-
+	// Bidirectional stream messages
 	ControlMessageTypeSubscribe   ControlMessageType = 0x3
 	ControlMessageTypeSubscribeOk ControlMessageType = 0x4
 
@@ -29,6 +26,15 @@ const (
 	ControlMessageTypeRequestUpdate ControlMessageType = 0x2
 	ControlMessageTypeRequestOk     ControlMessageType = 0x7
 	ControlMessageTypeRequestError  ControlMessageType = 0x5
+
+	// Unidirectional stream messages
+	ControlMessageTypeSetup ControlMessageType = 0x2f00
+
+	ControlMessageTypeGoAway ControlMessageType = 0x10
+
+	ControlMessageTypeFetchHeader    ControlMessageType = 0x5
+	ControlMessageTypeSubgroupHeader ControlMessageType = 0x10 // TODO: Add types for all message variants
+	ControlMessageTypePadding        ControlMessageType = 0x132b3e28
 )
 
 type ControlMessageType uint64

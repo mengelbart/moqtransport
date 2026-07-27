@@ -32,6 +32,10 @@ var msgs = []any{
 	wire2.RequestUpdate{},
 	wire2.RequestOk{},
 	wire2.RequestError{},
+
+	wire2.FetchHeader{},
+	wire2.SubgroupHeader{},
+	wire2.Padding{},
 }
 
 var (

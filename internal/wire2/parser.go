@@ -13,15 +13,25 @@ type streamReader interface {
 	io.ByteReader
 }
 
+type StreamType uint8
+
+const (
+	StreamTypeControl StreamType = iota
+	StreamTypeRequest
+	StreamTypeData
+)
+
 type Parser struct {
-	reader  streamReader
-	version uint64
+	reader     streamReader
+	version    uint64
+	streamType StreamType
 }
 
-func NewParser(r io.Reader, version uint64) *Parser {
+func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 	return &Parser{
-		reader:  bufio.NewReader(r),
-		version: version,
+		reader:     bufio.NewReader(r),
+		version:    version,
+		streamType: streamType,
 	}
 }
 
@@ -50,55 +60,76 @@ func (p *Parser) Read() (ControlMessage, error) {
 	}
 
 	var m ControlMessage
-	switch ControlMessageType(mt) {
-	case ControlMessageTypeFetch:
-		m = &Fetch{}
-	case ControlMessageTypeFetchOk:
-		m = &FetchOk{}
 
-	case ControlMessageTypeGoAway:
-		m = &GoAway{}
+	switch p.streamType {
+	case StreamTypeControl:
+		switch ControlMessageType(mt) {
+		case ControlMessageTypeSetup:
+			m = &Setup{}
+		case ControlMessageTypeGoAway:
+			m = &GoAway{}
+		default:
+			return nil, fmt.Errorf("unknown control message type: %d", mt)
+		}
+	case StreamTypeRequest:
+		switch ControlMessageType(mt) {
+		case ControlMessageTypeFetch:
+			m = &Fetch{}
+		case ControlMessageTypeFetchOk:
+			m = &FetchOk{}
 
-	case ControlMessageTypeNamespace:
-		m = &Namespace{}
-	case ControlMessageTypeNamespaceDone:
-		m = &NamespaceDone{}
+		case ControlMessageTypeNamespace:
+			m = &Namespace{}
+		case ControlMessageTypeNamespaceDone:
+			m = &NamespaceDone{}
 
-	case ControlMessageTypePublish:
-		m = &Publish{}
-	case ControlMessageTypePublishBlocked:
-		m = &PublishBlocked{}
-	case ControlMessageTypePublishDone:
-		m = &PublishDone{}
-	case ControlMessageTypePublishNamespace:
-		m = &PublishNamespace{}
-	case ControlMessageTypePublishOk:
-		m = &PublishOk{}
+		case ControlMessageTypePublish:
+			m = &Publish{}
+		case ControlMessageTypePublishBlocked:
+			m = &PublishBlocked{}
+		case ControlMessageTypePublishDone:
+			m = &PublishDone{}
+		case ControlMessageTypePublishNamespace:
+			m = &PublishNamespace{}
+		case ControlMessageTypePublishOk:
+			m = &PublishOk{}
 
-	case ControlMessageTypeRequestError:
-		m = &RequestError{}
-	case ControlMessageTypeRequestOk:
-		m = &RequestOk{}
-	case ControlMessageTypeRequestUpdate:
-		m = &RequestUpdate{}
+		case ControlMessageTypeRequestError:
+			m = &RequestError{}
+		case ControlMessageTypeRequestOk:
+			m = &RequestOk{}
+		case ControlMessageTypeRequestUpdate:
+			m = &RequestUpdate{}
 
-	case ControlMessageTypeSetup:
-		m = &Setup{}
+		case ControlMessageTypeSubscribe:
+			m = &Subscribe{}
+		case ControlMessageTypeSubscribeNamespace:
+			m = &SubscribeNamespace{}
+		case ControlMessageTypeSubscribeOk:
+			m = &SubscribeOk{}
+		case ControlMessageTypeSubscribeTracks:
+			m = &SubscribeTracks{}
 
-	case ControlMessageTypeSubscribe:
-		m = &Subscribe{}
-	case ControlMessageTypeSubscribeNamespace:
-		m = &SubscribeNamespace{}
-	case ControlMessageTypeSubscribeOk:
-		m = &SubscribeOk{}
-	case ControlMessageTypeSubscribeTracks:
-		m = &SubscribeTracks{}
+		case ControlMessageTypeTrackStatus:
+			m = &TrackStatus{}
 
-	case ControlMessageTypeTrackStatus:
-		m = &TrackStatus{}
+		default:
+			return nil, fmt.Errorf("unknown control message type: %d", mt)
+		}
+	case StreamTypeData:
+		switch ControlMessageType(mt) {
+		case ControlMessageTypeFetchHeader:
+			m = &FetchHeader{}
+		case ControlMessageTypeSubgroupHeader:
+			m = &SubgroupHeader{}
+		case ControlMessageTypePadding:
+			m = &Padding{}
 
+		default:
+			return nil, fmt.Errorf("unknown control message type: %d", mt)
+		}
 	default:
-		return nil, fmt.Errorf("unknown control message type: %d", mt)
+		panic("unknown stream type")
 	}
 
 	switch p.version {
