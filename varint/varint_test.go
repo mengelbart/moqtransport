@@ -1,6 +1,7 @@
 package varint
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -34,6 +35,36 @@ func TestParseVarint(t *testing.T) {
 			assert.Equal(t, c.value, value, "Parse(%v) = %d, want %d", c.bytes, value, c.value)
 			assert.Equal(t, c.count, bytes, "Parse(%v) = %d bytes, want %d", c.bytes, bytes, c.count)
 			assert.Equal(t, c.err, err, "Parse(%v) = %v, want %v", c.bytes, err, c.err)
+		})
+	}
+}
+
+func TestReadVarint(t *testing.T) {
+	cases := []struct {
+		bytes []byte
+		value uint64
+		err   error
+	}{
+		{[]byte{}, 0, io.EOF},
+		{[]byte{0x00}, 0, nil},
+		{[]byte{0x01}, 1, nil},
+		{[]byte{0x7F}, 127, nil},
+		{[]byte{0x25}, 37, nil},
+		{[]byte{0x80, 0x25}, 37, nil},
+		{[]byte{0x80, 0x00}, 0, nil},
+		{[]byte{0xED, 0x7F, 0x3E, 0x7D}, 226_442_877, nil},
+		{[]byte{0xFA, 0xA1, 0xA0, 0xE4, 0x03, 0xD8}, 2_893_212_287_960, nil},
+		{[]byte{0xFC, 0x89, 0x98, 0xAB, 0xC6, 0x6B, 0xC0}, 151_288_809_941_952, nil},
+		{[]byte{0xFE, 0xFA, 0x31, 0x8F, 0xA8, 0xE3, 0xCA, 0x11}, 70_423_237_261_249_041, nil},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, 18_446_744_073_709_551_615, nil},
+		{[]byte{0x80}, 0, io.EOF},
+		{[]byte{0xFF, 0xFF, 0xFF}, 0, io.EOF},
+	}
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("%v", c.bytes), func(t *testing.T) {
+			value, err := Read(bytes.NewReader(c.bytes))
+			assert.Equal(t, c.value, value, "Read(%v) = %d, want %d", c.bytes, value, c.value)
+			assert.Equal(t, c.err, err, "Read(%v) = %v, want %v", c.bytes, err, c.err)
 		})
 	}
 }

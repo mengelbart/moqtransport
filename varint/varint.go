@@ -18,6 +18,35 @@ const (
 	maxVarint9 = 18446744073709551615
 )
 
+func Read(r io.ByteReader) (uint64, error) {
+	b0, err := r.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+
+	leadingOnes := 0
+	for i := 7; i >= 0; i-- {
+		if (b0 & (1 << uint(i))) == 0 {
+			break
+		}
+		leadingOnes++
+	}
+
+	if leadingOnes == 0 {
+		return uint64(b0), nil
+	}
+
+	result := uint64(b0 & ((1 << uint(7-leadingOnes)) - 1))
+	for i := 0; i < leadingOnes; i++ {
+		b, err := r.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		result = (result << 8) | uint64(b)
+	}
+	return result, nil
+}
+
 func Parse(b []byte) (uint64, int, error) {
 	if len(b) == 0 {
 		return 0, 0, io.EOF
