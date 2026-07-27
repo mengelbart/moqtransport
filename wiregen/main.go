@@ -18,6 +18,7 @@ var msgs = []any{
 	wire2.Subscribe{},
 	wire2.SubscribeOk{},
 	wire2.Publish{},
+	wire2.PublishOk{},
 	wire2.PublishDone{},
 	wire2.Fetch{},
 	wire2.FetchOk{},
