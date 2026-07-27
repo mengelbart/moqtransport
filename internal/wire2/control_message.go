@@ -36,4 +36,5 @@ type ControlMessageType uint64
 type ControlMessage interface {
 	Type() ControlMessageType
 	parse_v18([]byte) error
+	append_v18([]byte) []byte
 }
