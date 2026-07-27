@@ -186,3 +186,28 @@ type RequestError struct {
 func (m *RequestError) Type() ControlMessageType {
 	return ControlMessageTypeRequestError
 }
+
+type FetchHeader struct {
+	RequestID uint64 `proto:"varint"`
+}
+
+func (m *FetchHeader) Type() ControlMessageType {
+	return ControlMessageTypeFetchHeader
+}
+
+type SubgroupHeader struct {
+	TrackAlias uint64 `proto:"varint"`
+	GroupID    uint64 `proto:"varint"`
+	// TODO: Implement all subgroup header versions
+}
+
+func (m *SubgroupHeader) Type() ControlMessageType {
+	return ControlMessageTypeSubgroupHeader
+}
+
+type Padding struct {
+}
+
+func (m *Padding) Type() ControlMessageType {
+	return ControlMessageTypePadding
+}
