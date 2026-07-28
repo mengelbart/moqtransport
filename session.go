@@ -13,17 +13,8 @@ import (
 )
 
 var (
-	errMaxRequestIDViolated             = errors.New("max request ID violated")
-	errClientReceivedClientSetup        = errors.New("client received client setup message")
-	errServerReceveidServerSetup        = errors.New("server received server setup message")
-	errIncompatibleVersions             = errors.New("incompatible versions")
-	errUnexpectedMessageType            = errors.New("unexpected message type")
-	errUnexpectedMessageTypeBeforeSetup = errors.New("unexpected message type before setup")
-	errUnknownTrackAlias                = errors.New("unknown track alias")
-	errMissingPathParameter             = errors.New("missing path parameter")
-	errUnexpectedPathParameter          = errors.New("unexpected path parameter on QUIC connection")
-	errUnknownTrackStatusRequest        = errors.New("got unexpected track status requrest")
-	errUnknownRequestID                 = errors.New("unknown request ID")
+	errMissingPathParameter    = errors.New("missing path parameter")
+	errUnexpectedPathParameter = errors.New("unexpected path parameter on QUIC connection")
 )
 
 type controlMessageReader interface {
@@ -69,12 +60,12 @@ type Session struct {
 }
 
 func NewSession(conn Connection, version wire.Version, path string, options ...Option) (*Session, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	ctrlStream, err := conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 	ctrlStreamAppender := wire2.NewAppender(ctrlStream, uint64(version))
 
 	s := &Session{
@@ -96,18 +87,21 @@ func NewSession(conn Connection, version wire.Version, path string, options ...O
 		}
 	}
 
-	s.localControlStream.write(&wire2.Setup{})
+	if err = s.localControlStream.write(&wire2.Setup{}); err != nil {
+		// TODO: Close conn?
+		return nil, err
+	}
 
-	go s.readUniStreams(s.ctx)
-	go s.readBidiStreams(s.ctx)
-	go s.readDatagrams(s.ctx)
+	go s.readUniStreams()
+	go s.readBidiStreams()
+	go s.readDatagrams()
 
 	return s, nil
 }
 
-func (s *Session) readUniStreams(ctx context.Context) {
+func (s *Session) readUniStreams() {
 	for {
-		stream, err := s.conn.AcceptUniStream(ctx)
+		stream, err := s.conn.AcceptUniStream(s.ctx)
 		if err != nil {
 			// TODO
 			panic(err)
@@ -121,7 +115,15 @@ func (s *Session) readUniStreams(ctx context.Context) {
 		// only be sent on different stream types.
 		br := bufio.NewReader(stream)
 		firstVarint, err := br.Peek(9)
+		if err != nil {
+			// TODO
+			panic(err)
+		}
 		typ, _, err := varint.Parse(firstVarint)
+		if err != nil {
+			// TODO
+			panic(err)
+		}
 		var streamType wire2.StreamType
 		if typ == 0x2f00 {
 			streamType = wire2.StreamTypeControl
@@ -145,9 +147,9 @@ func (s *Session) readUniStreams(ctx context.Context) {
 	}
 }
 
-func (s *Session) readBidiStreams(ctx context.Context) error {
+func (s *Session) readBidiStreams() {
 	for {
-		stream, err := s.conn.AcceptStream(ctx)
+		stream, err := s.conn.AcceptStream(s.ctx)
 		if err != nil {
 			// TODO: Handle error
 			panic(err)
@@ -179,9 +181,9 @@ func (s *Session) readBidiStreams(ctx context.Context) error {
 	}
 }
 
-func (s *Session) readDatagrams(ctx context.Context) {
+func (s *Session) readDatagrams() {
 	for {
-		dgram, err := s.conn.ReceiveDatagram(ctx)
+		dgram, err := s.conn.ReceiveDatagram(s.ctx)
 		if err != nil {
 			// TODO
 			panic(err)
@@ -196,33 +198,6 @@ func (s *Session) readDatagrams(ctx context.Context) {
 			panic(err)
 		}
 	}
-}
-
-func (s *Session) handleUniStream(parser objectMessageParser) error {
-	if parser.Type() == wire.StreamTypeFetch {
-		return s.readFetchStream(parser)
-	}
-	return s.readSubgroupStream(parser)
-}
-
-func (s *Session) readFetchStream(parser objectMessageParser) error {
-	// TODO: Implement routing to correct subscribe request or buffer until track alias arrives
-	// rt, ok := s.remoteTrackByRequestID(parser.Identifier())
-	// if !ok {
-	// 	return errUnknownRequestID
-	// }
-	// return rt.readFetchStream(parser)
-	return nil
-}
-
-func (s *Session) readSubgroupStream(parser objectMessageParser) error {
-	// TODO: Implement routing to correct subscribe request or buffer until track alias arrives
-	// rt, ok := s.remoteTrackByTrackAlias(parser.Identifier())
-	// if !ok {
-	// 	return errUnknownRequestID
-	// }
-	// return rt.readSubgroupStream(parser)
-	return nil
 }
 
 func (s *Session) receiveDatagram(msg *wire.ObjectDatagramMessage) error {
@@ -255,7 +230,7 @@ func (s *Session) Subscribe(
 
 	_, err = newOutgoingSubscribeRequest(requestID, s, appender, parser, namespace, []byte(name))
 
-	return nil, nil
+	return nil, err
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayMessage) {

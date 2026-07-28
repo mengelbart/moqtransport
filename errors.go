@@ -1,7 +1,5 @@
 package moqtransport
 
-import "fmt"
-
 // ErrorCode is a generic error codes
 type ErrorCode uint64
 
@@ -109,33 +107,4 @@ const (
 	ErrorCodeSubscribeNamespaceNamespacePrefixOverlap ErrorCodeSubscribeNamespace = 0x05
 	ErrorCodeSubscribeNamespaceMalformedAuthToken     ErrorCodeSubscribeNamespace = 0x10
 	ErrorCodeSubscribeNamespaceExpiredAuthToken       ErrorCodeSubscribeNamespace = 0x12
-)
-
-// ProtocolError is a MoQ protocol error
-type ProtocolError struct {
-	code    ErrorCode
-	message string
-}
-
-func (e *ProtocolError) String() string {
-	return e.Error()
-}
-
-func (e ProtocolError) Error() string {
-	return fmt.Sprintf("%v: %v", e.code, e.message)
-}
-
-func (e ProtocolError) Code() uint64 {
-	return uint64(e.code)
-}
-
-var (
-	errDuplicateRequestID = ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: "duplicate request ID",
-	}
-	errInvalidNamespaceLength = ProtocolError{
-		code:    ErrorCodeProtocolViolation,
-		message: "invalid namespace length",
-	}
 )
