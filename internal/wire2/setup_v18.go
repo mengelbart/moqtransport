@@ -5,17 +5,17 @@ package wire2
 import (
 	"io"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/mengelbart/moqtransport/varint"
 )
 
 func (m *Setup) append_v18(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(len(m.Options)))
+	buf = varint.Append(buf, uint64(len(m.Options)))
 	for _, v := range m.Options {
-		buf = quicvarint.Append(buf, uint64(v.Type))
+		buf = varint.Append(buf, uint64(v.Type))
 		if v.Type%2 == 0 {
-			buf = quicvarint.Append(buf, uint64(v.Varint))
+			buf = varint.Append(buf, uint64(v.Varint))
 		} else {
-			buf = quicvarint.Append(buf, uint64(len(v.Bytes)))
+			buf = varint.Append(buf, uint64(len(v.Bytes)))
 			buf = append(buf, v.Bytes...)
 		}
 	}
@@ -27,7 +27,7 @@ func (m *Setup) parse_v18(data []byte) error {
 	var n int
 
 	var numOptions uint64
-	numOptions, n, err = quicvarint.Parse(data)
+	numOptions, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -35,14 +35,14 @@ func (m *Setup) parse_v18(data []byte) error {
 
 	m.Options = make([]KeyValuePair, numOptions)
 	for i := range numOptions {
-		typ, n, err := quicvarint.Parse(data)
+		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
 		}
 		data = data[n:]
 
 		if typ%2 == 0 {
-			val, n, err := quicvarint.Parse(data)
+			val, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}
@@ -52,7 +52,7 @@ func (m *Setup) parse_v18(data []byte) error {
 			}
 			data = data[n:]
 		} else {
-			length, n, err := quicvarint.Parse(data)
+			length, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}

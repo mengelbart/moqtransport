@@ -6,11 +6,10 @@ import (
 	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 func (m *GoAway) append_v18(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(len(m.NewSessionURI)))
+	buf = varint.Append(buf, uint64(len(m.NewSessionURI)))
 	buf = append(buf, []byte(m.NewSessionURI)...)
 	buf = varint.Append(buf, uint64(m.Timeout))
 	buf = varint.Append(buf, uint64(m.RequestID))
@@ -22,7 +21,7 @@ func (m *GoAway) parse_v18(data []byte) error {
 	var n int
 
 	var NewSessionURILength uint64
-	NewSessionURILength, n, err = quicvarint.Parse(data)
+	NewSessionURILength, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}

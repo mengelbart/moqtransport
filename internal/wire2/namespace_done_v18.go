@@ -5,13 +5,13 @@ package wire2
 import (
 	"io"
 
-	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/mengelbart/moqtransport/varint"
 )
 
 func (m *NamespaceDone) append_v18(buf []byte) []byte {
-	buf = quicvarint.Append(buf, uint64(len(m.TrackNamespaceSuffix)))
+	buf = varint.Append(buf, uint64(len(m.TrackNamespaceSuffix)))
 	for _, v := range m.TrackNamespaceSuffix {
-		buf = quicvarint.Append(buf, uint64(len(v)))
+		buf = varint.Append(buf, uint64(len(v)))
 		buf = append(buf, v...)
 	}
 	return buf
@@ -22,7 +22,7 @@ func (m *NamespaceDone) parse_v18(data []byte) error {
 	var n int
 
 	var numTrackNamespaceSuffix uint64
-	numTrackNamespaceSuffix, n, err = quicvarint.Parse(data)
+	numTrackNamespaceSuffix, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (m *NamespaceDone) parse_v18(data []byte) error {
 	m.TrackNamespaceSuffix = make([][]byte, numTrackNamespaceSuffix)
 	for i := range numTrackNamespaceSuffix {
 		var length uint64
-		length, n, err = quicvarint.Parse(data)
+		length, n, err = varint.Parse(data)
 		if err != nil {
 			return err
 		}

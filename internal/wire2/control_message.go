@@ -32,9 +32,8 @@ const (
 
 	ControlMessageTypeGoAway ControlMessageType = 0x10
 
-	ControlMessageTypeFetchHeader    ControlMessageType = 0x5
-	ControlMessageTypeSubgroupHeader ControlMessageType = 0x10 // TODO: Add types for all message variants
-	ControlMessageTypePadding        ControlMessageType = 0x132b3e28
+	ControlMessageTypeFetchHeader ControlMessageType = 0x5
+	ControlMessageTypePadding     ControlMessageType = 0x132b3e28
 )
 
 type ControlMessageType uint64
