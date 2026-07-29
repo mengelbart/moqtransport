@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type IncomingSubscribeRequest struct {
@@ -20,7 +20,7 @@ type IncomingSubscribeRequest struct {
 	trackAlias uint64
 }
 
-func newIncomingSubscribeRequest(msg *wire2.Subscribe, version uint64, conn Connection, streamWriter controlMessageWriter, streamReader controlMessageReader) *IncomingSubscribeRequest {
+func newIncomingSubscribeRequest(msg *wire.Subscribe, version uint64, conn Connection, streamWriter controlMessageWriter, streamReader controlMessageReader) *IncomingSubscribeRequest {
 	isr := &IncomingSubscribeRequest{
 		logger:       defaultLogger,
 		version:      version,
@@ -44,7 +44,7 @@ func (r *IncomingSubscribeRequest) readMessages() {
 			panic(err)
 		}
 		switch msg := msg.(type) {
-		case *wire2.RequestUpdate:
+		case *wire.RequestUpdate:
 			// TODO
 		default:
 			panic(fmt.Sprintf("unexpected message type: %T", msg))
@@ -55,7 +55,7 @@ func (r *IncomingSubscribeRequest) readMessages() {
 func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	r.logger.Debug("accepting subscribe request")
 	r.trackAlias = trackAlias
-	err := r.streamWriter.Write(&wire2.SubscribeOk{
+	err := r.streamWriter.Write(&wire.SubscribeOk{
 		TrackAlias: trackAlias,
 	})
 	if err != nil {
@@ -65,7 +65,7 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 }
 
 func (r *IncomingSubscribeRequest) Reject(code ErrorCodeSubscribe, reason string) {
-	err := r.streamWriter.Write(&wire2.RequestError{
+	err := r.streamWriter.Write(&wire.RequestError{
 		ErrorCode:     uint64(code),
 		RetryInterval: 0, // TODO: Add retry interval if needed
 		ErrorReason:   reason,
@@ -86,7 +86,7 @@ func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, prio
 	if err != nil {
 		return nil, err
 	}
-	appender := wire2.NewAppender(stream, r.version)
+	appender := wire.NewAppender(stream, r.version)
 	return newSubgroup(appender, r.trackAlias, groupID, subgroupID, priority)
 }
 

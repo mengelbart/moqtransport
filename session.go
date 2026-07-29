@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/mengelbart/moqtransport/varint"
 )
 
@@ -17,11 +17,11 @@ var (
 )
 
 type controlMessageReader interface {
-	Read() (wire2.ControlMessage, error)
+	Read() (wire.ControlMessage, error)
 }
 
 type controlMessageWriter interface {
-	Write(wire2.ControlMessage) error
+	Write(wire.ControlMessage) error
 }
 
 type Option func(*Session) error
@@ -64,7 +64,7 @@ func NewSession(conn Connection, version uint64, path string, options ...Option)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ctrlStreamAppender := wire2.NewAppender(ctrlStream, uint64(version))
+	ctrlStreamAppender := wire.NewAppender(ctrlStream, uint64(version))
 
 	s := &Session{
 		logger:                              defaultLogger.With("perspective", conn.Perspective()),
@@ -87,7 +87,7 @@ func NewSession(conn Connection, version uint64, path string, options ...Option)
 		}
 	}
 
-	if err = s.localControlStream.write(&wire2.Setup{}); err != nil {
+	if err = s.localControlStream.write(&wire.Setup{}); err != nil {
 		// TODO: Close conn?
 		return nil, err
 	}
@@ -132,15 +132,15 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		// TODO
 		panic(err)
 	}
-	var streamType wire2.StreamType
+	var streamType wire.StreamType
 	if typ == 0x2f00 {
-		streamType = wire2.StreamTypeControl
+		streamType = wire.StreamTypeControl
 	} else {
-		streamType = wire2.StreamTypeData
+		streamType = wire.StreamTypeData
 	}
 	s.logger.Debug("got stream type", "streamID", stream.StreamID(), "streamType", streamType)
 
-	parser := wire2.NewParser(br, uint64(s.version), streamType)
+	parser := wire.NewParser(br, uint64(s.version), streamType)
 	msg, err := parser.Read()
 	if err != nil {
 		s.logger.Error("error while reading message", "streamID", stream.StreamID(), "error", err, "typ", typ)
@@ -148,9 +148,9 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		panic(err)
 	}
 	switch m := msg.(type) {
-	case *wire2.Setup:
+	case *wire.Setup:
 		s.remoteControlStream = newRemoteControlStream(parser, m)
-	case *wire2.SubgroupHeader:
+	case *wire.SubgroupHeader:
 		request, ok := s.getOutgoingSubscribeRequestByTrackAlias(m.TrackAlias)
 		if ok {
 			// TODO
@@ -175,23 +175,23 @@ func (s *Session) readBidiStreams() {
 		// TODO: The following should happen in a different goroutine so we
 		// don't block new requests by waiting for the remaining bytes of the
 		// first message of this request.
-		parser := wire2.NewParser(stream, uint64(s.version), wire2.StreamTypeRequest)
+		parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
 		msg, err := parser.Read()
 		if err != nil {
 			// TODO: Handle error
 			panic(err)
 		}
 		switch m := msg.(type) {
-		case *wire2.TrackStatus:
-		case *wire2.Subscribe:
+		case *wire.TrackStatus:
+		case *wire.Subscribe:
 			// TODO: Handle incoming request
-			request := newIncomingSubscribeRequest(m, s.version, s.conn, wire2.NewAppender(stream, uint64(s.version)), parser)
+			request := newIncomingSubscribeRequest(m, s.version, s.conn, wire.NewAppender(stream, uint64(s.version)), parser)
 			s.handler.HandleSubscribe(request)
-		case *wire2.Publish:
-		case *wire2.Fetch:
-		case *wire2.PublishNamespace:
-		case *wire2.SubscribeNamespace:
-		case *wire2.SubscribeTracks:
+		case *wire.Publish:
+		case *wire.Fetch:
+		case *wire.PublishNamespace:
+		case *wire.SubscribeNamespace:
+		case *wire.SubscribeTracks:
 		default:
 			// TODO: Handle error
 			panic("unexpected message type")
@@ -207,7 +207,7 @@ func (s *Session) readDatagrams() {
 			// TODO
 			panic(err)
 		}
-		msg := new(wire2.ObjectDatagram)
+		msg := new(wire.ObjectDatagram)
 		if _, err = msg.Parse(dgram); err != nil {
 			// TODO
 			panic(err)
@@ -219,7 +219,7 @@ func (s *Session) readDatagrams() {
 	}
 }
 
-func (s *Session) receiveDatagram(msg *wire2.ObjectDatagram) error {
+func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) error {
 	// TODO: Implement routing to correct subscribe request or buffer until track alias arrives
 	// subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
 	// if !ok {
@@ -264,8 +264,8 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 	s.logger.Debug("opened new stream for subscribe request", "requestID", requestID, "namespace", namespace, "name", name)
-	parser := wire2.NewParser(stream, uint64(s.version), wire2.StreamTypeRequest)
-	appender := wire2.NewAppender(stream, uint64(s.version))
+	parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	appender := wire.NewAppender(stream, uint64(s.version))
 
 	request, err := newOutgoingSubscribeRequest(requestID, s, appender, parser, namespace, []byte(name))
 	if err != nil {
@@ -278,6 +278,6 @@ func (s *Session) Subscribe(
 }
 
 //nolint:unused
-func (s *Session) onGoAway(msg *wire2.GoAway) {
+func (s *Session) onGoAway(msg *wire.GoAway) {
 	s.handler.HandleGoAway()
 }

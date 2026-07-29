@@ -1,7 +1,7 @@
 package moqtransport
 
 import (
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type Subgroup struct {
@@ -11,7 +11,7 @@ type Subgroup struct {
 }
 
 func newSubgroup(stream controlMessageWriter, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
-	shgm := &wire2.SubgroupHeader{
+	shgm := &wire.SubgroupHeader{
 		TrackAlias:        trackAlias,
 		GroupID:           groupID,
 		SubgroupID:        subgroupID,
@@ -28,7 +28,7 @@ func newSubgroup(stream controlMessageWriter, trackAlias, groupID, subgroupID ui
 }
 
 func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
-	o := &wire2.ObjectStream{
+	o := &wire.ObjectStream{
 		ObjectPayload: payload,
 	}
 	if err := s.stream.Write(o); err != nil {

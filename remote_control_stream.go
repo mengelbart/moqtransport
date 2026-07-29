@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type remoteControlStream struct {
@@ -12,7 +12,7 @@ type remoteControlStream struct {
 	r      controlMessageReader
 }
 
-func newRemoteControlStream(r controlMessageReader, msg *wire2.Setup) *remoteControlStream {
+func newRemoteControlStream(r controlMessageReader, msg *wire.Setup) *remoteControlStream {
 
 	rcs := &remoteControlStream{
 		logger: defaultLogger.With("stream", "remote_control"),
@@ -31,7 +31,7 @@ func (s *remoteControlStream) readMessages() {
 			panic(err)
 		}
 		switch msg := msg.(type) {
-		case *wire2.GoAway:
+		case *wire.GoAway:
 			// TODO
 		default:
 			panic(fmt.Sprintf("unexpected control message type: %T", msg))
