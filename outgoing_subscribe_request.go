@@ -51,6 +51,7 @@ func newOutgoingSubscribeRequest(
 	if err := r.streamWriter.Write(msg); err != nil {
 		return nil, err
 	}
+	r.logger.Debug("sent subscribe request", "requestID", requestID, "namespace", namespace, "trackName", trackName)
 	go r.readMessages() // TODO: Close request stream
 	return r, nil
 }
@@ -64,7 +65,7 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 		}
 		switch msg := msg.(type) {
 		case *wire2.SubscribeOk:
-			// TODO
+			r.session.setTrackAliasForRequest(r.requestID, msg.TrackAlias)
 		case *wire2.RequestOk:
 		case *wire2.RequestError:
 		default:
@@ -81,23 +82,28 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 	}
 }
 
-func (r *OutgoingSubscribeRequest) readStream(parser objectMessageParser) {
-	for m, err := range parser.Messages() {
+func (r *OutgoingSubscribeRequest) readStream(header *wire2.SubgroupHeader, parser controlMessageReader) {
+	for {
+		m, err := parser.Read()
 		if err != nil {
 			// TODO
 			panic(err)
 		}
-		payload := make([]byte, len(m.ObjectPayload))
-		n := copy(payload, m.ObjectPayload)
-		if n != len(m.ObjectPayload) {
+		o, ok := m.(*wire2.ObjectStream)
+		if !ok {
+			// TODO
+			panic(fmt.Sprintf("unexpected message type: %T", m))
+		}
+		payload := make([]byte, len(o.ObjectPayload))
+		n := copy(payload, o.ObjectPayload)
+		if n != len(o.ObjectPayload) {
 			// TODO
 			panic(errors.New("failed to copy object payload: copied less bytes than expected"))
 		}
+		r.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", header.SubgroupID, "payloadLength", len(payload))
 		r.push(&Object{
-			GroupID:    m.GroupID,
-			SubGroupID: m.SubgroupID,
-			ObjectID:   m.ObjectID,
-			Payload:    payload,
+			// TODO: Set GroupID and ObjectID from header and o
+			Payload: payload,
 		})
 	}
 }
@@ -108,6 +114,7 @@ func (r *OutgoingSubscribeRequest) Close() error {
 }
 
 func (r *OutgoingSubscribeRequest) ReadObject(ctx context.Context) (*Object, error) {
+	r.logger.Debug("waiting for next object")
 	// TODO: Add case for shutdown when request is closed
 	select {
 	case <-ctx.Done():

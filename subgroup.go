@@ -1,26 +1,23 @@
 package moqtransport
 
 import (
-	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/internal/wire2"
 )
 
 type Subgroup struct {
-	stream     SendStream
+	stream     controlMessageWriter
 	groupID    uint64
 	subgroupID uint64
 }
 
-func newSubgroup(stream SendStream, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
-	shgm := &wire.SubgroupHeaderMessage{
+func newSubgroup(stream controlMessageWriter, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
+	shgm := &wire2.SubgroupHeader{
 		TrackAlias:        trackAlias,
 		GroupID:           groupID,
 		SubgroupID:        subgroupID,
 		PublisherPriority: publisherPriority,
 	}
-	buf := make([]byte, 0, 40)
-	buf = shgm.Append(buf)
-	_, err := stream.Write(buf)
-	if err != nil {
+	if err := stream.Write(shgm); err != nil {
 		return nil, err
 	}
 	return &Subgroup{
@@ -31,19 +28,10 @@ func newSubgroup(stream SendStream, trackAlias, groupID, subgroupID uint64, publ
 }
 
 func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
-	var buf []byte
-	if len(payload) > 0 {
-		buf = make([]byte, 0, 16+len(payload))
-	} else {
-		buf = make([]byte, 0, 24)
-	}
-	o := wire.ObjectMessage{
-		ObjectID:      objectID,
+	o := &wire2.ObjectStream{
 		ObjectPayload: payload,
 	}
-	buf = o.AppendSubgroup(buf)
-	_, err := s.stream.Write(buf)
-	if err != nil {
+	if err := s.stream.Write(o); err != nil {
 		return 0, err
 	}
 	return len(payload), nil
@@ -51,5 +39,6 @@ func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
 
 // Close closes the subgroup.
 func (s *Subgroup) Close() error {
-	return s.stream.Close()
+	// TODO
+	return nil
 }

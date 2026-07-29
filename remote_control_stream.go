@@ -2,16 +2,23 @@ package moqtransport
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire2"
 )
 
 type remoteControlStream struct {
-	r controlMessageReader
+	logger *slog.Logger
+	r      controlMessageReader
 }
 
 func newRemoteControlStream(r controlMessageReader, msg *wire2.Setup) *remoteControlStream {
-	rcs := &remoteControlStream{r: r}
+
+	rcs := &remoteControlStream{
+		logger: defaultLogger.With("stream", "remote_control"),
+		r:      r,
+	}
+	rcs.logger.Debug("remote control stream created", "setup", msg)
 	go rcs.readMessages() // TODO: Close stream
 	return rcs
 }
