@@ -22,20 +22,25 @@ const (
 )
 
 type Parser struct {
-	reader     streamReader
-	version    uint64
-	streamType StreamType
+	reader       streamReader
+	version      uint64
+	streamType   StreamType
+	objectParser *objectMessageParser
 }
 
 func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 	return &Parser{
-		reader:     bufio.NewReader(r),
-		version:    version,
-		streamType: streamType,
+		reader:       bufio.NewReader(r),
+		version:      version,
+		streamType:   streamType,
+		objectParser: nil,
 	}
 }
 
 func (p *Parser) Read() (ControlMessage, error) {
+	if p.objectParser != nil {
+		return p.objectParser.parse()
+	}
 	mt, err := varint.Read(p.reader)
 	if err != nil {
 		return nil, err
@@ -120,13 +125,18 @@ func (p *Parser) Read() (ControlMessage, error) {
 		switch ControlMessageType(mt) {
 		case ControlMessageTypeFetchHeader:
 			m = &FetchHeader{}
-		case ControlMessageTypeSubgroupHeader:
-			m = &SubgroupHeader{}
 		case ControlMessageTypePadding:
 			m = &Padding{}
 
 		default:
-			return nil, fmt.Errorf("unknown control message type: %d", mt)
+			sgh := &SubgroupHeader{
+				typ: mt & 0xff,
+			}
+			if !sgh.validType() {
+				return nil, fmt.Errorf("unknown control message type: %d", mt)
+			}
+			p.objectParser = newObjectMessageParser(p.reader)
+			m = sgh
 		}
 	default:
 		panic("unknown stream type")
@@ -140,4 +150,22 @@ func (p *Parser) Read() (ControlMessage, error) {
 	}
 
 	return m, err
+}
+
+type objectMessageParser struct {
+	reader streamReader
+}
+
+func newObjectMessageParser(r streamReader) *objectMessageParser {
+	return &objectMessageParser{
+		reader: r,
+	}
+}
+
+func (p *objectMessageParser) parse() (*ObjectStream, error) {
+	o := &ObjectStream{}
+	if err := o.parse(p.reader); err != nil {
+		return nil, err
+	}
+	return o, nil
 }

@@ -6,13 +6,12 @@ import (
 	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 func (m *PublishDone) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.StatusCode))
 	buf = varint.Append(buf, uint64(m.StreamCount))
-	buf = quicvarint.Append(buf, uint64(len(m.ErrorReason)))
+	buf = varint.Append(buf, uint64(len(m.ErrorReason)))
 	buf = append(buf, []byte(m.ErrorReason)...)
 	return buf
 }
@@ -34,7 +33,7 @@ func (m *PublishDone) parse_v18(data []byte) error {
 	data = data[n:]
 
 	var ErrorReasonLength uint64
-	ErrorReasonLength, n, err = quicvarint.Parse(data)
+	ErrorReasonLength, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}

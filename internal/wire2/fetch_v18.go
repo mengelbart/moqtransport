@@ -6,19 +6,18 @@ import (
 	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 func (m *Fetch) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RequestID))
 	buf = varint.Append(buf, uint64(m.FetchType))
-	buf = quicvarint.Append(buf, uint64(len(m.Parameters)))
+	buf = varint.Append(buf, uint64(len(m.Parameters)))
 	for _, v := range m.Parameters {
-		buf = quicvarint.Append(buf, uint64(v.Type))
+		buf = varint.Append(buf, uint64(v.Type))
 		if v.Type%2 == 0 {
-			buf = quicvarint.Append(buf, uint64(v.Varint))
+			buf = varint.Append(buf, uint64(v.Varint))
 		} else {
-			buf = quicvarint.Append(buf, uint64(len(v.Bytes)))
+			buf = varint.Append(buf, uint64(len(v.Bytes)))
 			buf = append(buf, v.Bytes...)
 		}
 	}
@@ -42,7 +41,7 @@ func (m *Fetch) parse_v18(data []byte) error {
 	data = data[n:]
 
 	var numParameters uint64
-	numParameters, n, err = quicvarint.Parse(data)
+	numParameters, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -50,14 +49,14 @@ func (m *Fetch) parse_v18(data []byte) error {
 
 	m.Parameters = make([]KeyValuePair, numParameters)
 	for i := range numParameters {
-		typ, n, err := quicvarint.Parse(data)
+		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
 		}
 		data = data[n:]
 
 		if typ%2 == 0 {
-			val, n, err := quicvarint.Parse(data)
+			val, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}
@@ -67,7 +66,7 @@ func (m *Fetch) parse_v18(data []byte) error {
 			}
 			data = data[n:]
 		} else {
-			length, n, err := quicvarint.Parse(data)
+			length, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}

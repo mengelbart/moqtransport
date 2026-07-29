@@ -40,7 +40,7 @@ func (m *SubscribeOk) Type() ControlMessageType {
 }
 
 type Publish struct {
-	RequestID      uint64         `proto:"quicvarint"`
+	RequestID      uint64         `proto:"varint"`
 	TrackNamespace [][]byte       `proto:"ntlv_bytes"`
 	TrackName      []byte         `proto:"tlv_bytes"`
 	TrackAlias     uint64         `proto:"varint"`
@@ -193,16 +193,6 @@ type FetchHeader struct {
 
 func (m *FetchHeader) Type() ControlMessageType {
 	return ControlMessageTypeFetchHeader
-}
-
-type SubgroupHeader struct {
-	TrackAlias uint64 `proto:"varint"`
-	GroupID    uint64 `proto:"varint"`
-	// TODO: Implement all subgroup header versions
-}
-
-func (m *SubgroupHeader) Type() ControlMessageType {
-	return ControlMessageTypeSubgroupHeader
 }
 
 type Padding struct {

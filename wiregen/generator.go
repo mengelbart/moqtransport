@@ -34,28 +34,28 @@ var appenderTemplates = map[string]*template.Template{
 	"varint": template.Must(template.New("varint_append").Parse(`	buf = varint.Append(buf, uint64(m.{{ .Field }}))
 `)),
 
-	"tlv_bytes": template.Must(template.New("tlv_bytes_append").Parse(`	buf = quicvarint.Append(buf, uint64(len(m.{{ .Field }})))
+	"tlv_bytes": template.Must(template.New("tlv_bytes_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
 	buf = append(buf, m.{{ .Field }}...)
 `)),
 
-	"tlv_string": template.Must(template.New("tlv_bytes_append").Parse(`	buf = quicvarint.Append(buf, uint64(len(m.{{ .Field }})))
+	"tlv_string": template.Must(template.New("tlv_bytes_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
 	buf = append(buf, []byte(m.{{ .Field }})...)
 `)),
 
-	"ntlv_bytes": template.Must(template.New("ntlv_bytes_append").Parse(`	buf = quicvarint.Append(buf, uint64(len(m.{{ .Field }})))
+	"ntlv_bytes": template.Must(template.New("ntlv_bytes_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
 	for _, v := range m.{{ .Field }} {
-		buf = quicvarint.Append(buf, uint64(len(v)))
+		buf = varint.Append(buf, uint64(len(v)))
 		buf = append(buf, v...)
 	}
 `)),
 
-	"moq_kvp_list": template.Must(template.New("moq_kvp_list_append").Parse(`	buf = quicvarint.Append(buf, uint64(len(m.{{ .Field }})))
+	"moq_kvp_list": template.Must(template.New("moq_kvp_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
 	for _, v:= range m.{{ .Field }} {
-		buf = quicvarint.Append(buf, uint64(v.Type))
+		buf = varint.Append(buf, uint64(v.Type))
 		if v.Type % 2 == 0 {
-			buf = quicvarint.Append(buf, uint64(v.Varint))
+			buf = varint.Append(buf, uint64(v.Varint))
 		} else {
-			buf = quicvarint.Append(buf, uint64(len(v.Bytes)))
+			buf = varint.Append(buf, uint64(len(v.Bytes)))
 			buf = append(buf, v.Bytes...)
 		}
 	}
@@ -88,7 +88,7 @@ var parserTemplates = map[string]*template.Template{
 `)),
 
 	"tlv_bytes": template.Must(template.New("tlv_bytes_parse").Parse(`	var {{ .Field }}Length uint64
-	{{ .Field }}Length, n, err = quicvarint.Parse(data)
+	{{ .Field }}Length, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ var parserTemplates = map[string]*template.Template{
 `)),
 
 	"tlv_string": template.Must(template.New("tlv_string_parse").Parse(`	var {{ .Field }}Length uint64
-	{{ .Field }}Length, n, err = quicvarint.Parse(data)
+	{{ .Field }}Length, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ var parserTemplates = map[string]*template.Template{
 `)),
 
 	"ntlv_bytes": template.Must(template.New("ntlv_bytes_parse").Parse(`	var num{{ .Field }} uint64
-	num{{ .Field }}, n, err = quicvarint.Parse(data)
+	num{{ .Field }}, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ var parserTemplates = map[string]*template.Template{
 	m.{{ .Field }} = make([][]byte, num{{ .Field }})
 	for i := range num{{ .Field }} {
 		var length uint64
-		length, n, err = quicvarint.Parse(data)
+		length, n, err = varint.Parse(data)
 		if err != nil {
 			return err
 		}
@@ -150,7 +150,7 @@ var parserTemplates = map[string]*template.Template{
 `)),
 
 	"moq_kvp_list": template.Must(template.New("moq_kvp_list_parse").Parse(`	var num{{ .Field }} uint64
-	num{{ .Field }}, n, err = quicvarint.Parse(data)
+	num{{ .Field }}, n, err = varint.Parse(data)
 	if err != nil {
 		return err
 	}
@@ -158,14 +158,14 @@ var parserTemplates = map[string]*template.Template{
 
 	m.{{ .Field }} = make([]KeyValuePair, num{{ .Field }})
 	for i := range num{{ .Field }} {
-		typ, n, err := quicvarint.Parse(data)
+		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
 		}
 		data = data[n:]
 
 		if typ % 2 == 0 {
-			val, n, err := quicvarint.Parse(data)
+			val, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}
@@ -175,7 +175,7 @@ var parserTemplates = map[string]*template.Template{
 			}
 			data = data[n:]
 		} else {
-			length, n, err := quicvarint.Parse(data)
+			length, n, err := varint.Parse(data)
 			if err != nil {
 				return err
 			}
