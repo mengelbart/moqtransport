@@ -56,13 +56,14 @@ func (e *endpoint) runClient(ctx context.Context, wt bool) error {
 
 func (e *endpoint) runServer(ctx context.Context) error {
 	listener, err := quic.ListenAddr(e.addr, e.tlsConfig, &quic.Config{
-		EnableDatagrams: true,
+		EnableDatagrams:                  true,
+		EnableStreamResetPartialDelivery: true,
 	})
 	if err != nil {
 		return err
 	}
 	wt := webtransport.Server{
-		H3: http3.Server{
+		H3: &http3.Server{
 			Addr:      e.addr,
 			TLSConfig: e.tlsConfig,
 		},
@@ -87,7 +88,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "h3" {
 			go wt.ServeQUICConn(conn) //nolint:errcheck
 		}
-		if conn.ConnectionState().TLS.NegotiatedProtocol == "moq-00" {
+		if conn.ConnectionState().TLS.NegotiatedProtocol == "moqt-18" {
 			go e.handle(quicmoq.NewServer(conn)) //nolint:errcheck
 		}
 	}
