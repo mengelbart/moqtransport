@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 
 	"github.com/mengelbart/moqtransport"
 )
@@ -31,7 +32,7 @@ func (h *handler) HandleSubscribe(r *moqtransport.IncomingSubscribeRequest) {
 	// TODO: Set track alias
 	r.Accept(0)
 
-	log.Printf("sessionNr: %d accepted subscription for namespace %v track %v", h.sessionID, ns, r.Name())
+	log.Printf("sessionNr: %d accepted subscription for %v--%v", h.sessionID, strings.Join(ns, "/"), string(r.Name()))
 	h.endpoint.lock.Lock()
 	h.endpoint.publishers[r] = struct{}{}
 	h.endpoint.lock.Unlock()
