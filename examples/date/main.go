@@ -132,7 +132,7 @@ func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"moq-00", "h3"},
+		NextProtos:   []string{"moqt-18", "h3"},
 	}, nil
 }
 
@@ -156,14 +156,14 @@ func generateTLSConfig() (*tls.Config, error) {
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"moq-00", "h3"},
+		NextProtos:   []string{"moqt-18", "h3"},
 	}, nil
 }
 
 func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error) {
 	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
 		InsecureSkipVerify: true,
-		NextProtos:         []string{"moq-00"},
+		NextProtos:         []string{"moqt-18"},
 	}, &quic.Config{
 		EnableDatagrams: true,
 	})
@@ -174,12 +174,13 @@ func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error)
 }
 
 func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection, error) {
-	dialer := webtransport.Dialer{
+	dialer := webtransport.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
+		ApplicationProtocols: []string{"moqt-18"},
 	}
-	_, session, err := dialer.Dial(ctx, addr, nil)
+	_, session, err := dialer.Dial(ctx, fmt.Sprintf("https://%s/moq", addr), nil)
 	if err != nil {
 		return nil, err
 	}
