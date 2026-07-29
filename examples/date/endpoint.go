@@ -137,6 +137,7 @@ func (e *endpoint) setupDateTrack() {
 	groupID := 0
 	for ts := range ticker.C {
 		e.lock.Lock()
+		log.Println("tick: sending time to publishers")
 		for p := range e.publishers {
 			sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
 			if err != nil {
@@ -146,6 +147,7 @@ func (e *endpoint) setupDateTrack() {
 				delete(e.publishers, p)
 				continue
 			}
+			log.Printf("sending time to subgroup %v of publisher %v", groupID, p)
 			if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
 				log.Printf("failed to write time to subgroup: %v", err)
 			}

@@ -16,6 +16,7 @@ func (h *handler) HandleGoAway() {
 }
 
 func (h *handler) HandleSubscribe(r *moqtransport.IncomingSubscribeRequest) {
+	log.Printf("got subscribe request, sessionID: %d", h.sessionID)
 	ns := tupleToStringList(r.Namespace())
 	if !h.endpoint.publish {
 		log.Printf("sessionNr: %d got unexpected subscribe request: %v", h.sessionID, ns)
