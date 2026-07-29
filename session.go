@@ -71,7 +71,7 @@ func NewSession(conn Connection, version uint64, path string, options ...Option)
 		ctx:                                 ctx,
 		cancelCtx:                           cancel,
 		conn:                                conn,
-		requestIDs:                          newRequestIDGenerator(uint64(conn.Perspective()), 0 /*max*/, 2 /*step*/),
+		requestIDs:                          newRequestIDGenerator(uint64(conn.Perspective())),
 		remoteControlStream:                 nil,
 		localControlStream:                  newLocalControlStream(ctrlStreamAppender),
 		handler:                             nil,

@@ -10,10 +10,10 @@ type requestIDGenerator struct {
 	interval uint64
 }
 
-func newRequestIDGenerator(initialID, maxID, interval uint64) *requestIDGenerator {
+func newRequestIDGenerator(initialID uint64) *requestIDGenerator {
 	return &requestIDGenerator{
 		id:       initialID,
-		interval: interval,
+		interval: 2,
 	}
 }
 
