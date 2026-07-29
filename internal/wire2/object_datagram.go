@@ -184,7 +184,6 @@ func (m *ObjectDatagram) Parse(data []byte) (parsed int, err error) {
 		if err != nil {
 			return
 		}
-		data = data[n:]
 	} else {
 		m.ObjectPayload = make([]byte, len(data))
 		n = copy(m.ObjectPayload, data)

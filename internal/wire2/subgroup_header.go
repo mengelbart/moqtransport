@@ -135,11 +135,10 @@ func (m *SubgroupHeader) parse_v18(data []byte) error {
 
 	if m.typ&0x20 == 0 {
 		var priority uint64
-		priority, n, err = varint.Parse(data)
+		priority, _, err = varint.Parse(data)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 		if priority > 255 {
 			return fmt.Errorf("publisher priority out of range: %d", priority)
 		}
