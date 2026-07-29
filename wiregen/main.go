@@ -9,32 +9,32 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 var msgs = []any{
-	wire2.Setup{},
-	wire2.GoAway{},
-	wire2.Subscribe{},
-	wire2.SubscribeOk{},
-	wire2.Publish{},
-	wire2.PublishOk{},
-	wire2.PublishDone{},
-	wire2.Fetch{},
-	wire2.FetchOk{},
-	wire2.TrackStatus{},
-	wire2.PublishNamespace{},
-	wire2.SubscribeNamespace{},
-	wire2.SubscribeTracks{},
-	wire2.Namespace{},
-	wire2.NamespaceDone{},
-	wire2.PublishBlocked{},
-	wire2.RequestUpdate{},
-	wire2.RequestOk{},
-	wire2.RequestError{},
+	wire.Setup{},
+	wire.GoAway{},
+	wire.Subscribe{},
+	wire.SubscribeOk{},
+	wire.Publish{},
+	wire.PublishOk{},
+	wire.PublishDone{},
+	wire.Fetch{},
+	wire.FetchOk{},
+	wire.TrackStatus{},
+	wire.PublishNamespace{},
+	wire.SubscribeNamespace{},
+	wire.SubscribeTracks{},
+	wire.Namespace{},
+	wire.NamespaceDone{},
+	wire.PublishBlocked{},
+	wire.RequestUpdate{},
+	wire.RequestOk{},
+	wire.RequestError{},
 
-	wire2.FetchHeader{},
-	wire2.Padding{},
+	wire.FetchHeader{},
+	wire.Padding{},
 }
 
 var (

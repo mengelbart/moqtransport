@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 type OutgoingSubscribeRequestOption func(*OutgoingSubscribeRequest) error
@@ -42,7 +42,7 @@ func newOutgoingSubscribeRequest(
 			return nil, err
 		}
 	}
-	msg := &wire2.Subscribe{
+	msg := &wire.Subscribe{
 		RequestID:      requestID,
 		TrackNamespace: namespace,
 		TrackName:      trackName,
@@ -64,10 +64,10 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 			panic(err)
 		}
 		switch msg := msg.(type) {
-		case *wire2.SubscribeOk:
+		case *wire.SubscribeOk:
 			r.session.setTrackAliasForRequest(r.requestID, msg.TrackAlias)
-		case *wire2.RequestOk:
-		case *wire2.RequestError:
+		case *wire.RequestOk:
+		case *wire.RequestError:
 		default:
 			panic(fmt.Sprintf("unexpected message type: %T", msg))
 		}
@@ -82,14 +82,14 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 	}
 }
 
-func (r *OutgoingSubscribeRequest) readStream(header *wire2.SubgroupHeader, parser controlMessageReader) {
+func (r *OutgoingSubscribeRequest) readStream(header *wire.SubgroupHeader, parser controlMessageReader) {
 	for {
 		m, err := parser.Read()
 		if err != nil {
 			// TODO
 			panic(err)
 		}
-		o, ok := m.(*wire2.ObjectStream)
+		o, ok := m.(*wire.ObjectStream)
 		if !ok {
 			// TODO
 			panic(fmt.Sprintf("unexpected message type: %T", m))

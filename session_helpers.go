@@ -3,13 +3,13 @@ package moqtransport
 import (
 	"slices"
 
-	"github.com/mengelbart/moqtransport/internal/wire2"
+	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
 //nolint:unused
-func validatePathParameter(setupParameters []wire2.KeyValuePair, protocolIsQUIC bool) (string, error) {
-	index := slices.IndexFunc(setupParameters, func(p wire2.KeyValuePair) bool {
-		return p.Type == wire2.PathParameterKey
+func validatePathParameter(setupParameters []wire.KeyValuePair, protocolIsQUIC bool) (string, error) {
+	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
+		return p.Type == wire.PathParameterKey
 	})
 	if index < 0 {
 		if protocolIsQUIC {
@@ -24,9 +24,9 @@ func validatePathParameter(setupParameters []wire2.KeyValuePair, protocolIsQUIC 
 }
 
 //nolint:unused
-func validateAuthParameter(subscribeParameters []wire2.KeyValuePair) (string, error) {
-	index := slices.IndexFunc(subscribeParameters, func(p wire2.KeyValuePair) bool {
-		return p.Type == wire2.AuthorizationTokenParameterKey
+func validateAuthParameter(subscribeParameters []wire.KeyValuePair) (string, error) {
+	index := slices.IndexFunc(subscribeParameters, func(p wire.KeyValuePair) bool {
+		return p.Type == wire.AuthorizationTokenParameterKey
 	})
 	if index < 0 {
 		return "", nil
