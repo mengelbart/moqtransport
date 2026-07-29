@@ -6,6 +6,7 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire2"
 )
 
+//nolint:unused
 func validatePathParameter(setupParameters []wire2.KeyValuePair, protocolIsQUIC bool) (string, error) {
 	index := slices.IndexFunc(setupParameters, func(p wire2.KeyValuePair) bool {
 		return p.Type == wire2.PathParameterKey
@@ -22,6 +23,7 @@ func validatePathParameter(setupParameters []wire2.KeyValuePair, protocolIsQUIC 
 	return string(setupParameters[index].Bytes), nil
 }
 
+//nolint:unused
 func validateAuthParameter(subscribeParameters []wire2.KeyValuePair) (string, error) {
 	index := slices.IndexFunc(subscribeParameters, func(p wire2.KeyValuePair) bool {
 		return p.Type == wire2.AuthorizationTokenParameterKey

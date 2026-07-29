@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	errMissingPathParameter    = errors.New("missing path parameter")
-	errUnexpectedPathParameter = errors.New("unexpected path parameter on QUIC connection")
+	errMissingPathParameter    = errors.New("missing path parameter")                       //nolint:unused
+	errUnexpectedPathParameter = errors.New("unexpected path parameter on QUIC connection") //nolint:unused
 )
 
 type controlMessageReader interface {
@@ -277,6 +277,7 @@ func (s *Session) Subscribe(
 	return request, nil
 }
 
+//nolint:unused
 func (s *Session) onGoAway(msg *wire2.GoAway) {
 	s.handler.HandleGoAway()
 }
