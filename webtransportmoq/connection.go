@@ -104,6 +104,10 @@ func (c *webTransportConn) Protocol() moqtransport.Protocol {
 	return moqtransport.ProtocolWebTransport
 }
 
+func (c *webTransportConn) ApplicationProtocol() moqtransport.ApplicationProtocol {
+	return moqtransport.ApplicationProtocol(c.session.SessionState().ApplicationProtocol)
+}
+
 func (c *webTransportConn) Perspective() moqtransport.Perspective {
 	return c.perspective
 }

@@ -121,12 +121,16 @@ type Connection interface {
 	// string.
 	CloseWithError(uint64, string) error
 
-	// Context returns a context that will be cancelled when the connection is
+	// Context returns a context that will be canceled when the connection is
 	// closed.
 	Context() context.Context
 
-	// Protocol returns the underlying Protocol of the connection.
+	// Protocol returns the underlying transport protocol of the connection.
 	Protocol() Protocol
+
+	// ApplicationProtocol returns the application protocol negotiated for the
+	// connection.
+	ApplicationProtocol() ApplicationProtocol
 
 	// Perspective returns the perspective of the connection.
 	Perspective() Perspective

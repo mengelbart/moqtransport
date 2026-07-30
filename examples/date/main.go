@@ -132,7 +132,7 @@ func generateTLSConfigWithCertAndKey(certFile, keyFile string) (*tls.Config, err
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"moqt-18", "h3"},
+		NextProtos:   []string{moqtransport.MOQT18.String(), "h3"},
 	}, nil
 }
 
@@ -156,14 +156,14 @@ func generateTLSConfig() (*tls.Config, error) {
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{tlsCert},
-		NextProtos:   []string{"moqt-18", "h3"},
+		NextProtos:   []string{moqtransport.MOQT18.String(), "h3"},
 	}, nil
 }
 
 func dialQUIC(ctx context.Context, addr string) (moqtransport.Connection, error) {
 	conn, err := quic.DialAddr(ctx, addr, &tls.Config{
 		InsecureSkipVerify: true,
-		NextProtos:         []string{"moqt-18"},
+		NextProtos:         []string{moqtransport.MOQT18.String()},
 	}, &quic.Config{
 		EnableDatagrams: true,
 	})
@@ -178,7 +178,7 @@ func dialWebTransport(ctx context.Context, addr string) (moqtransport.Connection
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-		ApplicationProtocols: []string{"moqt-18"},
+		ApplicationProtocols: []string{moqtransport.MOQT18.String()},
 	}
 	_, session, err := dialer.Dial(ctx, fmt.Sprintf("https://%s/moq", addr), nil)
 	if err != nil {

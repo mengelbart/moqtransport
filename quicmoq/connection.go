@@ -104,6 +104,10 @@ func (c *connection) Protocol() moqtransport.Protocol {
 	return moqtransport.ProtocolQUIC
 }
 
+func (c *connection) ApplicationProtocol() moqtransport.ApplicationProtocol {
+	return moqtransport.ApplicationProtocol(c.connection.ConnectionState().TLS.NegotiatedProtocol)
+}
+
 func (c *connection) Perspective() moqtransport.Perspective {
 	return c.perspective
 }

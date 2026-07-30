@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -57,7 +58,12 @@ type Session struct {
 	outgoingSubscribeRequestsTrackAlias     map[uint64]uint64
 }
 
-func NewSession(conn Connection, version uint64, path string, options ...Option) (*Session, error) {
+func NewSession(conn Connection, path string, options ...Option) (*Session, error) {
+	version := conn.ApplicationProtocol().versionNumber()
+	if version == 0 {
+		return nil, fmt.Errorf("unsupported application protocol: %q", conn.ApplicationProtocol())
+	}
+
 	ctrlStream, err := conn.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -87,6 +93,8 @@ func NewSession(conn Connection, version uint64, path string, options ...Option)
 		}
 	}
 
+	// TODO: Write setup in a different goroutine to avoid blocking the session
+	// constructor.
 	if err = s.localControlStream.write(&wire.Setup{}); err != nil {
 		// TODO: Close conn?
 		return nil, err
