@@ -40,6 +40,7 @@ type Session struct {
 
 	ctx       context.Context
 	cancelCtx context.CancelFunc
+	wg        sync.WaitGroup
 
 	conn       Connection
 	requestIDs *requestIDGenerator
@@ -78,6 +79,7 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 		logger:                              logger,
 		ctx:                                 ctx,
 		cancelCtx:                           cancel,
+		wg:                                  sync.WaitGroup{},
 		conn:                                conn,
 		requestIDs:                          newRequestIDGenerator(uint64(conn.Perspective())),
 		remoteControlStream:                 nil,
@@ -103,9 +105,10 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	}
 	s.logger.Debug("setup message sent", "version", version, "path", path)
 
-	go s.readUniStreams()
-	go s.readBidiStreams()
-	go s.readDatagrams()
+	s.wg.Add(3)
+	go func() { defer s.wg.Done(); s.readUniStreams() }()
+	go func() { defer s.wg.Done(); s.readBidiStreams() }()
+	go func() { defer s.wg.Done(); s.readDatagrams() }()
 
 	return s, nil
 }
@@ -115,6 +118,10 @@ func (s *Session) readUniStreams() {
 	for {
 		stream, err := s.conn.AcceptUniStream(s.ctx)
 		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Debug("context canceled, stopping readUniStreams")
+				return
+			}
 			// TODO
 			panic(err)
 		}
@@ -178,6 +185,10 @@ func (s *Session) readBidiStreams() {
 	for {
 		stream, err := s.conn.AcceptStream(s.ctx)
 		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Debug("context canceled, stopping readBidiStreams")
+				return
+			}
 			// TODO: Handle error
 			panic(err)
 		}
@@ -214,6 +225,10 @@ func (s *Session) readDatagrams() {
 	for {
 		dgram, err := s.conn.ReceiveDatagram(s.ctx)
 		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Debug("context canceled, stopping readDatagrams")
+				return
+			}
 			// TODO
 			panic(err)
 		}
@@ -290,4 +305,11 @@ func (s *Session) Subscribe(
 //nolint:unused
 func (s *Session) onGoAway(msg *wire.GoAway) {
 	s.handler.HandleGoAway()
+}
+
+func (s *Session) CloseWithError(code uint64, reason string) error {
+	s.cancelCtx()
+	err := s.conn.CloseWithError(code, reason)
+	s.wg.Wait()
+	return err
 }
