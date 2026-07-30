@@ -88,7 +88,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "h3" {
 			go wt.ServeQUICConn(conn) //nolint:errcheck
 		}
-		if conn.ConnectionState().TLS.NegotiatedProtocol == "moqt-18" {
+		if conn.ConnectionState().TLS.NegotiatedProtocol == moqtransport.ProtocolQUIC.String() {
 			go e.handle(quicmoq.NewServer(conn)) //nolint:errcheck
 		}
 	}
@@ -96,7 +96,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 
 func (e *endpoint) handle(conn moqtransport.Connection) error {
 	id := e.nextSessionID.Add(1)
-	session, err := moqtransport.NewSession(conn, 18, "", moqtransport.WithHandler(&handler{endpoint: e, sessionID: id}))
+	session, err := moqtransport.NewSession(conn, "", moqtransport.WithHandler(&handler{endpoint: e, sessionID: id}))
 	if err != nil {
 		return err
 	}
