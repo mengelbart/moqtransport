@@ -166,7 +166,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 	switch m := msg.(type) {
 	case *wire.Setup:
-		s.remoteControlStream = newRemoteControlStream(parser, m)
+		s.remoteControlStream = newRemoteControlStream(m, parser, s)
 	case *wire.SubgroupHeader:
 		request, ok := s.getOutgoingSubscribeRequestByTrackAlias(m.TrackAlias)
 		if ok {
@@ -302,9 +302,8 @@ func (s *Session) Subscribe(
 	return request, nil
 }
 
-//nolint:unused
 func (s *Session) onGoAway(msg *wire.GoAway) {
-	s.handler.HandleGoAway()
+	s.handler.HandleGoAway(msg.NewSessionURI)
 }
 
 func (s *Session) CloseWithError(code uint64, reason string) error {

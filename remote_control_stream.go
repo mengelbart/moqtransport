@@ -10,13 +10,14 @@ import (
 type remoteControlStream struct {
 	logger *slog.Logger
 	r      controlMessageReader
+	s      *Session
 }
 
-func newRemoteControlStream(r controlMessageReader, msg *wire.Setup) *remoteControlStream {
-
+func newRemoteControlStream(msg *wire.Setup, r controlMessageReader, s *Session) *remoteControlStream {
 	rcs := &remoteControlStream{
 		logger: defaultLogger.With("stream", "remote_control"),
 		r:      r,
+		s:      s,
 	}
 	rcs.logger.Debug("remote control stream created", "setup", msg)
 	go rcs.readMessages() // TODO: Close stream
@@ -32,7 +33,7 @@ func (s *remoteControlStream) readMessages() {
 		}
 		switch msg := msg.(type) {
 		case *wire.GoAway:
-			// TODO
+			s.s.onGoAway(msg)
 		default:
 			panic(fmt.Sprintf("unexpected control message type: %T", msg))
 		}

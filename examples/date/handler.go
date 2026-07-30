@@ -12,8 +12,8 @@ type handler struct {
 	sessionID uint64
 }
 
-func (h *handler) HandleGoAway() {
-	log.Printf("sessionNr: %d got goaway", h.sessionID)
+func (h *handler) HandleGoAway(newSessionURI string) {
+	log.Printf("sessionNr: %d got goaway, new session URI: %s", h.sessionID, newSessionURI)
 }
 
 func (h *handler) HandleSubscribe(r *moqtransport.IncomingSubscribeRequest) {
