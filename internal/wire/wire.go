@@ -41,7 +41,7 @@ func (m *Subscribe) Type() ControlMessageType {
 type SubscribeOk struct {
 	TrackAlias uint64         `proto:"varint"`
 	Parameters []KeyValuePair `proto:"moq_kvp_list"`
-	Properties []KeyValuePair `proto:"moq_kvp_list"` // TODO: kvp list without length?
+	Properties []KeyValuePair `proto:"moq_kvp_list_no_length"`
 }
 
 func (m *SubscribeOk) Type() ControlMessageType {
@@ -54,7 +54,7 @@ type Publish struct {
 	TrackName      []byte         `proto:"tlv_bytes"`
 	TrackAlias     uint64         `proto:"varint"`
 	Parameters     []KeyValuePair `proto:"moq_kvp_list"`
-	Properties     []KeyValuePair `proto:"moq_kvp_list"` // TODO: kvp list without length?
+	Properties     []KeyValuePair `proto:"moq_kvp_list_no_length"`
 }
 
 func (m *Publish) Type() ControlMessageType {
@@ -63,7 +63,7 @@ func (m *Publish) Type() ControlMessageType {
 
 type PublishOk struct {
 	Parameters []KeyValuePair `proto:"moq_kvp_list"`
-	Properties []KeyValuePair `proto:"moq_kvp_list"` // TODO: kvp list without length?
+	Properties []KeyValuePair `proto:"moq_kvp_list_no_length"`
 }
 
 func (m *PublishOk) Type() ControlMessageType {
@@ -95,7 +95,7 @@ type FetchOk struct {
 	EndOfTrack  bool           `proto:"bool"`
 	EndLocation Location       `proto:"moq_location"`
 	Parameters  []KeyValuePair `proto:"moq_kvp_list"`
-	Properties  []KeyValuePair `proto:"moq_kvp_list"` // TODO: kvp list without length?
+	Properties  []KeyValuePair `proto:"moq_kvp_list_no_length"`
 }
 
 func (m *FetchOk) Type() ControlMessageType {
@@ -179,7 +179,7 @@ func (m *RequestUpdate) Type() ControlMessageType {
 
 type RequestOk struct {
 	Parameters []KeyValuePair `proto:"moq_kvp_list"`
-	Properties []KeyValuePair `proto:"moq_kvp_list"`
+	Properties []KeyValuePair `proto:"moq_kvp_list_no_length"`
 }
 
 func (m *RequestOk) Type() ControlMessageType {
@@ -190,6 +190,7 @@ type RequestError struct {
 	ErrorCode     uint64 `proto:"varint"`
 	RetryInterval uint64 `proto:"varint"`
 	ErrorReason   string `proto:"tlv_string"`
+	// TODO: Implement Redirect
 }
 
 func (m *RequestError) Type() ControlMessageType {

@@ -28,7 +28,6 @@ func (m *Publish) append_v18(buf []byte) []byte {
 			buf = append(buf, v.Bytes...)
 		}
 	}
-	buf = varint.Append(buf, uint64(len(m.Properties)))
 	for _, v := range m.Properties {
 		buf = varint.Append(buf, uint64(v.Type))
 		if v.Type%2 == 0 {
@@ -135,15 +134,8 @@ func (m *Publish) parse_v18(data []byte) error {
 		}
 	}
 
-	var numProperties uint64
-	numProperties, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.Properties = make([]KeyValuePair, numProperties)
-	for i := range numProperties {
+	m.Properties = make([]KeyValuePair, 0)
+	for len(data) > 0 {
 		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
@@ -155,10 +147,10 @@ func (m *Publish) parse_v18(data []byte) error {
 			if err != nil {
 				return err
 			}
-			m.Properties[i] = KeyValuePair{
+			m.Properties = append(m.Properties, KeyValuePair{
 				Type:   typ,
 				Varint: val,
-			}
+			})
 			data = data[n:]
 		} else {
 			length, n, err := varint.Parse(data)
@@ -169,10 +161,10 @@ func (m *Publish) parse_v18(data []byte) error {
 			if len(data) < int(length) {
 				return io.ErrUnexpectedEOF
 			}
-			m.Properties[i] = KeyValuePair{
+			m.Properties = append(m.Properties, KeyValuePair{
 				Type:  typ,
 				Bytes: data[:length],
-			}
+			})
 			data = data[length:]
 		}
 	}
