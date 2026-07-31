@@ -72,12 +72,15 @@ func (p *Parser) Read() (ControlMessage, error) {
 		case ControlMessageTypeSetup:
 			m = &Setup{}
 		case ControlMessageTypeGoAway:
-			m = &GoAway{}
+			m = &GoAwayCtrl{}
 		default:
 			return nil, fmt.Errorf("unknown control message type: %d", mt)
 		}
 	case StreamTypeRequest:
 		switch ControlMessageType(mt) {
+		case ControlMessageTypeGoAway:
+			m = &GoAwayReq{}
+
 		case ControlMessageTypeFetch:
 			m = &Fetch{}
 		case ControlMessageTypeFetchOk:

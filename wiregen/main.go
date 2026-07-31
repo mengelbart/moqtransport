@@ -14,7 +14,8 @@ import (
 
 var msgs = []any{
 	wire.Setup{},
-	wire.GoAway{},
+	wire.GoAwayCtrl{},
+	wire.GoAwayReq{},
 	wire.Subscribe{},
 	wire.SubscribeOk{},
 	wire.Publish{},
@@ -55,7 +56,7 @@ func main() {
 
 	for _, m := range msgs {
 		mt := reflect.TypeOf(m)
-		format, err := generate(mt, "wire2", fmt.Sprintf("_v%v", *version))
+		format, err := generate(mt, "wire", fmt.Sprintf("_v%v", *version))
 		if err != nil {
 			panic(err)
 		}

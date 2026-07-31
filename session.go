@@ -377,6 +377,6 @@ func (s *Session) Subscribe(
 	return request, nil
 }
 
-func (s *Session) onGoAway(msg *wire.GoAway) {
+func (s *Session) onGoAway(msg *wire.GoAwayCtrl) {
 	s.handler.HandleGoAway(msg.NewSessionURI)
 }
