@@ -67,6 +67,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 			Addr:      e.addr,
 			TLSConfig: e.tlsConfig,
 		},
+		ApplicationProtocols: []string{moqtransport.MOQT18.String()},
 	}
 	if e.publish {
 		go e.setupDateTrack()
@@ -88,7 +89,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "h3" {
 			go wt.ServeQUICConn(conn) //nolint:errcheck
 		}
-		if conn.ConnectionState().TLS.NegotiatedProtocol == moqtransport.ProtocolQUIC.String() {
+		if conn.ConnectionState().TLS.NegotiatedProtocol == moqtransport.MOQT18.String() {
 			go e.handle(quicmoq.NewServer(conn)) //nolint:errcheck
 		}
 	}
