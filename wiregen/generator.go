@@ -61,6 +61,17 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
+	"moq_kvp_list_no_length": template.Must(template.New("moq_kvp_list_no_length_append").Parse(`	for _, v:= range m.{{ .Field }} {
+		buf = varint.Append(buf, uint64(v.Type))
+		if v.Type % 2 == 0 {
+			buf = varint.Append(buf, uint64(v.Varint))
+		} else {
+			buf = varint.Append(buf, uint64(len(v.Bytes)))
+			buf = append(buf, v.Bytes...)
+		}
+	}
+`)),
+
 	"bool": template.Must(template.New("bool_append").Parse(`	if m.{{ .Field }} {
 		buf = append(buf, byte(1))
 	} else {
@@ -187,6 +198,42 @@ var parserTemplates = map[string]*template.Template{
 				Type: typ,
 				Bytes: data[:length],
 			}
+			data = data[length:]
+		}
+	}
+`)),
+
+	"moq_kvp_list_no_length": template.Must(template.New("moq_kvp_list_no_length_parse").Parse(`	m.{{ .Field }} = make([]KeyValuePair, 0)
+	for len(data) > 0 {
+		typ, n, err := varint.Parse(data)
+		if err != nil {
+			return err
+		}
+		data = data[n:]
+
+		if typ % 2 == 0 {
+			val, n, err := varint.Parse(data)
+			if err != nil {
+				return err
+			}
+			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
+				Type: typ,
+				Varint: val,
+			})
+			data = data[n:]
+		} else {
+			length, n, err := varint.Parse(data)
+			if err != nil {
+				return err
+			}
+			data = data[n:]
+			if len(data) < int(length) {
+				return io.ErrUnexpectedEOF
+			}
+			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
+				Type: typ,
+				Bytes: data[:length],
+			})
 			data = data[length:]
 		}
 	}
