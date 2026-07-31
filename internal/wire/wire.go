@@ -8,13 +8,22 @@ func (m *Setup) Type() ControlMessageType {
 	return ControlMessageTypeSetup
 }
 
-type GoAway struct {
+type GoAwayCtrl struct {
 	NewSessionURI string `proto:"tlv_string"`
 	Timeout       uint64 `proto:"varint"`
 	RequestID     uint64 `proto:"varint"`
 }
 
-func (m *GoAway) Type() ControlMessageType {
+func (m *GoAwayCtrl) Type() ControlMessageType {
+	return ControlMessageTypeGoAway
+}
+
+type GoAwayReq struct {
+	NewSessionURI string `proto:"tlv_string"`
+	Timeout       uint64 `proto:"varint"`
+}
+
+func (m *GoAwayReq) Type() ControlMessageType {
 	return ControlMessageTypeGoAway
 }
 

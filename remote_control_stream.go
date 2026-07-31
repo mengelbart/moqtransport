@@ -32,7 +32,7 @@ func (s *remoteControlStream) readMessages() {
 			panic(err)
 		}
 		switch msg := msg.(type) {
-		case *wire.GoAway:
+		case *wire.GoAwayCtrl:
 			s.s.onGoAway(msg)
 		default:
 			panic(fmt.Sprintf("unexpected control message type: %T", msg))
