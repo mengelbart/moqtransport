@@ -42,6 +42,9 @@ type Session struct {
 	cancelCtx context.CancelFunc
 	wg        sync.WaitGroup
 
+	closeLock sync.Mutex
+	closeErr  error
+
 	conn       Connection
 	requestIDs *requestIDGenerator
 
@@ -105,12 +108,51 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	}
 	s.logger.Debug("setup message sent", "version", version, "path", path)
 
-	s.wg.Add(3)
-	go func() { defer s.wg.Done(); s.readUniStreams() }()
-	go func() { defer s.wg.Done(); s.readBidiStreams() }()
-	go func() { defer s.wg.Done(); s.readDatagrams() }()
+	s.wg.Go(func() { s.readUniStreams() })
+	s.wg.Go(func() { s.readBidiStreams() })
+	s.wg.Go(func() { s.readDatagrams() })
 
 	return s, nil
+}
+
+type SessionError struct {
+	Code   uint64
+	Reason string
+	Remote bool
+}
+
+func (e *SessionError) Error() string {
+	return e.Reason
+}
+
+func (e *SessionError) Is(target error) bool {
+	other, ok := target.(*SessionError)
+	return ok && e.Code == other.Code && e.Remote == other.Remote
+}
+
+func (s *Session) CloseWithError(code uint64, reason string) {
+	s.closeWithError(&SessionError{Code: code, Reason: reason, Remote: false})
+	s.wg.Wait()
+}
+
+func (s *Session) closeWithError(closeErr error) bool {
+	s.closeLock.Lock()
+	defer s.closeLock.Unlock()
+	if s.closeErr != nil {
+		return false
+	}
+	s.closeErr = closeErr
+	s.cancelCtx()
+
+	code := uint64(ErrorCodeInternal)
+	reason := ""
+	if se, ok := closeErr.(*SessionError); ok {
+		code = se.Code
+		reason = se.Reason
+	}
+	_ = s.conn.CloseWithError(code, reason)
+
+	return true
 }
 
 func (s *Session) readUniStreams() {
@@ -122,15 +164,65 @@ func (s *Session) readUniStreams() {
 				s.logger.Debug("context canceled, stopping readUniStreams")
 				return
 			}
-			// TODO
-			panic(err)
+			s.closeWithError(err)
+			return
 		}
-		go s.handleUniStream(stream)
+		s.wg.Go(func() { s.handleUniStream(stream) })
+	}
+}
+
+func (s *Session) readBidiStreams() {
+	s.logger.Debug("starting to read bidi streams")
+	for {
+		stream, err := s.conn.AcceptStream(s.ctx)
+		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Debug("context canceled, stopping readBidiStreams")
+				return
+			}
+			s.closeWithError(err)
+			return
+		}
+		s.wg.Go(func() { s.handleBidiStream(stream) })
+	}
+}
+
+func (s *Session) readDatagrams() {
+	s.logger.Debug("starting to read datagrams")
+	for {
+		dgram, err := s.conn.ReceiveDatagram(s.ctx)
+		if err != nil {
+			if s.ctx.Err() != nil {
+				s.logger.Debug("context canceled, stopping readDatagrams")
+				return
+			}
+			s.closeWithError(err)
+			return
+		}
+		msg := new(wire.ObjectDatagram)
+		if _, err = msg.Parse(dgram); err != nil {
+			s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("failed to parse datagram: %v", err), Remote: false})
+			return
+		}
+		s.receiveDatagram(msg)
 	}
 }
 
 func (s *Session) handleUniStream(stream ReceiveStream) {
 	s.logger.Debug("accepted new uni stream", "streamID", stream.StreamID())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
+		select {
+		case <-ctx.Done():
+		case <-s.ctx.Done():
+			stream.Stop(0) // TODO: Set correct error code?
+		}
+	})
 
 	// TODO: This is a hacky way to figure out the stream type before
 	// creating the parser. Ideally, we wouldn't need to know the stream
@@ -141,13 +233,13 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	br := bufio.NewReader(stream)
 	firstVarint, err := br.Peek(9)
 	if err != nil {
-		// TODO
-		panic(err)
+		// Ignore stream
+		return
 	}
 	typ, _, err := varint.Parse(firstVarint)
 	if err != nil {
-		// TODO
-		panic(err)
+		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("failed to parse first varint of stream: %v", err), Remote: false})
+		return
 	}
 	var streamType wire.StreamType
 	if typ == 0x2f00 {
@@ -161,8 +253,8 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	msg, err := parser.Read()
 	if err != nil {
 		s.logger.Error("error while reading message", "streamID", stream.StreamID(), "error", err, "typ", typ)
-		// TODO
-		panic(err)
+		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("failed to parse message: %v", err), Remote: false})
+		return
 	}
 	switch m := msg.(type) {
 	case *wire.Setup:
@@ -176,75 +268,52 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 
 	default:
 		// TODO
-		panic("unexpected message type")
+		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
+		return
 	}
 }
 
-func (s *Session) readBidiStreams() {
-	s.logger.Debug("starting to read bidi streams")
-	for {
-		stream, err := s.conn.AcceptStream(s.ctx)
-		if err != nil {
-			if s.ctx.Err() != nil {
-				s.logger.Debug("context canceled, stopping readBidiStreams")
-				return
-			}
-			// TODO: Handle error
-			panic(err)
-		}
+func (s *Session) handleBidiStream(stream Stream) {
+	s.logger.Debug("accepted new bidi stream", "streamID", stream.StreamID())
 
-		// TODO: The following should happen in a different goroutine so we
-		// don't block new requests by waiting for the remaining bytes of the
-		// first message of this request.
-		parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
-		msg, err := parser.Read()
-		if err != nil {
-			// TODO: Handle error
-			panic(err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Go(func() {
+		select {
+		case <-ctx.Done():
+		case <-s.ctx.Done():
+			stream.Stop(0)  // TODO: Set correct error code?
+			stream.Reset(0) // TODO: Set correct error code?
 		}
-		switch m := msg.(type) {
-		case *wire.TrackStatus:
-		case *wire.Subscribe:
-			// TODO: Handle incoming request
-			request := newIncomingSubscribeRequest(m, s.version, s.conn, wire.NewAppender(stream, uint64(s.version)), parser)
-			s.handler.HandleSubscribe(request)
-		case *wire.Publish:
-		case *wire.Fetch:
-		case *wire.PublishNamespace:
-		case *wire.SubscribeNamespace:
-		case *wire.SubscribeTracks:
-		default:
-			// TODO: Handle error
-			panic("unexpected message type")
-		}
+	})
+
+	parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	msg, err := parser.Read()
+	if err != nil {
+		// Ignore stream
+		return
+	}
+	switch m := msg.(type) {
+	case *wire.TrackStatus:
+	case *wire.Subscribe:
+		// TODO: Handle incoming request
+		request := newIncomingSubscribeRequest(m, s.version, s.conn, wire.NewAppender(stream, uint64(s.version)), parser)
+		s.handler.HandleSubscribe(request)
+	case *wire.Publish:
+	case *wire.Fetch:
+	case *wire.PublishNamespace:
+	case *wire.SubscribeNamespace:
+	case *wire.SubscribeTracks:
+	default:
+		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
+		return
 	}
 }
 
-func (s *Session) readDatagrams() {
-	s.logger.Debug("starting to read datagrams")
-	for {
-		dgram, err := s.conn.ReceiveDatagram(s.ctx)
-		if err != nil {
-			if s.ctx.Err() != nil {
-				s.logger.Debug("context canceled, stopping readDatagrams")
-				return
-			}
-			// TODO
-			panic(err)
-		}
-		msg := new(wire.ObjectDatagram)
-		if _, err = msg.Parse(dgram); err != nil {
-			// TODO
-			panic(err)
-		}
-		if err := s.receiveDatagram(msg); err != nil {
-			// TODO
-			panic(err)
-		}
-	}
-}
-
-func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) error {
+func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) {
 	// TODO: Implement routing to correct subscribe request or buffer until track alias arrives
 	// subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
 	// if !ok {
@@ -256,7 +325,6 @@ func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) error {
 	// 	ForwardingPreference: ObjectForwardingPreferenceDatagram,
 	// 	Payload:              msg.ObjectPayload,
 	// })
-	return nil
 }
 
 func (s *Session) setTrackAliasForRequest(requestID, trackAlias uint64) {
@@ -283,6 +351,13 @@ func (s *Session) Subscribe(
 	namespace [][]byte,
 	name string,
 ) (*OutgoingSubscribeRequest, error) {
+	s.closeLock.Lock()
+	if s.closeErr != nil {
+		s.closeLock.Unlock()
+		return nil, s.closeErr
+	}
+	s.closeLock.Unlock()
+
 	requestID := s.requestIDs.next()
 	stream, err := s.conn.OpenStreamSync(ctx)
 	if err != nil {
@@ -304,11 +379,4 @@ func (s *Session) Subscribe(
 
 func (s *Session) onGoAway(msg *wire.GoAway) {
 	s.handler.HandleGoAway(msg.NewSessionURI)
-}
-
-func (s *Session) CloseWithError(code uint64, reason string) error {
-	s.cancelCtx()
-	err := s.conn.CloseWithError(code, reason)
-	s.wg.Wait()
-	return err
 }
