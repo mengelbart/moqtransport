@@ -63,6 +63,8 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	if version == 0 {
 		return nil, fmt.Errorf("unsupported application protocol: %q", conn.ApplicationProtocol())
 	}
+	logger := defaultLogger.With("perspective", conn.Perspective())
+	logger.Debug("creating new session", "version", version, "path", path)
 
 	ctrlStream, err := conn.OpenUniStream()
 	if err != nil {
@@ -73,7 +75,7 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	ctrlStreamAppender := wire.NewAppender(ctrlStream, uint64(version))
 
 	s := &Session{
-		logger:                              defaultLogger.With("perspective", conn.Perspective()),
+		logger:                              logger,
 		ctx:                                 ctx,
 		cancelCtx:                           cancel,
 		conn:                                conn,
