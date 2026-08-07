@@ -25,32 +25,32 @@ const (
 	ErrorCodeExpiredAuthToken         ErrorCode = 0x18
 )
 
-// ErrorCodeSubscribe is a Subscribe error code
-type ErrorCodeSubscribe uint64
+// SubscribeErrorCode is a Subscribe error code
+type SubscribeErrorCode uint64
 
 const (
-	ErrorCodeSubscribeInternal           ErrorCodeSubscribe = 0x00
-	ErrorCodeSubscribeUnauthorized       ErrorCodeSubscribe = 0x01
-	ErrorCodeSubscribeTimeout            ErrorCodeSubscribe = 0x02
-	ErrorCodeSubscribeNotSupported       ErrorCodeSubscribe = 0x03
-	ErrorCodeSubscribeTrackDoesNotExist  ErrorCodeSubscribe = 0x04
-	ErrorCodeSubscribeInvalidRange       ErrorCodeSubscribe = 0x05
-	ErrorCodeSubscribeMalformedAuthToken ErrorCodeSubscribe = 0x10
-	ErrorCodeSubscribeExpiredAuthToken   ErrorCodeSubscribe = 0x12
+	SubscribeErrorCodeInternal           SubscribeErrorCode = 0x00
+	SubscribeErrorCodeUnauthorized       SubscribeErrorCode = 0x01
+	SubscribeErrorCodeTimeout            SubscribeErrorCode = 0x02
+	SubscribeErrorCodeNotSupported       SubscribeErrorCode = 0x03
+	SubscribeErrorCodeTrackDoesNotExist  SubscribeErrorCode = 0x04
+	SubscribeErrorCodeInvalidRange       SubscribeErrorCode = 0x05
+	SubscribeErrorCodeMalformedAuthToken SubscribeErrorCode = 0x10
+	SubscribeErrorCodeExpiredAuthToken   SubscribeErrorCode = 0x12
 )
 
-// ErrorCodeSubscribeDone is a subscribe done error code
-type ErrorCodeSubscribeDone uint64
+// SubscribeErrorCodeDone is a subscribe done error code
+type SubscribeErrorCodeDone uint64
 
 const (
-	ErrorCodeSubscribeDoneInternal          ErrorCodeSubscribeDone = 0x00
-	ErrorCodeSubscribeDoneUnauthorized      ErrorCodeSubscribeDone = 0x01
-	ErrorCodeSubscribeDoneTrackEnded        ErrorCodeSubscribeDone = 0x02
-	ErrorCodeSubscribeDoneSubscriptionEnded ErrorCodeSubscribeDone = 0x03
-	ErrorCodeSubscribeDoneGoingAway         ErrorCodeSubscribeDone = 0x04
-	ErrorCodeSubscribeDoneExpired           ErrorCodeSubscribeDone = 0x05
-	ErrorCodeSubscribeDoneTooFarBehind      ErrorCodeSubscribeDone = 0x06
-	ErrorCodeSubscribeDoneMalformedTrack    ErrorCodeSubscribeDone = 0x07
+	SubscribeErrorCodeDoneInternal          SubscribeErrorCodeDone = 0x00
+	SubscribeErrorCodeDoneUnauthorized      SubscribeErrorCodeDone = 0x01
+	SubscribeErrorCodeDoneTrackEnded        SubscribeErrorCodeDone = 0x02
+	SubscribeErrorCodeDoneSubscriptionEnded SubscribeErrorCodeDone = 0x03
+	SubscribeErrorCodeDoneGoingAway         SubscribeErrorCodeDone = 0x04
+	SubscribeErrorCodeDoneExpired           SubscribeErrorCodeDone = 0x05
+	SubscribeErrorCodeDoneTooFarBehind      SubscribeErrorCodeDone = 0x06
+	SubscribeErrorCodeDoneMalformedTrack    SubscribeErrorCodeDone = 0x07
 )
 
 // ErrorCodePublish is a publish error code
@@ -95,16 +95,16 @@ const (
 	ErrorCodeAnnouncementExpiredAuthToken ErrorCodeAnnounce = 0x12
 )
 
-// ErrorCodeSubscribeNamespace is a subscribe namespaces error code
-type ErrorCodeSubscribeNamespace uint64
+// SubscribeErrorCodeNamespace is a subscribe namespaces error code
+type SubscribeErrorCodeNamespace uint64
 
 const (
-	ErrorCodeSubscribeNamespaceInternal               ErrorCodeSubscribeNamespace = 0x00
-	ErrorCodeSubscribeNamespaceUnauthorized           ErrorCodeSubscribeNamespace = 0x01
-	ErrorCodeSubscribeNamespaceTimeout                ErrorCodeSubscribeNamespace = 0x02
-	ErrorCodeSubscribeNamespaceNotSupported           ErrorCodeSubscribeNamespace = 0x03
-	ErrorCodeSubscribeNamespaceNamespacePrefixUnknown ErrorCodeSubscribeNamespace = 0x04
-	ErrorCodeSubscribeNamespaceNamespacePrefixOverlap ErrorCodeSubscribeNamespace = 0x05
-	ErrorCodeSubscribeNamespaceMalformedAuthToken     ErrorCodeSubscribeNamespace = 0x10
-	ErrorCodeSubscribeNamespaceExpiredAuthToken       ErrorCodeSubscribeNamespace = 0x12
+	SubscribeErrorCodeNamespaceInternal               SubscribeErrorCodeNamespace = 0x00
+	SubscribeErrorCodeNamespaceUnauthorized           SubscribeErrorCodeNamespace = 0x01
+	SubscribeErrorCodeNamespaceTimeout                SubscribeErrorCodeNamespace = 0x02
+	SubscribeErrorCodeNamespaceNotSupported           SubscribeErrorCodeNamespace = 0x03
+	SubscribeErrorCodeNamespaceNamespacePrefixUnknown SubscribeErrorCodeNamespace = 0x04
+	SubscribeErrorCodeNamespaceNamespacePrefixOverlap SubscribeErrorCodeNamespace = 0x05
+	SubscribeErrorCodeNamespaceMalformedAuthToken     SubscribeErrorCodeNamespace = 0x10
+	SubscribeErrorCodeNamespaceExpiredAuthToken       SubscribeErrorCodeNamespace = 0x12
 )
