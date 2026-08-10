@@ -60,6 +60,10 @@ func Parse(b []byte) (uint64, int, error) {
 		leadingOnes++
 	}
 
+	if len(b) < 1+leadingOnes {
+		return 0, 0, io.EOF
+	}
+
 	if leadingOnes == 0 {
 		return uint64(b[0]), 1, nil
 	}

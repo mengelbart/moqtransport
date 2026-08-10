@@ -28,6 +28,10 @@ func TestParseVarint(t *testing.T) {
 		{[]byte{0xFC, 0x89, 0x98, 0xAB, 0xC6, 0x6B, 0xC0}, 151_288_809_941_952, 7, nil},
 		{[]byte{0xFE, 0xFA, 0x31, 0x8F, 0xA8, 0xE3, 0xCA, 0x11}, 70_423_237_261_249_041, 8, nil},
 		{[]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, 18_446_744_073_709_551_615, 9, nil},
+		{[]byte{0x80}, 0, 0, io.EOF},
+		{[]byte{0xC0, 0x01}, 0, 0, io.EOF},
+		{[]byte{0xFF, 0xFF, 0xFF}, 0, 0, io.EOF},
+		{[]byte{0xFE, 0xFA, 0x31, 0x8F, 0xA8, 0xE3, 0xCA}, 0, 0, io.EOF},
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%v", c.bytes), func(t *testing.T) {
@@ -67,6 +71,34 @@ func TestReadVarint(t *testing.T) {
 			assert.Equal(t, c.err, err, "Read(%v) = %v, want %v", c.bytes, err, c.err)
 		})
 	}
+}
+
+// FuzzParse checks that Parse never panics on arbitrary input and stays
+// consistent with Read, which sees the same bytes through an io.ByteReader.
+func FuzzParse(f *testing.F) {
+	for _, seed := range [][]byte{
+		{},
+		{0x25},
+		{0x80, 0x25},
+		{0xC0},
+		{0xFF, 0xFF, 0xFF},
+		{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, b []byte) {
+		value, n, err := Parse(b)
+		readValue, readErr := Read(bytes.NewReader(b))
+		if err != nil {
+			assert.Equal(t, 0, n, "Parse(%v) consumed %d bytes despite failing", b, n)
+			assert.Error(t, readErr, "Parse(%v) failed but Read succeeded", b)
+			return
+		}
+		assert.GreaterOrEqual(t, n, 1, "Parse(%v) succeeded without consuming a byte", b)
+		assert.LessOrEqual(t, n, len(b), "Parse(%v) consumed more bytes than it was given", b)
+		assert.NoError(t, readErr, "Parse(%v) succeeded but Read failed", b)
+		assert.Equal(t, value, readValue, "Parse(%v) = %d, but Read = %d", b, value, readValue)
+	})
 }
 
 func TestAppendVarint(t *testing.T) {
