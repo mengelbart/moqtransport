@@ -30,8 +30,8 @@ func (m *PublishBlocked) parse_v18(data []byte) error {
 	}
 	data = data[n:]
 
-	m.TrackNamespaceSuffix = make([][]byte, numTrackNamespaceSuffix)
-	for i := range numTrackNamespaceSuffix {
+	m.TrackNamespaceSuffix = make([][]byte, 0)
+	for range numTrackNamespaceSuffix {
 		var length uint64
 		length, n, err = varint.Parse(data)
 		if err != nil {
@@ -42,7 +42,7 @@ func (m *PublishBlocked) parse_v18(data []byte) error {
 		if len(data) < int(length) {
 			return io.ErrUnexpectedEOF
 		}
-		m.TrackNamespaceSuffix[i] = data[:length]
+		m.TrackNamespaceSuffix = append(m.TrackNamespaceSuffix, data[:length])
 		data = data[length:]
 	}
 

@@ -33,8 +33,8 @@ func (m *Setup) parse_v18(data []byte) error {
 	}
 	data = data[n:]
 
-	m.Options = make([]KeyValuePair, numOptions)
-	for i := range numOptions {
+	m.Options = make([]KeyValuePair, 0)
+	for range numOptions {
 		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
@@ -46,10 +46,10 @@ func (m *Setup) parse_v18(data []byte) error {
 			if err != nil {
 				return err
 			}
-			m.Options[i] = KeyValuePair{
+			m.Options = append(m.Options, KeyValuePair{
 				Type:   typ,
 				Varint: val,
-			}
+			})
 			data = data[n:]
 		} else {
 			length, n, err := varint.Parse(data)
@@ -60,10 +60,10 @@ func (m *Setup) parse_v18(data []byte) error {
 			if len(data) < int(length) {
 				return io.ErrUnexpectedEOF
 			}
-			m.Options[i] = KeyValuePair{
+			m.Options = append(m.Options, KeyValuePair{
 				Type:  typ,
 				Bytes: data[:length],
-			}
+			})
 			data = data[length:]
 		}
 	}

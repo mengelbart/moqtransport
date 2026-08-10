@@ -133,8 +133,8 @@ var parserTemplates = map[string]*template.Template{
 	}
 	data = data[n:]
 
-	m.{{ .Field }} = make([][]byte, num{{ .Field }})
-	for i := range num{{ .Field }} {
+	m.{{ .Field }} = make([][]byte, 0)
+	for range num{{ .Field }} {
 		var length uint64
 		length, n, err = varint.Parse(data)
 		if err != nil {
@@ -145,7 +145,7 @@ var parserTemplates = map[string]*template.Template{
 		if len(data) < int(length) {
 			return io.ErrUnexpectedEOF
 		}
-		m.{{ .Field }}[i] = data[:length]
+		m.{{ .Field }} = append(m.{{ .Field }}, data[:length])
 		data = data[length:]
 	}
 `)),
@@ -167,8 +167,8 @@ var parserTemplates = map[string]*template.Template{
 	}
 	data = data[n:]
 
-	m.{{ .Field }} = make([]KeyValuePair, num{{ .Field }})
-	for i := range num{{ .Field }} {
+	m.{{ .Field }} = make([]KeyValuePair, 0)
+	for range num{{ .Field }} {
 		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
@@ -180,10 +180,10 @@ var parserTemplates = map[string]*template.Template{
 			if err != nil {
 				return err
 			}
-			m.{{ .Field }}[i] = KeyValuePair{
+			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
 				Type: typ,
 				Varint: val,
-			}
+			})
 			data = data[n:]
 		} else {
 			length, n, err := varint.Parse(data)
@@ -194,10 +194,10 @@ var parserTemplates = map[string]*template.Template{
 			if len(data) < int(length) {
 				return io.ErrUnexpectedEOF
 			}
-			m.{{ .Field }}[i] = KeyValuePair{
+			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
 				Type: typ,
 				Bytes: data[:length],
-			}
+			})
 			data = data[length:]
 		}
 	}

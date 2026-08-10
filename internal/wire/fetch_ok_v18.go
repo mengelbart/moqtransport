@@ -64,8 +64,8 @@ func (m *FetchOk) parse_v18(data []byte) error {
 	}
 	data = data[n:]
 
-	m.Parameters = make([]KeyValuePair, numParameters)
-	for i := range numParameters {
+	m.Parameters = make([]KeyValuePair, 0)
+	for range numParameters {
 		typ, n, err := varint.Parse(data)
 		if err != nil {
 			return err
@@ -77,10 +77,10 @@ func (m *FetchOk) parse_v18(data []byte) error {
 			if err != nil {
 				return err
 			}
-			m.Parameters[i] = KeyValuePair{
+			m.Parameters = append(m.Parameters, KeyValuePair{
 				Type:   typ,
 				Varint: val,
-			}
+			})
 			data = data[n:]
 		} else {
 			length, n, err := varint.Parse(data)
@@ -91,10 +91,10 @@ func (m *FetchOk) parse_v18(data []byte) error {
 			if len(data) < int(length) {
 				return io.ErrUnexpectedEOF
 			}
-			m.Parameters[i] = KeyValuePair{
+			m.Parameters = append(m.Parameters, KeyValuePair{
 				Type:  typ,
 				Bytes: data[:length],
-			}
+			})
 			data = data[length:]
 		}
 	}
