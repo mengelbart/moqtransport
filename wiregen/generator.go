@@ -289,12 +289,8 @@ import (
 
 func (g *generator) generateAppend(typ reflect.Type) error {
 	g.printf("func (m *%s) append%s(buf []byte) []byte {\n", typ.Name(), g.methodSuffix)
-	for i := range typ.NumField() {
-		f := typ.Field(i)
-		proto, ok := f.Tag.Lookup("proto")
-		if !ok {
-			continue
-		}
+	for _, f := range protoFields(typ) {
+		proto := f.Tag.Get("proto")
 		data := map[string]string{
 			"Field": f.Name,
 		}
@@ -313,18 +309,21 @@ func (g *generator) generateAppend(typ reflect.Type) error {
 }
 
 func (g *generator) generateParse(typ reflect.Type) error {
-	g.printf(`func (m *%s) parse%s(data []byte) error {
-	var err error
+	fields := protoFields(typ)
+
+	g.printf("func (m *%s) parse%s(data []byte) error {\n", typ.Name(), g.methodSuffix)
+
+	// Messages without any proto fields parse nothing, so declaring the
+	// scratch variables would leave them unused.
+	if len(fields) > 0 {
+		g.printf(`	var err error
 	var n int
 
-`, typ.Name(), g.methodSuffix)
+`)
+	}
 
-	for i := range typ.NumField() {
-		f := typ.Field(i)
-		proto, ok := f.Tag.Lookup("proto")
-		if !ok {
-			continue
-		}
+	for _, f := range fields {
+		proto := f.Tag.Get("proto")
 		data := map[string]string{
 			"Field": f.Name,
 		}
@@ -337,12 +336,23 @@ func (g *generator) generateParse(typ reflect.Type) error {
 		}
 		g.printf("\n")
 	}
-	g.printf(`
-
-	return nil
+	g.printf(`	return nil
 }
 `)
 	return nil
+}
+
+// protoFields returns the fields of typ that carry a proto tag, i.e. the fields
+// that are serialized on the wire.
+func protoFields(typ reflect.Type) []reflect.StructField {
+	var fields []reflect.StructField
+	for i := range typ.NumField() {
+		f := typ.Field(i)
+		if _, ok := f.Tag.Lookup("proto"); ok {
+			fields = append(fields, f)
+		}
+	}
+	return fields
 }
 
 func (g *generator) printf(format string, args ...any) {
