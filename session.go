@@ -231,7 +231,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	// so it is impossible to distinguish between some messages that can
 	// only be sent on different stream types.
 	br := bufio.NewReader(stream)
-	firstVarint, err := br.Peek(9)
+	firstVarint, err := peekFirstVarint(br)
 	if err != nil {
 		// Ignore stream
 		return
@@ -271,6 +271,23 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
 		return
 	}
+}
+
+func peekFirstVarint(br *bufio.Reader) ([]byte, error) {
+	firstByte, err := br.Peek(1)
+	if err != nil {
+		return nil, err
+	}
+
+	needed := 1
+	for i := 7; i >= 0; i-- {
+		if (firstByte[0] & (1 << uint(i))) == 0 {
+			break
+		}
+		needed++
+	}
+
+	return br.Peek(needed)
 }
 
 func (s *Session) handleBidiStream(stream Stream) {
