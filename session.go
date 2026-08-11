@@ -300,6 +300,9 @@ func (s *Session) handleBidiStream(stream Stream) {
 	case *wire.TrackStatus:
 	case *wire.Subscribe:
 		// TODO: Handle incoming request
+		if s.handler == nil {
+			return
+		}
 		request := newIncomingSubscribeRequest(m, s.version, s.conn, wire.NewAppender(stream, uint64(s.version)), parser)
 		s.handler.HandleSubscribe(request)
 	case *wire.Publish:
@@ -378,5 +381,8 @@ func (s *Session) Subscribe(
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayCtrl) {
+	if s.handler == nil {
+		return
+	}
 	s.handler.HandleGoAway(msg.NewSessionURI)
 }
