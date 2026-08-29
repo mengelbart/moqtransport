@@ -1,7 +1,9 @@
 package moqtransport
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -9,8 +11,7 @@ import (
 
 type IncomingSubscribeRequest struct {
 	logger       *slog.Logger
-	version      uint64
-	conn         Connection
+	session      *Session
 	streamWriter controlMessageWriter
 	streamReader controlMessageReader
 
@@ -20,11 +21,10 @@ type IncomingSubscribeRequest struct {
 	trackAlias uint64
 }
 
-func newIncomingSubscribeRequest(msg *wire.Subscribe, version uint64, conn Connection, streamWriter controlMessageWriter, streamReader controlMessageReader) *IncomingSubscribeRequest {
+func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, streamWriter controlMessageWriter, streamReader controlMessageReader) *IncomingSubscribeRequest {
 	isr := &IncomingSubscribeRequest{
 		logger:       defaultLogger,
-		version:      version,
-		conn:         conn,
+		session:      session,
 		streamWriter: streamWriter,
 		streamReader: streamReader,
 		namespace:    msg.TrackNamespace,
@@ -32,22 +32,29 @@ func newIncomingSubscribeRequest(msg *wire.Subscribe, version uint64, conn Conne
 		trackAlias:   0,
 	}
 	isr.logger.Debug("incoming subscribe request created", "requestID", msg.RequestID, "namespace", msg.TrackNamespace, "trackName", msg.TrackName)
-	go isr.readMessages() // TODO: Close request stream
 	return isr
 }
 
+// readMessages reads from the request stream until it fails. It must be called
+// from a goroutine tracked by the session WaitGroup.
 func (r *IncomingSubscribeRequest) readMessages() {
 	for {
 		msg, err := r.streamReader.Read()
 		if err != nil {
-			// TODO
-			panic(err)
+			if !errors.Is(err, io.EOF) {
+				r.session.handleReaderError(err)
+			}
+			return
 		}
 		switch msg := msg.(type) {
 		case *wire.RequestUpdate:
 			// TODO
 		default:
-			panic(fmt.Sprintf("unexpected message type: %T", msg))
+			r.session.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("unexpected message type: %T", msg),
+			})
+			return
 		}
 	}
 }
@@ -82,11 +89,11 @@ func (r *IncomingSubscribeRequest) SendDatagram(o Object) error {
 }
 
 func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
-	stream, err := r.conn.OpenUniStream()
+	stream, err := r.session.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
-	appender := wire.NewAppender(stream, r.version)
+	appender := wire.NewAppender(stream, r.session.version)
 	return newSubgroup(appender, r.trackAlias, groupID, subgroupID, priority)
 }
 
