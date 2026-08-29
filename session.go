@@ -14,7 +14,7 @@ import (
 
 var (
 	errMissingPathParameter    = errors.New("missing path parameter")                       //nolint:unused
-	errUnexpectedPathParameter = errors.New("unexpected path parameter on QUIC connection") //nolint:unused
+	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection") //nolint:unused
 )
 
 type controlMessageReader interface {

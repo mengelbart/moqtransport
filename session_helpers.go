@@ -17,7 +17,7 @@ func validatePathParameter(setupParameters []wire.KeyValuePair, protocolIsQUIC b
 		}
 		return "", nil
 	}
-	if index > 0 && !protocolIsQUIC {
+	if !protocolIsQUIC {
 		return "", errUnexpectedPathParameter
 	}
 	return string(setupParameters[index].Bytes), nil
