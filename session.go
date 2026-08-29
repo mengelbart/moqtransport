@@ -155,6 +155,28 @@ func (s *Session) closeWithError(closeErr error) bool {
 	return true
 }
 
+// goTracked runs f in a goroutine tracked by the session WaitGroup. It reports
+// an error and does not start f if the session is already closed.
+func (s *Session) goTracked(f func()) error {
+	s.closeLock.Lock()
+	defer s.closeLock.Unlock()
+	if s.closeErr != nil {
+		return s.closeErr
+	}
+	s.wg.Go(f)
+	return nil
+}
+
+// handleReaderError closes the session unless it is already shutting down, in
+// which case the error is expected and ignored.
+func (s *Session) handleReaderError(err error) {
+	if s.ctx.Err() != nil {
+		s.logger.Debug("ignoring reader error during session shutdown", "error", err)
+		return
+	}
+	s.closeWithError(err)
+}
+
 func (s *Session) readUniStreams() {
 	s.logger.Debug("starting to read uni streams")
 	for {
@@ -259,6 +281,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	switch m := msg.(type) {
 	case *wire.Setup:
 		s.remoteControlStream = newRemoteControlStream(m, parser, s)
+		s.remoteControlStream.readMessages()
 	case *wire.SubgroupHeader:
 		request, ok := s.getOutgoingSubscribeRequestByTrackAlias(m.TrackAlias)
 		if ok {
@@ -320,8 +343,9 @@ func (s *Session) handleBidiStream(stream Stream) {
 		if s.handler == nil {
 			return
 		}
-		request := newIncomingSubscribeRequest(m, s.version, s.conn, wire.NewAppender(stream, uint64(s.version)), parser)
+		request := newIncomingSubscribeRequest(m, s, wire.NewAppender(stream, uint64(s.version)), parser)
 		s.handler.HandleSubscribe(request)
+		request.readMessages()
 	case *wire.Publish:
 	case *wire.Fetch:
 	case *wire.PublishNamespace:
@@ -394,6 +418,10 @@ func (s *Session) Subscribe(
 	s.outgoingSubscribeRequestsLock.Lock()
 	s.outgoingSubscribeRequests[requestID] = request
 	s.outgoingSubscribeRequestsLock.Unlock()
+
+	if err := s.goTracked(request.readMessages); err != nil {
+		return nil, err
+	}
 	return request, nil
 }
 

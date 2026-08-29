@@ -20,22 +20,27 @@ func newRemoteControlStream(msg *wire.Setup, r controlMessageReader, s *Session)
 		s:      s,
 	}
 	rcs.logger.Debug("remote control stream created", "setup", msg)
-	go rcs.readMessages() // TODO: Close stream
 	return rcs
 }
 
+// readMessages reads from the remote control stream until it fails. It must be
+// called from a goroutine tracked by the session WaitGroup.
 func (s *remoteControlStream) readMessages() {
 	for {
 		msg, err := s.r.Read()
 		if err != nil {
-			// TODO
-			panic(err)
+			s.s.handleReaderError(err)
+			return
 		}
 		switch msg := msg.(type) {
 		case *wire.GoAwayCtrl:
 			s.s.onGoAway(msg)
 		default:
-			panic(fmt.Sprintf("unexpected control message type: %T", msg))
+			s.s.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("unexpected control message type: %T", msg),
+			})
+			return
 		}
 	}
 }

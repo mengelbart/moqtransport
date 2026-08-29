@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -52,16 +53,19 @@ func newOutgoingSubscribeRequest(
 		return nil, err
 	}
 	r.logger.Debug("sent subscribe request", "requestID", requestID, "namespace", namespace, "trackName", trackName)
-	go r.readMessages() // TODO: Close request stream
 	return r, nil
 }
 
+// readMessages reads from the request stream until it fails. It must be called
+// from a goroutine tracked by the session WaitGroup.
 func (r *OutgoingSubscribeRequest) readMessages() {
 	for {
 		msg, err := r.streamReader.Read()
 		if err != nil {
-			// TODO
-			panic(err)
+			if !errors.Is(err, io.EOF) {
+				r.session.handleReaderError(err)
+			}
+			return
 		}
 		switch msg := msg.(type) {
 		case *wire.SubscribeOk:
@@ -69,7 +73,11 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 		case *wire.RequestOk:
 		case *wire.RequestError:
 		default:
-			panic(fmt.Sprintf("unexpected message type: %T", msg))
+			r.session.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("unexpected message type: %T", msg),
+			})
+			return
 		}
 	}
 }
@@ -82,24 +90,27 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 	}
 }
 
+// readStream reads objects from a subgroup stream until it ends. It must be
+// called from a goroutine tracked by the session WaitGroup.
 func (r *OutgoingSubscribeRequest) readStream(header *wire.SubgroupHeader, parser controlMessageReader) {
 	for {
 		m, err := parser.Read()
 		if err != nil {
-			// TODO
-			panic(err)
+			if !errors.Is(err, io.EOF) {
+				r.session.handleReaderError(err)
+			}
+			return
 		}
 		o, ok := m.(*wire.ObjectStream)
 		if !ok {
-			// TODO
-			panic(fmt.Sprintf("unexpected message type: %T", m))
+			r.session.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("unexpected message type: %T", m),
+			})
+			return
 		}
 		payload := make([]byte, len(o.ObjectPayload))
-		n := copy(payload, o.ObjectPayload)
-		if n != len(o.ObjectPayload) {
-			// TODO
-			panic(errors.New("failed to copy object payload: copied less bytes than expected"))
-		}
+		copy(payload, o.ObjectPayload)
 		r.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", header.SubgroupID, "payloadLength", len(payload))
 		r.push(&Object{
 			// TODO: Set GroupID and ObjectID from header and o
