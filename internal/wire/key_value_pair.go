@@ -2,6 +2,7 @@ package wire
 
 import (
 	"errors"
+	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
 )
@@ -52,12 +53,11 @@ func (p *KeyValuePair) parse(data []byte) (int, error) {
 			return parsed, err
 		}
 		data = data[n:]
-		p.Bytes = make([]byte, length) // TODO: Don't allocate memory here?
-		m := copy(p.Bytes, data[:length])
-		parsed += m
-		if uint64(m) != length {
-			return parsed, errLengthMismatch
+		if uint64(len(data)) < length {
+			return parsed, io.ErrUnexpectedEOF
 		}
+		p.Bytes = make([]byte, length) // TODO: Don't allocate memory here?
+		parsed += copy(p.Bytes, data)
 		return parsed, nil
 	}
 

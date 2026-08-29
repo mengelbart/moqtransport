@@ -120,6 +120,14 @@ func TestParseKeyValuePair(t *testing.T) {
 			err: nil,
 			n:   3,
 		},
+		{
+			data: []byte{0x01, 0x08, 'A'},
+			expect: KeyValuePair{
+				Type: PathParameterKey,
+			},
+			err: io.ErrUnexpectedEOF,
+			n:   2,
+		},
 	}
 	for i, tc := range cases {
 		t.Run(fmt.Sprintf("%v", i), func(t *testing.T) {
