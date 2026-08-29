@@ -140,8 +140,8 @@ func (m *ObjectDatagram) Parse(data []byte) (parsed int, err error) {
 		}
 		data = data[n:]
 
-		m.Properties = make([]KeyValuePair, numProperties)
-		for i := range m.Properties {
+		m.Properties = make([]KeyValuePair, 0)
+		for range numProperties {
 			var typ uint64
 			typ, n, err = varint.Parse(data)
 			parsed += n
@@ -150,14 +150,18 @@ func (m *ObjectDatagram) Parse(data []byte) (parsed int, err error) {
 			}
 			data = data[n:]
 
-			m.Properties[i].Type = typ
 			if typ%2 == 0 {
-				m.Properties[i].Varint, n, err = varint.Parse(data)
+				var val uint64
+				val, n, err = varint.Parse(data)
 				parsed += n
 				if err != nil {
 					return
 				}
 				data = data[n:]
+				m.Properties = append(m.Properties, KeyValuePair{
+					Type:   typ,
+					Varint: val,
+				})
 			} else {
 				var length uint64
 				length, n, err = varint.Parse(data)
@@ -170,10 +174,14 @@ func (m *ObjectDatagram) Parse(data []byte) (parsed int, err error) {
 				if len(data) < int(length) {
 					return parsed, io.ErrUnexpectedEOF
 				}
-				m.Properties[i].Bytes = make([]byte, length)
-				n = copy(m.Properties[i].Bytes, data)
+				b := make([]byte, length)
+				n = copy(b, data)
 				parsed += n
 				data = data[n:]
+				m.Properties = append(m.Properties, KeyValuePair{
+					Type:  typ,
+					Bytes: b,
+				})
 			}
 		}
 	}
