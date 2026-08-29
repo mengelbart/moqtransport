@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	errMissingPathParameter    = errors.New("missing path parameter")                       //nolint:unused
+	errMissingPathParameter    = errors.New("missing path parameter")                               //nolint:unused
 	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection") //nolint:unused
 )
 
@@ -70,23 +70,13 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	logger := defaultLogger.With("perspective", conn.Perspective())
 	logger.Debug("creating new session", "version", version, "path", path)
 
-	ctrlStream, err := conn.OpenUniStream()
-	if err != nil {
-		return nil, err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	ctrlStreamAppender := wire.NewAppender(ctrlStream, uint64(version))
-
 	s := &Session{
 		logger:                              logger,
-		ctx:                                 ctx,
-		cancelCtx:                           cancel,
 		wg:                                  sync.WaitGroup{},
 		conn:                                conn,
 		requestIDs:                          newRequestIDGenerator(uint64(conn.Perspective())),
 		remoteControlStream:                 nil,
-		localControlStream:                  newLocalControlStream(ctrlStreamAppender),
+		localControlStream:                  nil,
 		handler:                             nil,
 		version:                             version,
 		path:                                path,
@@ -100,13 +90,21 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 		}
 	}
 
+	ctrlStream, err := conn.OpenUniStream()
+	if err != nil {
+		return nil, err
+	}
+	s.localControlStream = newLocalControlStream(wire.NewAppender(ctrlStream, uint64(version)))
+
 	// TODO: Write setup in a different goroutine to avoid blocking the session
 	// constructor.
 	if err = s.localControlStream.write(&wire.Setup{}); err != nil {
-		// TODO: Close conn?
+		_ = conn.CloseWithError(uint64(ErrorCodeInternal), "session setup failed")
 		return nil, err
 	}
 	s.logger.Debug("setup message sent", "version", version, "path", path)
+
+	s.ctx, s.cancelCtx = context.WithCancel(context.Background())
 
 	s.wg.Go(func() { s.readUniStreams() })
 	s.wg.Go(func() { s.readBidiStreams() })
