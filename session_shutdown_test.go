@@ -17,6 +17,8 @@ import (
 var (
 	errTestConnectionClosed = errors.New("test connection closed")
 	errTestStreamStopped    = errors.New("test stream stopped")
+	errTestOptionFailed     = errors.New("test option failed")
+	errTestSetupWriteFailed = errors.New("test setup write failed")
 )
 
 // blockingReader serves data and then blocks until it is closed, like a stream
@@ -65,9 +67,16 @@ type testConnection struct {
 	uniStreams  chan ReceiveStream
 	bidiStreams chan Stream
 
-	mu      sync.Mutex
-	readers []*blockingReader
-	lastID  uint64
+	// sendStreamWriteErr, when set, is returned by every write on a stream
+	// opened by the session, e.g. to fail the SETUP message. It must be set
+	// before the session is created and is read-only afterwards.
+	sendStreamWriteErr error
+
+	mu             sync.Mutex
+	readers        []*blockingReader
+	lastID         uint64
+	openedUniCount int
+	closeCount     int
 }
 
 func newTestConnection(t *testing.T) *testConnection {
@@ -111,6 +120,7 @@ func newTestConnection(t *testing.T) *testConnection {
 	}).AnyTimes()
 	c.EXPECT().CloseWithError(gomock.Any(), gomock.Any()).DoAndReturn(func(uint64, string) error {
 		c.mu.Lock()
+		c.closeCount++
 		readers := c.readers
 		c.mu.Unlock()
 		for _, r := range readers {
@@ -119,6 +129,18 @@ func newTestConnection(t *testing.T) *testConnection {
 		return nil
 	}).AnyTimes()
 	return c
+}
+
+func (c *testConnection) openedUniStreams() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.openedUniCount
+}
+
+func (c *testConnection) closes() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeCount
 }
 
 func (c *testConnection) newReader(data []byte) (*blockingReader, uint64) {
@@ -134,10 +156,16 @@ func (c *testConnection) newSendStream() *MockSendStream {
 	c.mu.Lock()
 	c.lastID += 4
 	id := c.lastID
+	c.openedUniCount++
 	c.mu.Unlock()
 
 	stream := NewMockSendStream(c.ctrl)
-	stream.EXPECT().Write(gomock.Any()).DoAndReturn(func(p []byte) (int, error) { return len(p), nil }).AnyTimes()
+	stream.EXPECT().Write(gomock.Any()).DoAndReturn(func(p []byte) (int, error) {
+		if c.sendStreamWriteErr != nil {
+			return 0, c.sendStreamWriteErr
+		}
+		return len(p), nil
+	}).AnyTimes()
 	stream.EXPECT().Close().Return(nil).AnyTimes()
 	stream.EXPECT().Reset(gomock.Any()).AnyTimes()
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
@@ -251,5 +279,32 @@ func TestSubscribeAfterCloseFails(t *testing.T) {
 
 	_, err = session.Subscribe(context.Background(), [][]byte{[]byte("namespace")}, "track")
 	assert.Error(t, err)
+	goleak.VerifyNone(t)
+}
+
+// A failing option must be reported before any stream is opened, so there is
+// nothing to clean up and the caller's connection is left alone.
+func TestNewSessionOptionErrorOpensNoStream(t *testing.T) {
+	conn := newTestConnection(t)
+
+	session, err := NewSession(conn, "", func(*Session) error { return errTestOptionFailed })
+	assert.ErrorIs(t, err, errTestOptionFailed)
+	assert.Nil(t, session)
+	assert.Equal(t, 0, conn.openedUniStreams())
+	assert.Equal(t, 0, conn.closes())
+	goleak.VerifyNone(t)
+}
+
+// A failing SETUP write must close the connection, which also tears down the
+// control stream that was just opened.
+func TestNewSessionSetupWriteErrorClosesConnection(t *testing.T) {
+	conn := newTestConnection(t)
+	conn.sendStreamWriteErr = errTestSetupWriteFailed
+
+	session, err := NewSession(conn, "")
+	assert.ErrorIs(t, err, errTestSetupWriteFailed)
+	assert.Nil(t, session)
+	assert.Equal(t, 1, conn.openedUniStreams())
+	assert.Equal(t, 1, conn.closes())
 	goleak.VerifyNone(t)
 }
