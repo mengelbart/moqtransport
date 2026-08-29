@@ -3,7 +3,7 @@ package moqtransport
 type ObjectForwardingPreference int
 
 const (
-	ObjectForwardingPreferenceSubgroup ObjectForwardingPreference = 0x00
+	ObjectForwardingPreferenceSubgroup ObjectForwardingPreference = iota
 	ObjectForwardingPreferenceDatagram
 )
 
