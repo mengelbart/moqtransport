@@ -49,6 +49,7 @@ type Session struct {
 	conn       Connection
 	requestIDs *requestIDGenerator
 
+	controlStreamLock   sync.Mutex
 	remoteControlStream *remoteControlStream
 	localControlStream  *localControlStream
 
@@ -277,8 +278,12 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 	switch m := msg.(type) {
 	case *wire.Setup:
-		s.remoteControlStream = newRemoteControlStream(m, parser, s)
-		s.remoteControlStream.readMessages()
+		rcs := newRemoteControlStream(m, parser, s)
+		if !s.setRemoteControlStream(rcs) {
+			s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: "duplicate control stream", Remote: false})
+			return
+		}
+		rcs.readMessages()
 	case *wire.SubgroupHeader:
 		s.readDataStream(m, parser)
 	default:
@@ -286,6 +291,16 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
 		return
 	}
+}
+
+func (s *Session) setRemoteControlStream(rcs *remoteControlStream) bool {
+	s.controlStreamLock.Lock()
+	defer s.controlStreamLock.Unlock()
+	if s.remoteControlStream != nil {
+		return false
+	}
+	s.remoteControlStream = rcs
+	return true
 }
 
 func peekFirstVarint(br *bufio.Reader) ([]byte, error) {
