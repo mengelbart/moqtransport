@@ -69,7 +69,13 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 		}
 		switch msg := msg.(type) {
 		case *wire.SubscribeOk:
-			r.session.setTrackAliasForRequest(r.requestID, msg.TrackAlias)
+			if err := r.session.bindTrackAlias(msg.TrackAlias, r); err != nil {
+				r.session.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: err.Error(),
+				})
+				return
+			}
 		case *wire.RequestOk:
 		case *wire.RequestError:
 		default:
@@ -90,37 +96,9 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 	}
 }
 
-// readStream reads objects from a subgroup stream until it ends. It must be
-// called from a goroutine tracked by the session WaitGroup.
-func (r *OutgoingSubscribeRequest) readStream(header *wire.SubgroupHeader, parser controlMessageReader) {
-	for {
-		m, err := parser.Read()
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				r.session.handleReaderError(err)
-			}
-			return
-		}
-		o, ok := m.(*wire.ObjectStream)
-		if !ok {
-			r.session.closeWithError(&SessionError{
-				Code:   uint64(ErrorCodeProtocolViolation),
-				Reason: fmt.Sprintf("unexpected message type: %T", m),
-			})
-			return
-		}
-		payload := make([]byte, len(o.ObjectPayload))
-		copy(payload, o.ObjectPayload)
-		r.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", header.SubgroupID, "payloadLength", len(payload))
-		r.push(&Object{
-			// TODO: Set GroupID and ObjectID from header and o
-			Payload: payload,
-		})
-	}
-}
-
 func (r *OutgoingSubscribeRequest) Close() error {
-	// TODO: Implement close logic
+	// TODO: Send a message to the peer to stop the subscription.
+	r.session.removeReceiver(r)
 	return nil
 }
 

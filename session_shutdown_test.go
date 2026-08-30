@@ -21,10 +21,12 @@ var (
 	errTestSetupWriteFailed = errors.New("test setup write failed")
 )
 
-// blockingReader serves data and then blocks until it is closed, like a stream
-// that has delivered a message and is waiting for the next one.
+// blockingReader serves data and then blocks until more is fed or it is closed,
+// like a stream that has delivered a message and is waiting for the next one.
 type blockingReader struct {
-	data *bytes.Reader
+	mu     sync.Mutex
+	data   []byte
+	notify chan struct{}
 
 	drainedOnce sync.Once
 	drained     chan struct{}
@@ -36,19 +38,42 @@ type blockingReader struct {
 
 func newBlockingReader(data []byte) *blockingReader {
 	return &blockingReader{
-		data:    bytes.NewReader(data),
+		data:    append([]byte(nil), data...),
+		notify:  make(chan struct{}, 1),
 		drained: make(chan struct{}),
 		closed:  make(chan struct{}),
 	}
 }
 
 func (r *blockingReader) Read(p []byte) (int, error) {
-	if r.data.Len() > 0 {
-		return r.data.Read(p)
+	for {
+		r.mu.Lock()
+		if len(r.data) > 0 {
+			n := copy(p, r.data)
+			r.data = r.data[n:]
+			r.mu.Unlock()
+			return n, nil
+		}
+		r.mu.Unlock()
+
+		r.drainedOnce.Do(func() { close(r.drained) })
+		select {
+		case <-r.closed:
+			return 0, r.closeErr
+		case <-r.notify:
+		}
 	}
-	r.drainedOnce.Do(func() { close(r.drained) })
-	<-r.closed
-	return 0, r.closeErr
+}
+
+// feed appends data to the reader and wakes a blocked Read.
+func (r *blockingReader) feed(data []byte) {
+	r.mu.Lock()
+	r.data = append(r.data, data...)
+	r.mu.Unlock()
+	select {
+	case r.notify <- struct{}{}:
+	default:
+	}
 }
 
 func (r *blockingReader) close(err error) {
@@ -66,6 +91,11 @@ type testConnection struct {
 	ctrl        *gomock.Controller
 	uniStreams  chan ReceiveStream
 	bidiStreams chan Stream
+	datagrams   chan []byte
+
+	// openedStreams carries the readers of the bidirectional streams the
+	// session opened, so a test can feed responses to its own requests.
+	openedStreams chan *blockingReader
 
 	// sendStreamWriteErr, when set, is returned by every write on a stream
 	// opened by the session, e.g. to fail the SETUP message. It must be set
@@ -87,6 +117,8 @@ func newTestConnection(t *testing.T) *testConnection {
 		ctrl:           ctrl,
 		uniStreams:     make(chan ReceiveStream, 1),
 		bidiStreams:    make(chan Stream, 1),
+		datagrams:      make(chan []byte, 1),
+		openedStreams:  make(chan *blockingReader, 8),
 	}
 	c.EXPECT().ApplicationProtocol().Return(MOQT18).AnyTimes()
 	c.EXPECT().Perspective().Return(PerspectiveServer).AnyTimes()
@@ -95,7 +127,8 @@ func newTestConnection(t *testing.T) *testConnection {
 		return c.newSendStream(), nil
 	}).AnyTimes()
 	c.EXPECT().OpenStreamSync(gomock.Any()).DoAndReturn(func(context.Context) (Stream, error) {
-		stream, _ := c.newStream(nil)
+		stream, reader := c.newStream(nil)
+		c.openedStreams <- reader
 		return stream, nil
 	}).AnyTimes()
 	c.EXPECT().AcceptUniStream(gomock.Any()).DoAndReturn(func(ctx context.Context) (ReceiveStream, error) {
@@ -115,8 +148,12 @@ func newTestConnection(t *testing.T) *testConnection {
 		}
 	}).AnyTimes()
 	c.EXPECT().ReceiveDatagram(gomock.Any()).DoAndReturn(func(ctx context.Context) ([]byte, error) {
-		<-ctx.Done()
-		return nil, context.Cause(ctx)
+		select {
+		case <-ctx.Done():
+			return nil, context.Cause(ctx)
+		case dgram := <-c.datagrams:
+			return dgram, nil
+		}
 	}).AnyTimes()
 	c.EXPECT().CloseWithError(gomock.Any(), gomock.Any()).DoAndReturn(func(uint64, string) error {
 		c.mu.Lock()
@@ -207,6 +244,11 @@ func (c *testConnection) acceptStream(data []byte) *blockingReader {
 	stream, r := c.newStream(data)
 	c.bidiStreams <- stream
 	return r
+}
+
+// sendDatagram delivers a datagram as if the peer had sent it.
+func (c *testConnection) sendDatagram(data []byte) {
+	c.datagrams <- data
 }
 
 func encodeControlMessage(t *testing.T, msg wire.ControlMessage) []byte {
