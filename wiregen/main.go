@@ -36,6 +36,12 @@ var msgs = []any{
 
 	wire.FetchHeader{},
 	wire.Padding{},
+
+	wire.SubgroupHeader{},
+	wire.ObjectDatagram{},
+
+	wire.KeyValuePair{},
+	wire.Location{},
 }
 
 var (

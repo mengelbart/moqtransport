@@ -9,15 +9,13 @@ func (m *FetchHeader) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *FetchHeader) parse_v18(data []byte) error {
+func (m *FetchHeader) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	m.RequestID, n, err = varint.Parse(data)
+	m.RequestID, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	return nil
 }

@@ -2,11 +2,7 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *SubscribeTracks) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RequestID))
@@ -17,90 +13,54 @@ func (m *SubscribeTracks) append_v18(buf []byte) []byte {
 	}
 	buf = varint.Append(buf, uint64(len(m.Parameters)))
 	for _, v := range m.Parameters {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	return buf
 }
 
-func (m *SubscribeTracks) parse_v18(data []byte) error {
+func (m *SubscribeTracks) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	m.RequestID, n, err = varint.Parse(data)
+	m.RequestID, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	var numTrackNamespacePrefix uint64
-	numTrackNamespacePrefix, n, err = varint.Parse(data)
+	numTrackNamespacePrefix, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.TrackNamespacePrefix = make([][]byte, 0)
 	for range numTrackNamespacePrefix {
 		var length uint64
-		length, n, err = varint.Parse(data)
+		length, err = varint.Read(r)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 
-		if len(data) < int(length) {
-			return io.ErrUnexpectedEOF
+		var value []byte
+		value, err = readBytes(r, length)
+		if err != nil {
+			return err
 		}
-		m.TrackNamespacePrefix = append(m.TrackNamespacePrefix, data[:length])
-		data = data[length:]
+		m.TrackNamespacePrefix = append(m.TrackNamespacePrefix, value)
 	}
 
 	var numParameters uint64
-	numParameters, n, err = varint.Parse(data)
+	numParameters, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.Parameters = make([]KeyValuePair, 0)
 	for range numParameters {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Parameters = append(m.Parameters, value)
 	}
 
 	return nil

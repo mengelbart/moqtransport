@@ -2,84 +2,130 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *Fetch) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RequestID))
 	buf = varint.Append(buf, uint64(m.FetchType))
+	if m.isStandalone() {
+		buf = varint.Append(buf, uint64(len(m.TrackNamespace)))
+		for _, v := range m.TrackNamespace {
+			buf = varint.Append(buf, uint64(len(v)))
+			buf = append(buf, v...)
+		}
+	}
+	if m.isStandalone() {
+		buf = varint.Append(buf, uint64(len(m.TrackName)))
+		buf = append(buf, m.TrackName...)
+	}
+	if m.isStandalone() {
+		buf = m.StartLocation.append_v18(buf)
+	}
+	if m.isStandalone() {
+		buf = m.EndLocation.append_v18(buf)
+	}
+	if m.isJoining() {
+		buf = varint.Append(buf, uint64(m.JoiningRequestID))
+	}
+	if m.isJoining() {
+		buf = varint.Append(buf, uint64(m.JoiningStart))
+	}
 	buf = varint.Append(buf, uint64(len(m.Parameters)))
 	for _, v := range m.Parameters {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	return buf
 }
 
-func (m *Fetch) parse_v18(data []byte) error {
+func (m *Fetch) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	m.RequestID, n, err = varint.Parse(data)
+	m.RequestID, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	m.FetchType, n, err = varint.Parse(data)
+	m.FetchType, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	var numParameters uint64
-	numParameters, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.Parameters = make([]KeyValuePair, 0)
-	for range numParameters {
-		typ, n, err := varint.Parse(data)
+	if m.isStandalone() {
+		var numTrackNamespace uint64
+		numTrackNamespace, err = varint.Read(r)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
+		m.TrackNamespace = make([][]byte, 0)
+		for range numTrackNamespace {
+			var length uint64
+			length, err = varint.Read(r)
 			if err != nil {
 				return err
 			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
+
+			var value []byte
+			value, err = readBytes(r, length)
 			if err != nil {
 				return err
 			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
+			m.TrackNamespace = append(m.TrackNamespace, value)
 		}
+	}
+
+	if m.isStandalone() {
+		var TrackNameLength uint64
+		TrackNameLength, err = varint.Read(r)
+		if err != nil {
+			return err
+		}
+
+		m.TrackName, err = readBytes(r, TrackNameLength)
+		if err != nil {
+			return err
+		}
+	}
+
+	if m.isStandalone() {
+		if err = m.StartLocation.parse_v18(r); err != nil {
+			return err
+		}
+	}
+
+	if m.isStandalone() {
+		if err = m.EndLocation.parse_v18(r); err != nil {
+			return err
+		}
+	}
+
+	if m.isJoining() {
+		m.JoiningRequestID, err = varint.Read(r)
+		if err != nil {
+			return err
+		}
+	}
+
+	if m.isJoining() {
+		m.JoiningStart, err = varint.Read(r)
+		if err != nil {
+			return err
+		}
+	}
+
+	var numParameters uint64
+	numParameters, err = varint.Read(r)
+	if err != nil {
+		return err
+	}
+
+	m.Parameters = make([]KeyValuePair, 0)
+	for range numParameters {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
+			return err
+		}
+		m.Parameters = append(m.Parameters, value)
 	}
 
 	return nil

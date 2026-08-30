@@ -1,10 +1,6 @@
 package wire
 
-import (
-	"fmt"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "fmt"
 
 func setBit(x uint64, bit uint, v bool) uint64 {
 	if v {
@@ -49,10 +45,10 @@ const (
 
 type SubgroupHeader struct {
 	typ               uint64
-	TrackAlias        uint64
-	GroupID           uint64
-	SubgroupID        uint64
-	PublisherPriority uint8
+	TrackAlias        uint64 `proto:"varint"`
+	GroupID           uint64 `proto:"varint"`
+	SubgroupID        uint64 `proto:"varint,if=explicitSubgroupID"`
+	PublisherPriority uint8  `proto:"byte,if=!DefaultPriority"`
 }
 
 func NewSubgroupHeader(trackAlias, groupID, subgroupID uint64, publisherPriority uint8) *SubgroupHeader {
@@ -87,6 +83,10 @@ func (m *SubgroupHeader) Properties() bool {
 
 func (m *SubgroupHeader) SetProperties(v bool) {
 	m.typ = setBit(m.typ, subgroupBitProperties, v)
+}
+
+func (m *SubgroupHeader) explicitSubgroupID() bool {
+	return m.SubgroupIDMode() == SubgroupIDModeExplicit
 }
 
 func (m *SubgroupHeader) SubgroupIDMode() uint8 {
@@ -124,50 +124,4 @@ func (m *SubgroupHeader) FirstBit() bool {
 
 func (m *SubgroupHeader) SetFirstBit(v bool) {
 	m.typ = setBit(m.typ, subgroupBitFirstObject, v)
-}
-
-func (m *SubgroupHeader) append_v18(buf []byte) []byte {
-	buf = varint.Append(buf, m.TrackAlias)
-	buf = varint.Append(buf, m.GroupID)
-	if m.SubgroupIDMode() == SubgroupIDModeExplicit {
-		buf = varint.Append(buf, m.SubgroupID)
-	}
-	if !m.DefaultPriority() {
-		buf = append(buf, m.PublisherPriority)
-	}
-	return buf
-}
-
-func (m *SubgroupHeader) parse_v18(data []byte) error {
-	panic("not implemented")
-}
-
-func (m *SubgroupHeader) parse(r streamReader) error {
-	var err error
-
-	m.TrackAlias, err = varint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	m.GroupID, err = varint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	if m.SubgroupIDMode() == SubgroupIDModeExplicit {
-		m.SubgroupID, err = varint.Read(r)
-		if err != nil {
-			return err
-		}
-	}
-
-	if !m.DefaultPriority() {
-		m.PublisherPriority, err = r.ReadByte()
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

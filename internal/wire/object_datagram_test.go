@@ -14,9 +14,8 @@ func TestObjectDatagramParseLargePropertyCount(t *testing.T) {
 	data = varint.Append(data, 1<<40)
 
 	m := ObjectDatagram{}
-	parsed, err := m.Parse(data)
-	assert.Equal(t, io.EOF, err)
-	assert.Equal(t, len(data), parsed)
+	err := m.Parse(data)
+	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.Empty(t, m.Properties)
 }
 
@@ -28,8 +27,8 @@ func TestObjectDatagramParseTruncatedProperty(t *testing.T) {
 	data = append(data, 'A')
 
 	m := ObjectDatagram{}
-	_, err := m.Parse(data)
-	assert.Equal(t, io.ErrUnexpectedEOF, err)
+	err := m.Parse(data)
+	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.Empty(t, m.Properties)
 }
 
@@ -44,9 +43,8 @@ func TestObjectDatagramParseProperties(t *testing.T) {
 	data = append(data, "payload"...)
 
 	m := ObjectDatagram{}
-	parsed, err := m.Parse(data)
+	err := m.Parse(data)
 	assert.NoError(t, err)
-	assert.Equal(t, len(data), parsed)
 	assert.Equal(t, uint64(4), m.TrackAlias)
 	assert.Equal(t, uint64(5), m.GroupID)
 	assert.Equal(t, uint64(6), m.ObjectID)

@@ -233,7 +233,7 @@ func (s *Session) readDatagrams() {
 			return
 		}
 		msg := new(wire.ObjectDatagram)
-		if _, err = msg.Parse(dgram); err != nil {
+		if err = msg.Parse(dgram); err != nil {
 			s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("failed to parse datagram: %v", err), Remote: false})
 			return
 		}

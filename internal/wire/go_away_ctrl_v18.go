@@ -2,11 +2,7 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *GoAwayCtrl) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(len(m.NewSessionURI)))
@@ -16,34 +12,31 @@ func (m *GoAwayCtrl) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *GoAwayCtrl) parse_v18(data []byte) error {
+func (m *GoAwayCtrl) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
 	var NewSessionURILength uint64
-	NewSessionURILength, n, err = varint.Parse(data)
+	NewSessionURILength, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	if len(data) < int(NewSessionURILength) {
-		return io.ErrUnexpectedEOF
-	}
-	m.NewSessionURI = string(data[:NewSessionURILength])
-	data = data[NewSessionURILength:]
-
-	m.Timeout, n, err = varint.Parse(data)
+	var NewSessionURIBytes []byte
+	NewSessionURIBytes, err = readBytes(r, NewSessionURILength)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
+	m.NewSessionURI = string(NewSessionURIBytes)
 
-	m.RequestID, n, err = varint.Parse(data)
+	m.Timeout, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
+
+	m.RequestID, err = varint.Read(r)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

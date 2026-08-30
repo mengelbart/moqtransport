@@ -6,6 +6,6 @@ func (m *Padding) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *Padding) parse_v18(data []byte) error {
+func (m *Padding) parse_v18(r messageReader) error {
 	return nil
 }

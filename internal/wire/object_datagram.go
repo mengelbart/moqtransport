@@ -1,20 +1,20 @@
 package wire
 
 import (
-	"io"
+	"bytes"
 
 	"github.com/mengelbart/moqtransport/varint"
 )
 
 type ObjectDatagram struct {
 	typ               uint64
-	TrackAlias        uint64
-	GroupID           uint64
-	ObjectID          uint64
-	PublisherPriority uint8
-	Properties        []KeyValuePair
-	ObjectStatus      uint64
-	ObjectPayload     []byte
+	TrackAlias        uint64         `proto:"varint"`
+	GroupID           uint64         `proto:"varint"`
+	ObjectID          uint64         `proto:"varint,if=!ZeroObjectID"`
+	PublisherPriority uint8          `proto:"byte,if=!DefaultPriority"`
+	Properties        []KeyValuePair `proto:"message_list,if=HasProperties"`
+	ObjectStatus      uint64         `proto:"varint,if=Status"`
+	ObjectPayload     []byte         `proto:"remaining_bytes,if=!Status"`
 }
 
 func (m *ObjectDatagram) Type() ControlMessageType {
@@ -62,140 +62,20 @@ func (m *ObjectDatagram) SetStatus(v bool) {
 }
 
 func (m *ObjectDatagram) AppendDatagram(buf []byte) []byte {
-	buf = varint.Append(buf, m.TrackAlias)
-	buf = varint.Append(buf, m.GroupID)
-	if !m.ZeroObjectID() {
-		buf = varint.Append(buf, m.ObjectID)
-	}
-	if !m.DefaultPriority() {
-		buf = append(buf, m.PublisherPriority)
-	}
-	if m.HasProperties() {
-		buf = varint.Append(buf, uint64(len(m.Properties)))
-		for _, v := range m.Properties {
-			buf = varint.Append(buf, uint64(v.Type))
-			if v.Type%2 == 0 {
-				buf = varint.Append(buf, uint64(v.Varint))
-			} else {
-				buf = varint.Append(buf, uint64(len(v.Bytes)))
-				buf = append(buf, v.Bytes...)
-			}
-		}
-	}
-	if m.Status() {
-		buf = varint.Append(buf, m.ObjectStatus)
-	} else {
-		buf = append(buf, m.ObjectPayload...)
-	}
-	return buf
+	buf = varint.Append(buf, m.typ)
+	return m.append_v18(buf)
 }
 
-func (m *ObjectDatagram) Parse(data []byte) (parsed int, err error) {
-	var n int
-	m.typ, n, err = varint.Parse(data)
-	parsed += n
+func (m *ObjectDatagram) Parse(data []byte) error {
+	br := bytes.NewReader(data)
+
+	typ, err := varint.Read(br)
 	if err != nil {
-		return parsed, err
+		return err
 	}
-	data = data[n:]
+	m.typ = typ
 
-	m.TrackAlias, n, err = varint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	m.GroupID, n, err = varint.Parse(data)
-	parsed += n
-	if err != nil {
-		return
-	}
-	data = data[n:]
-
-	if !m.ZeroObjectID() {
-		m.ObjectID, n, err = varint.Parse(data)
-		parsed += n
-		if err != nil {
-			return
-		}
-		data = data[n:]
-	}
-
-	if !m.DefaultPriority() {
-		if len(data) == 0 {
-			return parsed, io.ErrUnexpectedEOF
-		}
-		m.PublisherPriority = data[0]
-		parsed += 1
-		data = data[1:]
-	}
-
-	if m.HasProperties() {
-		var numProperties uint64
-		numProperties, n, err = varint.Parse(data)
-		parsed += n
-		if err != nil {
-			return
-		}
-		data = data[n:]
-
-		m.Properties = make([]KeyValuePair, 0)
-		for range numProperties {
-			var typ uint64
-			typ, n, err = varint.Parse(data)
-			parsed += n
-			if err != nil {
-				return
-			}
-			data = data[n:]
-
-			if typ%2 == 0 {
-				var val uint64
-				val, n, err = varint.Parse(data)
-				parsed += n
-				if err != nil {
-					return
-				}
-				data = data[n:]
-				m.Properties = append(m.Properties, KeyValuePair{
-					Type:   typ,
-					Varint: val,
-				})
-			} else {
-				var length uint64
-				length, n, err = varint.Parse(data)
-				parsed += n
-				if err != nil {
-					return
-				}
-				data = data[n:]
-
-				if len(data) < int(length) {
-					return parsed, io.ErrUnexpectedEOF
-				}
-				b := make([]byte, length)
-				n = copy(b, data)
-				parsed += n
-				data = data[n:]
-				m.Properties = append(m.Properties, KeyValuePair{
-					Type:  typ,
-					Bytes: b,
-				})
-			}
-		}
-	}
-
-	if m.Status() {
-		m.ObjectStatus, n, err = varint.Parse(data)
-		parsed += n
-		if err != nil {
-			return
-		}
-	} else {
-		m.ObjectPayload = make([]byte, len(data))
-		n = copy(m.ObjectPayload, data)
-		parsed += n
-	}
-	return
+	r := &boundedReader{reader: br}
+	r.reset(int64(br.Len()))
+	return m.parse_v18(r)
 }

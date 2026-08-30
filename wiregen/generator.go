@@ -20,6 +20,74 @@ func (e unknownProtoTypeErr) Error() string {
 	return fmt.Sprintf("unknown proto type: %s", string(e))
 }
 
+type unknownProtoModifierErr string
+
+func (e unknownProtoModifierErr) Error() string {
+	return fmt.Sprintf("unknown proto modifier: %s", string(e))
+}
+
+// field is one serialized struct field: a wire kind, and optionally a
+// predicate method on the message deciding whether the field is present.
+type field struct {
+	name      string
+	elem      string
+	kind      string
+	condition string
+	negate    bool
+}
+
+// parseField reads the proto tag, a wire kind followed by comma separated
+// modifiers. The only modifier is if=Predicate, or if=!Predicate, naming a
+// method on the message.
+func parseField(f reflect.StructField) (field, error) {
+	parts := strings.Split(f.Tag.Get("proto"), ",")
+	out := field{
+		name: f.Name,
+		kind: parts[0],
+	}
+	if f.Type.Kind() == reflect.Slice {
+		out.elem = f.Type.Elem().Name()
+	}
+	for _, mod := range parts[1:] {
+		condition, ok := strings.CutPrefix(mod, "if=")
+		if !ok {
+			return out, unknownProtoModifierErr(mod)
+		}
+		out.condition, out.negate = strings.CutPrefix(condition, "!")
+	}
+	return out, nil
+}
+
+func (f field) data(suffix string) map[string]string {
+	return map[string]string{
+		"Field":  f.name,
+		"Elem":   f.elem,
+		"Suffix": suffix,
+	}
+}
+
+// emit writes the fragment for one field, wrapped in the field's condition.
+func (g *generator) emit(templates map[string]*template.Template, f field) error {
+	tmpl, ok := templates[f.kind]
+	if !ok {
+		return unknownProtoTypeErr(f.kind)
+	}
+	if f.condition != "" {
+		negate := ""
+		if f.negate {
+			negate = "!"
+		}
+		g.printf("if %sm.%s() {\n", negate, f.condition)
+	}
+	if err := tmpl.Execute(g, f.data(g.methodSuffix)); err != nil {
+		return err
+	}
+	if f.condition != "" {
+		g.printf("}\n")
+	}
+	return nil
+}
+
 type generator struct {
 	pkg          string
 	methodSuffix string
@@ -49,27 +117,21 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"moq_kvp_list": template.Must(template.New("moq_kvp_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
-	for _, v:= range m.{{ .Field }} {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type % 2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+	"message_list": template.Must(template.New("message_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
+	for _, v := range m.{{ .Field }} {
+		buf = v.append{{ .Suffix }}(buf)
 	}
 `)),
 
-	"moq_kvp_list_no_length": template.Must(template.New("moq_kvp_list_no_length_append").Parse(`	for _, v:= range m.{{ .Field }} {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type % 2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+	"message_list_no_length": template.Must(template.New("message_list_no_length_append").Parse(`	for _, v := range m.{{ .Field }} {
+		buf = v.append{{ .Suffix }}(buf)
 	}
+`)),
+
+	"byte": template.Must(template.New("byte_append").Parse(`	buf = append(buf, m.{{ .Field }})
+`)),
+
+	"remaining_bytes": template.Must(template.New("remaining_bytes_append").Parse(`	buf = append(buf, m.{{ .Field }}...)
 `)),
 
 	"bool": template.Must(template.New("bool_append").Parse(`	if m.{{ .Field }} {
@@ -79,171 +141,7 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"moq_location": template.Must(template.New("moq_location_append").Parse(`	buf = m.{{ .Field }}.append(buf)
-`)),
-}
-
-var parserTemplates = map[string]*template.Template{
-	"quicvarint": template.Must(template.New("quicvarint_parse").Parse(`	m.{{ .Field }}, n, err = quicvarint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-`)),
-
-	"varint": template.Must(template.New("varint_parse").Parse(`	m.{{ .Field }}, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-`)),
-
-	"tlv_bytes": template.Must(template.New("tlv_bytes_parse").Parse(`	var {{ .Field }}Length uint64
-	{{ .Field }}Length, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	if len(data) < int({{ .Field }}Length) {
-		return io.ErrUnexpectedEOF
-	}
-	m.{{ .Field }} = data[:{{ .Field }}Length]
-	data = data[{{ .Field }}Length:]
-`)),
-
-	"tlv_string": template.Must(template.New("tlv_string_parse").Parse(`	var {{ .Field }}Length uint64
-	{{ .Field }}Length, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	if len(data) < int({{ .Field }}Length) {
-		return io.ErrUnexpectedEOF
-	}
-	m.{{ .Field }} = string(data[:{{ .Field }}Length])
-	data = data[{{ .Field }}Length:]
-`)),
-
-	"ntlv_bytes": template.Must(template.New("ntlv_bytes_parse").Parse(`	var num{{ .Field }} uint64
-	num{{ .Field }}, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.{{ .Field }} = make([][]byte, 0)
-	for range num{{ .Field }} {
-		var length uint64
-		length, n, err = varint.Parse(data)
-		if err != nil {
-			return err
-		}
-		data = data[n:]
-
-		if len(data) < int(length) {
-			return io.ErrUnexpectedEOF
-		}
-		m.{{ .Field }} = append(m.{{ .Field }}, data[:length])
-		data = data[length:]
-	}
-`)),
-
-	"bool": template.Must(template.New("bool_parse").Parse(`	if len(data) < 1 {
-		return io.ErrUnexpectedEOF
-	}
-	if data[0] > 1 {
-		return errors.New("invalid bool flag value")
-	}
-	m.{{ .Field }} = data[0] > 0
-	data = data[1:]
-`)),
-
-	"moq_kvp_list": template.Must(template.New("moq_kvp_list_parse").Parse(`	var num{{ .Field }} uint64
-	num{{ .Field }}, n, err = varint.Parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
-
-	m.{{ .Field }} = make([]KeyValuePair, 0)
-	for range num{{ .Field }} {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
-			return err
-		}
-		data = data[n:]
-
-		if typ % 2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
-				Type: typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
-				Type: typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
-	}
-`)),
-
-	"moq_kvp_list_no_length": template.Must(template.New("moq_kvp_list_no_length_parse").Parse(`	m.{{ .Field }} = make([]KeyValuePair, 0)
-	for len(data) > 0 {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
-			return err
-		}
-		data = data[n:]
-
-		if typ % 2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
-				Type: typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.{{ .Field }} = append(m.{{ .Field }}, KeyValuePair{
-				Type: typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
-	}
-`)),
-
-	"moq_location": template.Must(template.New("moq_location_parse").Parse(`	n, err = m.{{ .Field }}.parse(data)
-	if err != nil {
-		return err
-	}
-	data = data[n:]
+	"message": template.Must(template.New("message_append").Parse(`	buf = m.{{ .Field }}.append{{ .Suffix }}(buf)
 `)),
 }
 
@@ -289,16 +187,12 @@ import (
 
 func (g *generator) generateAppend(typ reflect.Type) error {
 	g.printf("func (m *%s) append%s(buf []byte) []byte {\n", typ.Name(), g.methodSuffix)
-	for _, f := range protoFields(typ) {
-		proto := f.Tag.Get("proto")
-		data := map[string]string{
-			"Field": f.Name,
-		}
-		tmpl, ok := appenderTemplates[proto]
-		if !ok {
-			return unknownProtoTypeErr(proto)
-		}
-		if err := tmpl.Execute(g, data); err != nil {
+	fields, err := protoFields(typ)
+	if err != nil {
+		return err
+	}
+	for _, f := range fields {
+		if err := g.emit(appenderTemplates, f); err != nil {
 			return err
 		}
 	}
@@ -308,51 +202,22 @@ func (g *generator) generateAppend(typ reflect.Type) error {
 	return nil
 }
 
-func (g *generator) generateParse(typ reflect.Type) error {
-	fields := protoFields(typ)
-
-	g.printf("func (m *%s) parse%s(data []byte) error {\n", typ.Name(), g.methodSuffix)
-
-	// Messages without any proto fields parse nothing, so declaring the
-	// scratch variables would leave them unused.
-	if len(fields) > 0 {
-		g.printf(`	var err error
-	var n int
-
-`)
-	}
-
-	for _, f := range fields {
-		proto := f.Tag.Get("proto")
-		data := map[string]string{
-			"Field": f.Name,
-		}
-		tmpl, ok := parserTemplates[proto]
-		if !ok {
-			return unknownProtoTypeErr(proto)
-		}
-		if err := tmpl.Execute(g, data); err != nil {
-			return err
-		}
-		g.printf("\n")
-	}
-	g.printf(`	return nil
-}
-`)
-	return nil
-}
-
 // protoFields returns the fields of typ that carry a proto tag, i.e. the fields
 // that are serialized on the wire.
-func protoFields(typ reflect.Type) []reflect.StructField {
-	var fields []reflect.StructField
+func protoFields(typ reflect.Type) ([]field, error) {
+	var fields []field
 	for i := range typ.NumField() {
 		f := typ.Field(i)
-		if _, ok := f.Tag.Lookup("proto"); ok {
-			fields = append(fields, f)
+		if _, ok := f.Tag.Lookup("proto"); !ok {
+			continue
 		}
+		parsed, err := parseField(f)
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, parsed)
 	}
-	return fields
+	return fields, nil
 }
 
 func (g *generator) printf(format string, args ...any) {
