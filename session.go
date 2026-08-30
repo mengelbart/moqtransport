@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"sync"
 
@@ -56,10 +57,9 @@ type Session struct {
 	version uint64
 	path    string
 
-	outgoingSubscribeRequestsLock           sync.RWMutex
-	outgoingSubscribeRequests               map[uint64]*OutgoingSubscribeRequest
-	outgoingSubscribeRequestsTrackAliasLock sync.RWMutex
-	outgoingSubscribeRequestsTrackAlias     map[uint64]uint64
+	tracksLock    sync.Mutex
+	tracks        map[uint64]*trackEntry
+	pendingTracks int
 }
 
 func NewSession(conn Connection, path string, options ...Option) (*Session, error) {
@@ -71,17 +71,16 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	logger.Debug("creating new session", "version", version, "path", path)
 
 	s := &Session{
-		logger:                              logger,
-		wg:                                  sync.WaitGroup{},
-		conn:                                conn,
-		requestIDs:                          newRequestIDGenerator(uint64(conn.Perspective())),
-		remoteControlStream:                 nil,
-		localControlStream:                  nil,
-		handler:                             nil,
-		version:                             version,
-		path:                                path,
-		outgoingSubscribeRequests:           make(map[uint64]*OutgoingSubscribeRequest),
-		outgoingSubscribeRequestsTrackAlias: make(map[uint64]uint64),
+		logger:              logger,
+		wg:                  sync.WaitGroup{},
+		conn:                conn,
+		requestIDs:          newRequestIDGenerator(uint64(conn.Perspective())),
+		remoteControlStream: nil,
+		localControlStream:  nil,
+		handler:             nil,
+		version:             version,
+		path:                path,
+		tracks:              make(map[uint64]*trackEntry),
 	}
 
 	for _, opt := range options {
@@ -281,12 +280,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		s.remoteControlStream = newRemoteControlStream(m, parser, s)
 		s.remoteControlStream.readMessages()
 	case *wire.SubgroupHeader:
-		request, ok := s.getOutgoingSubscribeRequestByTrackAlias(m.TrackAlias)
-		if ok {
-			// TODO
-			request.readStream(m, parser)
-		}
-
+		s.readDataStream(m, parser)
 	default:
 		// TODO
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
@@ -355,37 +349,48 @@ func (s *Session) handleBidiStream(stream Stream) {
 	}
 }
 
-func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) {
-	// TODO: Implement routing to correct subscribe request or buffer until track alias arrives
-	// subscription, ok := s.remoteTrackByTrackAlias(msg.TrackAlias)
-	// if !ok {
-	// 	return errUnknownTrackAlias
-	// }
-	// subscription.push(&Object{
-	// 	GroupID:              msg.GroupID,
-	// 	ObjectID:             msg.ObjectID,
-	// 	ForwardingPreference: ObjectForwardingPreferenceDatagram,
-	// 	Payload:              msg.ObjectPayload,
-	// })
-}
-
-func (s *Session) setTrackAliasForRequest(requestID, trackAlias uint64) {
-	s.outgoingSubscribeRequestsTrackAliasLock.Lock()
-	defer s.outgoingSubscribeRequestsTrackAliasLock.Unlock()
-	s.outgoingSubscribeRequestsTrackAlias[trackAlias] = requestID
-}
-
-func (s *Session) getOutgoingSubscribeRequestByTrackAlias(trackAlias uint64) (*OutgoingSubscribeRequest, bool) {
-	s.outgoingSubscribeRequestsTrackAliasLock.RLock()
-	defer s.outgoingSubscribeRequestsTrackAliasLock.RUnlock()
-	requestID, ok := s.outgoingSubscribeRequestsTrackAlias[trackAlias]
-	if !ok {
-		return nil, false
+// readDataStream reads objects from a subgroup stream until it ends and routes
+// them by track alias. It must be called from a goroutine tracked by the
+// session WaitGroup.
+func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMessageReader) {
+	for {
+		m, err := parser.Read()
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				s.handleReaderError(err)
+			}
+			return
+		}
+		o, ok := m.(*wire.ObjectStream)
+		if !ok {
+			s.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("unexpected message type: %T", m),
+			})
+			return
+		}
+		payload := make([]byte, len(o.ObjectPayload))
+		copy(payload, o.ObjectPayload)
+		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", header.SubgroupID, "payloadLength", len(payload))
+		s.pushObject(header.TrackAlias, &Object{
+			GroupID: header.GroupID,
+			// TODO: Set ObjectID from the object ID delta
+			ForwardingPreference: ObjectForwardingPreferenceSubgroup,
+			SubGroupID:           header.SubgroupID,
+			Payload:              payload,
+		})
 	}
-	s.outgoingSubscribeRequestsLock.RLock()
-	defer s.outgoingSubscribeRequestsLock.RUnlock()
-	request, ok := s.outgoingSubscribeRequests[requestID]
-	return request, ok
+}
+
+func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) {
+	payload := make([]byte, len(msg.ObjectPayload))
+	copy(payload, msg.ObjectPayload)
+	s.pushObject(msg.TrackAlias, &Object{
+		GroupID:              msg.GroupID,
+		ObjectID:             msg.ObjectID,
+		ForwardingPreference: ObjectForwardingPreferenceDatagram,
+		Payload:              payload,
+	})
 }
 
 func (s *Session) Subscribe(
@@ -413,9 +418,6 @@ func (s *Session) Subscribe(
 	if err != nil {
 		return nil, err
 	}
-	s.outgoingSubscribeRequestsLock.Lock()
-	s.outgoingSubscribeRequests[requestID] = request
-	s.outgoingSubscribeRequestsLock.Unlock()
 
 	if err := s.goTracked(request.readMessages); err != nil {
 		return nil, err
