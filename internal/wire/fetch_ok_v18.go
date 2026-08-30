@@ -4,7 +4,6 @@ package wire
 
 import (
 	"errors"
-	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
 )
@@ -15,123 +14,59 @@ func (m *FetchOk) append_v18(buf []byte) []byte {
 	} else {
 		buf = append(buf, byte(0))
 	}
-	buf = m.EndLocation.append(buf)
+	buf = m.EndLocation.append_v18(buf)
 	buf = varint.Append(buf, uint64(len(m.Parameters)))
 	for _, v := range m.Parameters {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	for _, v := range m.Properties {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	return buf
 }
 
-func (m *FetchOk) parse_v18(data []byte) error {
+func (m *FetchOk) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	if len(data) < 1 {
-		return io.ErrUnexpectedEOF
+	var EndOfTrackByte byte
+	EndOfTrackByte, err = r.ReadByte()
+	if err != nil {
+		return err
 	}
-	if data[0] > 1 {
+	if EndOfTrackByte > 1 {
 		return errors.New("invalid bool flag value")
 	}
-	m.EndOfTrack = data[0] > 0
-	data = data[1:]
+	m.EndOfTrack = EndOfTrackByte > 0
 
-	n, err = m.EndLocation.parse(data)
-	if err != nil {
+	if err = m.EndLocation.parse_v18(r); err != nil {
 		return err
 	}
-	data = data[n:]
 
 	var numParameters uint64
-	numParameters, n, err = varint.Parse(data)
+	numParameters, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.Parameters = make([]KeyValuePair, 0)
 	for range numParameters {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Parameters = append(m.Parameters, value)
 	}
 
+	if r.remaining() < 0 {
+		return errNoMessageLength
+	}
 	m.Properties = make([]KeyValuePair, 0)
-	for len(data) > 0 {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+	for r.remaining() > 0 {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Properties = append(m.Properties, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Properties = append(m.Properties, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Properties = append(m.Properties, value)
 	}
 
 	return nil

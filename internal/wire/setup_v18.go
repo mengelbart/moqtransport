@@ -2,70 +2,32 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *Setup) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(len(m.Options)))
 	for _, v := range m.Options {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	return buf
 }
 
-func (m *Setup) parse_v18(data []byte) error {
+func (m *Setup) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
 	var numOptions uint64
-	numOptions, n, err = varint.Parse(data)
+	numOptions, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.Options = make([]KeyValuePair, 0)
 	for range numOptions {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Options = append(m.Options, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Options = append(m.Options, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Options = append(m.Options, value)
 	}
 
 	return nil

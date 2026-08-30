@@ -2,11 +2,14 @@ package wire
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/mengelbart/moqtransport/varint"
 )
+
+var errLengthMismatch = errors.New("length mismatch")
 
 type streamReader interface {
 	io.Reader
@@ -21,16 +24,40 @@ const (
 	StreamTypeData
 )
 
+// validator is implemented by messages with well formedness rules the wire
+// format alone cannot express.
+type validator interface {
+	validate() error
+}
+
+func parseMessage(m ControlMessage, r messageReader, version uint64) error {
+	switch version {
+	case 18:
+		if err := m.parse_v18(r); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported version: %d", version)
+	}
+	if v, ok := m.(validator); ok {
+		return v.validate()
+	}
+	return nil
+}
+
 type Parser struct {
-	reader       streamReader
+	bounded      *boundedReader
+	unbounded    *unboundedReader
 	version      uint64
 	streamType   StreamType
 	objectParser *objectMessageParser
 }
 
 func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
+	reader := bufio.NewReader(r)
 	return &Parser{
-		reader:       bufio.NewReader(r),
+		bounded:      &boundedReader{reader: reader},
+		unbounded:    &unboundedReader{reader: reader},
 		version:      version,
 		streamType:   streamType,
 		objectParser: nil,
@@ -38,119 +65,128 @@ func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 }
 
 func (p *Parser) Read() (ControlMessage, error) {
+	p.unbounded.reset()
+
 	if p.objectParser != nil {
 		return p.objectParser.parse()
 	}
-	mt, err := varint.Read(p.reader)
+	mt, err := varint.Read(p.unbounded)
 	if err != nil {
 		return nil, err
 	}
 	if p.streamType == StreamTypeData {
 		return p.readDataHeader(mt)
 	}
-	hi, err := p.reader.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-	lo, err := p.reader.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-	length := uint16(hi)<<8 | uint16(lo)
 
-	msg := make([]byte, length)
-	n, err := io.ReadFull(p.reader, msg)
+	length, err := p.readLength()
 	if err != nil {
 		return nil, err
 	}
-	if n != int(length) {
+
+	m, err := p.controlMessage(mt)
+	if err != nil {
+		return nil, err
+	}
+
+	p.bounded.reset(int64(length))
+	if err := parseMessage(m, p.bounded, p.version); err != nil {
+		return nil, err
+	}
+	// A message that under-reads its body would leave the rest of it in the
+	// stream and desync every message after it.
+	if p.bounded.remaining() != 0 {
+		if err := p.bounded.discard(); err != nil {
+			return nil, err
+		}
 		return nil, errLengthMismatch
 	}
+	return m, nil
+}
 
-	var m ControlMessage
+func (p *Parser) readLength() (uint16, error) {
+	hi, err := p.unbounded.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	lo, err := p.unbounded.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	return uint16(hi)<<8 | uint16(lo), nil
+}
 
+func (p *Parser) controlMessage(mt uint64) (ControlMessage, error) {
 	switch p.streamType {
 	case StreamTypeControl:
 		switch ControlMessageType(mt) {
 		case ControlMessageTypeSetup:
-			m = &Setup{}
+			return &Setup{}, nil
 		case ControlMessageTypeGoAway:
-			m = &GoAwayCtrl{}
-		default:
-			return nil, fmt.Errorf("unknown control message type: %d", mt)
+			return &GoAwayCtrl{}, nil
 		}
 	case StreamTypeRequest:
 		switch ControlMessageType(mt) {
 		case ControlMessageTypeGoAway:
-			m = &GoAwayReq{}
+			return &GoAwayReq{}, nil
 
 		case ControlMessageTypeFetch:
-			m = &Fetch{}
+			return &Fetch{}, nil
 		case ControlMessageTypeFetchOk:
-			m = &FetchOk{}
+			return &FetchOk{}, nil
 
 		case ControlMessageTypeNamespace:
-			m = &Namespace{}
+			return &Namespace{}, nil
 		case ControlMessageTypeNamespaceDone:
-			m = &NamespaceDone{}
+			return &NamespaceDone{}, nil
 
 		case ControlMessageTypePublish:
-			m = &Publish{}
+			return &Publish{}, nil
 		case ControlMessageTypePublishBlocked:
-			m = &PublishBlocked{}
+			return &PublishBlocked{}, nil
 		case ControlMessageTypePublishDone:
-			m = &PublishDone{}
+			return &PublishDone{}, nil
 		case ControlMessageTypePublishNamespace:
-			m = &PublishNamespace{}
+			return &PublishNamespace{}, nil
 		case ControlMessageTypePublishOk:
-			m = &PublishOk{}
+			return &PublishOk{}, nil
 
 		case ControlMessageTypeRequestError:
-			m = &RequestError{}
+			return &RequestError{}, nil
 		case ControlMessageTypeRequestOk:
-			m = &RequestOk{}
+			return &RequestOk{}, nil
 		case ControlMessageTypeRequestUpdate:
-			m = &RequestUpdate{}
+			return &RequestUpdate{}, nil
 
 		case ControlMessageTypeSubscribe:
-			m = &Subscribe{}
+			return &Subscribe{}, nil
 		case ControlMessageTypeSubscribeNamespace:
-			m = &SubscribeNamespace{}
+			return &SubscribeNamespace{}, nil
 		case ControlMessageTypeSubscribeOk:
-			m = &SubscribeOk{}
+			return &SubscribeOk{}, nil
 		case ControlMessageTypeSubscribeTracks:
-			m = &SubscribeTracks{}
+			return &SubscribeTracks{}, nil
 
 		case ControlMessageTypeTrackStatus:
-			m = &TrackStatus{}
-
-		default:
-			return nil, fmt.Errorf("unknown control message type: %d", mt)
+			return &TrackStatus{}, nil
 		}
 	default:
-		panic("unknown stream type")
+		return nil, fmt.Errorf("unknown stream type: %d", p.streamType)
 	}
-
-	switch p.version {
-	case 18:
-		err = m.parse_v18(msg)
-	default:
-		return nil, fmt.Errorf("unsupported version: %d", p.version)
-	}
-
-	return m, err
+	return nil, fmt.Errorf("unknown control message type: %d", mt)
 }
 
 func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 	switch ControlMessageType(mt) {
 	case ControlMessageTypeFetchHeader:
 		m := &FetchHeader{}
-		if err := m.parse(p.reader); err != nil {
+		if err := parseMessage(m, p.unbounded, p.version); err != nil {
 			return nil, err
 		}
+		// TODO: Parse fetch objects.
 		return m, nil
 
 	case ControlMessageTypePadding:
+		// TODO: Discard the rest of the stream.
 		return &Padding{}, nil
 
 	default:
@@ -160,27 +196,29 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		if !m.validType() {
 			return nil, fmt.Errorf("unknown data stream type: %d", mt)
 		}
-		if err := m.parse(p.reader); err != nil {
+		if err := parseMessage(m, p.unbounded, p.version); err != nil {
 			return nil, err
 		}
-		p.objectParser = newObjectMessageParser(p.reader)
+		p.objectParser = newObjectMessageParser(p.unbounded, p.version)
 		return m, nil
 	}
 }
 
 type objectMessageParser struct {
-	reader streamReader
+	reader  messageReader
+	version uint64
 }
 
-func newObjectMessageParser(r streamReader) *objectMessageParser {
+func newObjectMessageParser(r messageReader, version uint64) *objectMessageParser {
 	return &objectMessageParser{
-		reader: r,
+		reader:  r,
+		version: version,
 	}
 }
 
 func (p *objectMessageParser) parse() (*ObjectStream, error) {
 	o := &ObjectStream{}
-	if err := o.parse(p.reader); err != nil {
+	if err := parseMessage(o, p.reader, p.version); err != nil {
 		return nil, err
 	}
 	return o, nil

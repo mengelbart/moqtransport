@@ -2,11 +2,7 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *Publish) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RequestID))
@@ -20,153 +16,85 @@ func (m *Publish) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.TrackAlias))
 	buf = varint.Append(buf, uint64(len(m.Parameters)))
 	for _, v := range m.Parameters {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	for _, v := range m.Properties {
-		buf = varint.Append(buf, uint64(v.Type))
-		if v.Type%2 == 0 {
-			buf = varint.Append(buf, uint64(v.Varint))
-		} else {
-			buf = varint.Append(buf, uint64(len(v.Bytes)))
-			buf = append(buf, v.Bytes...)
-		}
+		buf = v.append_v18(buf)
 	}
 	return buf
 }
 
-func (m *Publish) parse_v18(data []byte) error {
+func (m *Publish) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	m.RequestID, n, err = varint.Parse(data)
+	m.RequestID, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	var numTrackNamespace uint64
-	numTrackNamespace, n, err = varint.Parse(data)
+	numTrackNamespace, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.TrackNamespace = make([][]byte, 0)
 	for range numTrackNamespace {
 		var length uint64
-		length, n, err = varint.Parse(data)
+		length, err = varint.Read(r)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 
-		if len(data) < int(length) {
-			return io.ErrUnexpectedEOF
+		var value []byte
+		value, err = readBytes(r, length)
+		if err != nil {
+			return err
 		}
-		m.TrackNamespace = append(m.TrackNamespace, data[:length])
-		data = data[length:]
+		m.TrackNamespace = append(m.TrackNamespace, value)
 	}
 
 	var TrackNameLength uint64
-	TrackNameLength, n, err = varint.Parse(data)
+	TrackNameLength, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	if len(data) < int(TrackNameLength) {
-		return io.ErrUnexpectedEOF
-	}
-	m.TrackName = data[:TrackNameLength]
-	data = data[TrackNameLength:]
-
-	m.TrackAlias, n, err = varint.Parse(data)
+	m.TrackName, err = readBytes(r, TrackNameLength)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
+
+	m.TrackAlias, err = varint.Read(r)
+	if err != nil {
+		return err
+	}
 
 	var numParameters uint64
-	numParameters, n, err = varint.Parse(data)
+	numParameters, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.Parameters = make([]KeyValuePair, 0)
 	for range numParameters {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Parameters = append(m.Parameters, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Parameters = append(m.Parameters, value)
 	}
 
+	if r.remaining() < 0 {
+		return errNoMessageLength
+	}
 	m.Properties = make([]KeyValuePair, 0)
-	for len(data) > 0 {
-		typ, n, err := varint.Parse(data)
-		if err != nil {
+	for r.remaining() > 0 {
+		var value KeyValuePair
+		if err = value.parse_v18(r); err != nil {
 			return err
 		}
-		data = data[n:]
-
-		if typ%2 == 0 {
-			val, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			m.Properties = append(m.Properties, KeyValuePair{
-				Type:   typ,
-				Varint: val,
-			})
-			data = data[n:]
-		} else {
-			length, n, err := varint.Parse(data)
-			if err != nil {
-				return err
-			}
-			data = data[n:]
-			if len(data) < int(length) {
-				return io.ErrUnexpectedEOF
-			}
-			m.Properties = append(m.Properties, KeyValuePair{
-				Type:  typ,
-				Bytes: data[:length],
-			})
-			data = data[length:]
-		}
+		m.Properties = append(m.Properties, value)
 	}
 
 	return nil

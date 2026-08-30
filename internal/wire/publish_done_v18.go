@@ -2,11 +2,7 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *PublishDone) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.StatusCode))
@@ -16,34 +12,31 @@ func (m *PublishDone) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *PublishDone) parse_v18(data []byte) error {
+func (m *PublishDone) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
-	m.StatusCode, n, err = varint.Parse(data)
+	m.StatusCode, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	m.StreamCount, n, err = varint.Parse(data)
+	m.StreamCount, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	var ErrorReasonLength uint64
-	ErrorReasonLength, n, err = varint.Parse(data)
+	ErrorReasonLength, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	if len(data) < int(ErrorReasonLength) {
-		return io.ErrUnexpectedEOF
+	var ErrorReasonBytes []byte
+	ErrorReasonBytes, err = readBytes(r, ErrorReasonLength)
+	if err != nil {
+		return err
 	}
-	m.ErrorReason = string(data[:ErrorReasonLength])
-	data = data[ErrorReasonLength:]
+	m.ErrorReason = string(ErrorReasonBytes)
 
 	return nil
 }

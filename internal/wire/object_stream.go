@@ -6,11 +6,6 @@ import (
 	"github.com/mengelbart/moqtransport/varint"
 )
 
-type ObjectStreamReader interface {
-	io.Reader
-	io.ByteReader
-}
-
 type ObjectStream struct {
 	HasProperties bool
 
@@ -49,11 +44,7 @@ func (m *ObjectStream) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *ObjectStream) parse_v18(data []byte) error {
-	panic("not implemented")
-}
-
-func (m *ObjectStream) parse(r ObjectStreamReader) error {
+func (m *ObjectStream) parse_v18(r messageReader) error {
 	var err error
 	m.ObjectIDDelta, err = varint.Read(r)
 	if err != nil {

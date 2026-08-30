@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
-	"github.com/mengelbart/moqtransport/varint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -50,7 +49,7 @@ func encodeDatagram(trackAlias, groupID, objectID uint64, payload string) []byte
 		ObjectID:      objectID,
 		ObjectPayload: []byte(payload),
 	}
-	return msg.AppendDatagram(varint.Append(nil, uint64(msg.Type())))
+	return msg.AppendDatagram(nil)
 }
 
 func readObject(t *testing.T, request *OutgoingSubscribeRequest) *Object {

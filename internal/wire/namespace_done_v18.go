@@ -2,11 +2,7 @@
 
 package wire
 
-import (
-	"io"
-
-	"github.com/mengelbart/moqtransport/varint"
-)
+import "github.com/mengelbart/moqtransport/varint"
 
 func (m *NamespaceDone) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(len(m.TrackNamespaceSuffix)))
@@ -17,31 +13,29 @@ func (m *NamespaceDone) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *NamespaceDone) parse_v18(data []byte) error {
+func (m *NamespaceDone) parse_v18(r messageReader) error {
 	var err error
-	var n int
 
 	var numTrackNamespaceSuffix uint64
-	numTrackNamespaceSuffix, n, err = varint.Parse(data)
+	numTrackNamespaceSuffix, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
 	m.TrackNamespaceSuffix = make([][]byte, 0)
 	for range numTrackNamespaceSuffix {
 		var length uint64
-		length, n, err = varint.Parse(data)
+		length, err = varint.Read(r)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 
-		if len(data) < int(length) {
-			return io.ErrUnexpectedEOF
+		var value []byte
+		value, err = readBytes(r, length)
+		if err != nil {
+			return err
 		}
-		m.TrackNamespaceSuffix = append(m.TrackNamespaceSuffix, data[:length])
-		data = data[length:]
+		m.TrackNamespaceSuffix = append(m.TrackNamespaceSuffix, value)
 	}
 
 	return nil
