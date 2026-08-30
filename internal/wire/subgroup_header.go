@@ -17,6 +17,36 @@ func getBit(x uint64, bit uint) bool {
 	return (x & (1 << bit)) != 0
 }
 
+// Bit positions of the flags in the subgroup header type, draft-18 Section
+// 11.4.2.
+const (
+	subgroupBitProperties      uint = 0
+	subgroupBitSubgroupIDMode  uint = 1 // two bits wide
+	subgroupBitEndOfGroup      uint = 3
+	subgroupBitDefaultPriority uint = 5
+	subgroupBitFirstObject     uint = 6
+
+	subgroupIDModeMask uint64 = 0b0000_0110
+
+	// Subgroup header types take the form 0b0XX1XXXX and fit in a single byte.
+	subgroupTypeFormMask uint64 = 0b1001_0000
+	subgroupTypeForm     uint64 = 0b0001_0000
+	subgroupTypeMax      uint64 = 0xff
+)
+
+// Modes of the two bit SUBGROUP_ID_MODE field of the subgroup header type.
+const (
+	// SubgroupIDModeZero omits the subgroup ID from the header, it is 0.
+	SubgroupIDModeZero uint8 = 0
+	// SubgroupIDModeFirstObject omits the subgroup ID from the header, it is the
+	// object ID of the first object on the stream.
+	SubgroupIDModeFirstObject uint8 = 1
+	// SubgroupIDModeExplicit carries the subgroup ID in the header.
+	SubgroupIDModeExplicit uint8 = 2
+	// SubgroupIDModeReserved is reserved for future use and invalid on the wire.
+	SubgroupIDModeReserved uint8 = 3
+)
+
 type SubgroupHeader struct {
 	typ               uint64
 	TrackAlias        uint64
@@ -25,124 +55,118 @@ type SubgroupHeader struct {
 	PublisherPriority uint8
 }
 
-func NewSubgroupHeader() *SubgroupHeader {
-	return &SubgroupHeader{
-		typ: 0b00010000,
+func NewSubgroupHeader(trackAlias, groupID, subgroupID uint64, publisherPriority uint8) *SubgroupHeader {
+	m := &SubgroupHeader{
+		typ:               subgroupTypeForm,
+		TrackAlias:        trackAlias,
+		GroupID:           groupID,
+		SubgroupID:        subgroupID,
+		PublisherPriority: publisherPriority,
 	}
+	m.SetSubgroupIDMode(SubgroupIDModeExplicit)
+	return m
 }
 
 func (m *SubgroupHeader) Type() ControlMessageType {
-	m.typ = setBit(m.typ, 4, true)
 	return ControlMessageType(m.typ)
 }
 
 func (m *SubgroupHeader) validType() bool {
-	return m.typ&0b10010000 == 0b00010000
+	if m.typ > subgroupTypeMax {
+		return false
+	}
+	if m.typ&subgroupTypeFormMask != subgroupTypeForm {
+		return false
+	}
+	return m.SubgroupIDMode() != SubgroupIDModeReserved
 }
 
 func (m *SubgroupHeader) Properties() bool {
-	return getBit(m.typ, 0)
+	return getBit(m.typ, subgroupBitProperties)
 }
 
 func (m *SubgroupHeader) SetProperties(v bool) {
-	m.typ = setBit(m.typ, 0, v)
+	m.typ = setBit(m.typ, subgroupBitProperties, v)
 }
 
 func (m *SubgroupHeader) SubgroupIDMode() uint8 {
-	return uint8((m.typ & 0x06) >> 1)
+	return uint8((m.typ & subgroupIDModeMask) >> subgroupBitSubgroupIDMode)
 }
 
 func (m *SubgroupHeader) SetSubgroupIDMode(v uint8) {
 	switch v {
-	case 0:
-		m.typ = setBit(m.typ, 1, false)
-		m.typ = setBit(m.typ, 2, false)
-	case 1:
-		m.typ = setBit(m.typ, 1, true)
-		m.typ = setBit(m.typ, 2, false)
-	case 2:
-		m.typ = setBit(m.typ, 1, false)
-		m.typ = setBit(m.typ, 2, true)
+	case SubgroupIDModeZero, SubgroupIDModeFirstObject, SubgroupIDModeExplicit:
+		m.typ = m.typ&^subgroupIDModeMask | uint64(v)<<subgroupBitSubgroupIDMode
 	default:
 		panic(fmt.Sprintf("invalid subgroup id mode: %d", v))
 	}
 }
 
 func (m *SubgroupHeader) EndOfGroup() bool {
-	return getBit(m.typ, 3)
+	return getBit(m.typ, subgroupBitEndOfGroup)
 }
 
 func (m *SubgroupHeader) SetEndOfGroup(v bool) {
-	m.typ = setBit(m.typ, 3, v)
+	m.typ = setBit(m.typ, subgroupBitEndOfGroup, v)
 }
 
 func (m *SubgroupHeader) DefaultPriority() bool {
-	return getBit(m.typ, 5)
+	return getBit(m.typ, subgroupBitDefaultPriority)
 }
 
 func (m *SubgroupHeader) SetDefaultPriority(v bool) {
-	m.typ = setBit(m.typ, 5, v)
+	m.typ = setBit(m.typ, subgroupBitDefaultPriority, v)
 }
 
 func (m *SubgroupHeader) FirstBit() bool {
-	return getBit(m.typ, 6)
+	return getBit(m.typ, subgroupBitFirstObject)
 }
 
 func (m *SubgroupHeader) SetFirstBit(v bool) {
-	m.typ = setBit(m.typ, 6, v)
+	m.typ = setBit(m.typ, subgroupBitFirstObject, v)
 }
 
 func (m *SubgroupHeader) append_v18(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(m.TrackAlias))
-	buf = varint.Append(buf, uint64(m.GroupID))
-	switch m.SubgroupIDMode() {
-	case 0x00, 0x01: // no subgroup id
-		// nothing to do
-	case 0x02: // subgroup id present
-		buf = varint.Append(buf, uint64(m.SubgroupID))
-	default:
-		panic("invalid subgroup header type")
+	buf = varint.Append(buf, m.TrackAlias)
+	buf = varint.Append(buf, m.GroupID)
+	if m.SubgroupIDMode() == SubgroupIDModeExplicit {
+		buf = varint.Append(buf, m.SubgroupID)
 	}
 	if !m.DefaultPriority() {
-		buf = varint.Append(buf, uint64(m.PublisherPriority))
+		buf = append(buf, m.PublisherPriority)
 	}
 	return buf
 }
 
 func (m *SubgroupHeader) parse_v18(data []byte) error {
+	panic("not implemented")
+}
+
+func (m *SubgroupHeader) parse(r streamReader) error {
 	var err error
-	var n int
 
-	m.TrackAlias, n, err = varint.Parse(data)
+	m.TrackAlias, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	m.GroupID, n, err = varint.Parse(data)
+	m.GroupID, err = varint.Read(r)
 	if err != nil {
 		return err
 	}
-	data = data[n:]
 
-	if m.typ&0x06>>1 == 0x02 {
-		m.SubgroupID, n, err = varint.Parse(data)
+	if m.SubgroupIDMode() == SubgroupIDModeExplicit {
+		m.SubgroupID, err = varint.Read(r)
 		if err != nil {
 			return err
 		}
-		data = data[n:]
 	}
 
-	if m.typ&0x20 == 0 {
-		var priority uint64
-		priority, _, err = varint.Parse(data)
+	if !m.DefaultPriority() {
+		m.PublisherPriority, err = r.ReadByte()
 		if err != nil {
 			return err
 		}
-		if priority > 255 {
-			return fmt.Errorf("publisher priority out of range: %d", priority)
-		}
-		m.PublisherPriority = uint8(priority)
 	}
 
 	return nil

@@ -24,15 +24,24 @@ func NewAppender(w io.Writer, version uint64) *Appender {
 func (a *Appender) Write(msg ControlMessage) error {
 	buf := make([]byte, 0, 4096)
 
-	if _, ok := msg.(*ObjectStream); ok {
-		// ObjectStream messages are written without type and length.
-		buf, err := a.serializeMessage(buf, msg)
-		if err != nil {
-			return err
-		}
-		return a.writeBuffer(buf)
+	switch msg.(type) {
+	case *ObjectStream:
+		// Objects on a data stream are written without type and length.
+	case *SubgroupHeader, *FetchHeader, *Padding:
+		// Data stream headers are written with a type but without a length.
+		buf = varint.Append(buf, uint64(msg.Type()))
+	default:
+		return a.writeControlMessage(buf, msg)
 	}
 
+	buf, err := a.serializeMessage(buf, msg)
+	if err != nil {
+		return err
+	}
+	return a.writeBuffer(buf)
+}
+
+func (a *Appender) writeControlMessage(buf []byte, msg ControlMessage) error {
 	buf = varint.Append(buf, uint64(msg.Type()))
 	tl := len(buf)
 	buf = append(buf, 0x00, 0x00) // length placeholder

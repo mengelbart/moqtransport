@@ -22,17 +22,22 @@ func (r *testReceiver) push(o *Object) {
 	r.objects = append(r.objects, o)
 }
 
-func encodeDataStream(t *testing.T, trackAlias, groupID uint64, payloads ...string) []byte {
+// testObject is an object on a subgroup stream, identified by its wire object
+// ID delta rather than its object ID.
+type testObject struct {
+	delta   uint64
+	payload string
+}
+
+func encodeDataStream(t *testing.T, trackAlias, groupID, subgroupID uint64, objects ...testObject) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	appender := wire.NewAppender(&buf, 18)
-	require.NoError(t, appender.Write(&wire.SubgroupHeader{
-		TrackAlias: trackAlias,
-		GroupID:    groupID,
-	}))
-	for _, payload := range payloads {
+	require.NoError(t, appender.Write(wire.NewSubgroupHeader(trackAlias, groupID, subgroupID, 0)))
+	for _, o := range objects {
 		require.NoError(t, appender.Write(&wire.ObjectStream{
-			ObjectPayload: []byte(payload),
+			ObjectIDDelta: o.delta,
+			ObjectPayload: []byte(o.payload),
 		}))
 	}
 	return buf.Bytes()
@@ -88,7 +93,7 @@ func TestSubgroupBeforeSubscribeOk(t *testing.T) {
 
 	request, requestStream := subscribe(t, session, conn)
 
-	reader := conn.acceptUniStream(encodeDataStream(t, 17, 3, "hello"))
+	reader := conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
 	<-reader.drained
 
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
@@ -96,6 +101,8 @@ func TestSubgroupBeforeSubscribeOk(t *testing.T) {
 	o := readObject(t, request)
 	assert.Equal(t, []byte("hello"), o.Payload)
 	assert.Equal(t, uint64(3), o.GroupID)
+	assert.Equal(t, uint64(5), o.SubGroupID)
+	assert.Equal(t, uint64(0), o.ObjectID)
 	assert.Equal(t, ObjectForwardingPreferenceSubgroup, o.ForwardingPreference)
 
 	session.CloseWithError(0, "closing")
@@ -113,9 +120,36 @@ func TestSubgroupAfterSubscribeOk(t *testing.T) {
 		return hasTrackAlias(session, 17)
 	}, time.Second, time.Millisecond)
 
-	conn.acceptUniStream(encodeDataStream(t, 17, 3, "hello"))
+	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
 
 	assert.Equal(t, []byte("hello"), readObject(t, request).Payload)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+// The object ID of the first object on a subgroup stream is its delta, and each
+// following object is the previous object ID plus its delta plus one.
+func TestSubgroupObjectIDDeltas(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	request, requestStream := subscribe(t, session, conn)
+	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	require.Eventually(t, func() bool {
+		return hasTrackAlias(session, 17)
+	}, time.Second, time.Millisecond)
+
+	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
+		testObject{2, "first"},
+		testObject{0, "second"},
+		testObject{3, "third"},
+	))
+
+	for _, want := range []uint64{2, 3, 7} {
+		assert.Equal(t, want, readObject(t, request).ObjectID)
+	}
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
