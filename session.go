@@ -40,7 +40,7 @@ type Session struct {
 	logger *slog.Logger
 
 	ctx       context.Context
-	cancelCtx context.CancelFunc
+	cancelCtx context.CancelCauseFunc
 	wg        sync.WaitGroup
 
 	closeLock sync.Mutex
@@ -63,6 +63,11 @@ type Session struct {
 	pendingTracks int
 }
 
+// NewSession creates a session on conn. It never closes conn: if NewSession
+// returns an error, nothing has been written and the caller keeps ownership of
+// conn. Once a session exists, only the session closes conn. Errors that occur
+// after NewSession returned, including a failed SETUP write, are reported
+// through Context.
 func NewSession(conn Connection, path string, options ...Option) (*Session, error) {
 	version := conn.ApplicationProtocol().versionNumber()
 	if version == 0 {
@@ -96,16 +101,9 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 	}
 	s.localControlStream = newLocalControlStream(wire.NewAppender(ctrlStream, uint64(version)))
 
-	// TODO: Write setup in a different goroutine to avoid blocking the session
-	// constructor.
-	if err = s.localControlStream.write(&wire.Setup{}); err != nil {
-		_ = conn.CloseWithError(uint64(ErrorCodeInternal), "session setup failed")
-		return nil, err
-	}
-	s.logger.Debug("setup message sent", "version", version, "path", path)
+	s.ctx, s.cancelCtx = context.WithCancelCause(context.Background())
 
-	s.ctx, s.cancelCtx = context.WithCancel(context.Background())
-
+	s.wg.Go(func() { s.sendSetup() })
 	s.wg.Go(func() { s.readUniStreams() })
 	s.wg.Go(func() { s.readBidiStreams() })
 	s.wg.Go(func() { s.readDatagrams() })
@@ -133,6 +131,20 @@ func (s *Session) CloseWithError(code uint64, reason string) {
 	s.wg.Wait()
 }
 
+// Context returns a context that is canceled when the session closes.
+// context.Cause reports the error that closed it.
+func (s *Session) Context() context.Context {
+	return s.ctx
+}
+
+func (s *Session) sendSetup() {
+	if err := s.localControlStream.write(&wire.Setup{}); err != nil {
+		s.handleReaderError(err)
+		return
+	}
+	s.logger.Debug("setup message sent", "version", s.version, "path", s.path)
+}
+
 func (s *Session) closeWithError(closeErr error) bool {
 	s.closeLock.Lock()
 	defer s.closeLock.Unlock()
@@ -140,7 +152,7 @@ func (s *Session) closeWithError(closeErr error) bool {
 		return false
 	}
 	s.closeErr = closeErr
-	s.cancelCtx()
+	s.cancelCtx(closeErr)
 
 	code := uint64(ErrorCodeInternal)
 	reason := ""

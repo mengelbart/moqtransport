@@ -337,15 +337,20 @@ func TestNewSessionOptionErrorOpensNoStream(t *testing.T) {
 	goleak.VerifyNone(t)
 }
 
-// A failing SETUP write must close the connection, which also tears down the
-// control stream that was just opened.
-func TestNewSessionSetupWriteErrorClosesConnection(t *testing.T) {
+// The SETUP write happens after NewSession returned, so a failing write must
+// reach the caller through the session context and close the session.
+func TestNewSessionSetupWriteErrorClosesSession(t *testing.T) {
 	conn := newTestConnection(t)
 	conn.sendStreamWriteErr = errTestSetupWriteFailed
 
 	session, err := NewSession(conn, "")
-	assert.ErrorIs(t, err, errTestSetupWriteFailed)
-	assert.Nil(t, session)
+	require.NoError(t, err)
+	require.NotNil(t, session)
+
+	<-session.Context().Done()
+	assert.ErrorIs(t, context.Cause(session.Context()), errTestSetupWriteFailed)
+
+	session.CloseWithError(0, "closing")
 	assert.Equal(t, 1, conn.openedUniStreams())
 	assert.Equal(t, 1, conn.closes())
 	goleak.VerifyNone(t)
