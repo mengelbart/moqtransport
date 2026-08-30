@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"sync"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -380,6 +381,11 @@ func (s *Session) handleBidiStream(stream Stream) {
 // them by track alias. It must be called from a goroutine tracked by the
 // session WaitGroup.
 func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMessageReader) {
+	var (
+		firstObject  = true
+		lastObjectID uint64
+		subgroupID   = header.SubgroupID
+	)
 	for {
 		m, err := parser.Read()
 		if err != nil {
@@ -396,14 +402,32 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMess
 			})
 			return
 		}
+		objectID := o.ObjectIDDelta
+		if firstObject {
+			if header.SubgroupIDMode() == wire.SubgroupIDModeFirstObject {
+				subgroupID = objectID
+			}
+		} else {
+			if o.ObjectIDDelta >= math.MaxUint64-lastObjectID {
+				s.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "object ID out of range",
+				})
+				return
+			}
+			objectID = lastObjectID + o.ObjectIDDelta + 1
+		}
+		firstObject = false
+		lastObjectID = objectID
+
 		payload := make([]byte, len(o.ObjectPayload))
 		copy(payload, o.ObjectPayload)
-		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", header.SubgroupID, "payloadLength", len(payload))
+		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "payloadLength", len(payload))
 		s.pushObject(header.TrackAlias, &Object{
-			GroupID: header.GroupID,
-			// TODO: Set ObjectID from the object ID delta
+			GroupID:              header.GroupID,
+			ObjectID:             objectID,
 			ForwardingPreference: ObjectForwardingPreferenceSubgroup,
-			SubGroupID:           header.SubgroupID,
+			SubGroupID:           subgroupID,
 			Payload:              payload,
 		})
 	}

@@ -45,6 +45,9 @@ func (p *Parser) Read() (ControlMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	if p.streamType == StreamTypeData {
+		return p.readDataHeader(mt)
+	}
 	hi, err := p.reader.ReadByte()
 	if err != nil {
 		return nil, err
@@ -124,23 +127,6 @@ func (p *Parser) Read() (ControlMessage, error) {
 		default:
 			return nil, fmt.Errorf("unknown control message type: %d", mt)
 		}
-	case StreamTypeData:
-		switch ControlMessageType(mt) {
-		case ControlMessageTypeFetchHeader:
-			m = &FetchHeader{}
-		case ControlMessageTypePadding:
-			m = &Padding{}
-
-		default:
-			sgh := &SubgroupHeader{
-				typ: mt & 0xff,
-			}
-			if !sgh.validType() {
-				return nil, fmt.Errorf("unknown control message type: %d", mt)
-			}
-			p.objectParser = newObjectMessageParser(p.reader)
-			m = sgh
-		}
 	default:
 		panic("unknown stream type")
 	}
@@ -153,6 +139,33 @@ func (p *Parser) Read() (ControlMessage, error) {
 	}
 
 	return m, err
+}
+
+func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
+	switch ControlMessageType(mt) {
+	case ControlMessageTypeFetchHeader:
+		m := &FetchHeader{}
+		if err := m.parse(p.reader); err != nil {
+			return nil, err
+		}
+		return m, nil
+
+	case ControlMessageTypePadding:
+		return &Padding{}, nil
+
+	default:
+		m := &SubgroupHeader{
+			typ: mt,
+		}
+		if !m.validType() {
+			return nil, fmt.Errorf("unknown data stream type: %d", mt)
+		}
+		if err := m.parse(p.reader); err != nil {
+			return nil, err
+		}
+		p.objectParser = newObjectMessageParser(p.reader)
+		return m, nil
+	}
 }
 
 type objectMessageParser struct {
