@@ -54,7 +54,12 @@ type Parser struct {
 	closed     error
 }
 
-func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
+func NewParser(r io.Reader, version uint64, streamType StreamType) (*Parser, error) {
+	switch streamType {
+	case StreamTypeControl, StreamTypeRequest, StreamTypeData:
+	default:
+		return nil, fmt.Errorf("unknown stream type: %d", streamType)
+	}
 	reader := bufio.NewReader(r)
 	return &Parser{
 		bounded:    &boundedReader{reader: reader},
@@ -62,7 +67,7 @@ func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 		version:    version,
 		streamType: streamType,
 		objects:    nil,
-	}
+	}, nil
 }
 
 func (p *Parser) Read() (ControlMessage, error) {
@@ -174,7 +179,7 @@ func (p *Parser) controlMessage(mt uint64) (ControlMessage, error) {
 			return &TrackStatus{}, nil
 		}
 	default:
-		return nil, fmt.Errorf("unknown stream type: %d", p.streamType)
+		return nil, fmt.Errorf("stream type carries no control messages: %d", p.streamType)
 	}
 	return nil, fmt.Errorf("unknown control message type: %d", mt)
 }

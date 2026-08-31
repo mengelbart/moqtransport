@@ -20,7 +20,8 @@ func TestSubgroupWriteObject(t *testing.T) {
 		assert.Equal(t, len("payload"), n)
 	}
 
-	parser := wire.NewParser(&buf, 18, wire.StreamTypeData)
+	parser, err := wire.NewParser(&buf, 18, wire.StreamTypeData)
+	require.NoError(t, err)
 
 	msg, err := parser.Read()
 	require.NoError(t, err)

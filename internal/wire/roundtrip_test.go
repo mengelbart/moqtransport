@@ -123,12 +123,19 @@ func encode(t *testing.T, msg ControlMessage) []byte {
 	return buf.Bytes()
 }
 
+func mustParser(t *testing.T, r io.Reader, version uint64, streamType StreamType) *Parser {
+	t.Helper()
+	p, err := NewParser(r, version, streamType)
+	require.NoError(t, err)
+	return p
+}
+
 func TestMessageRoundTrip(t *testing.T) {
 	for _, tc := range roundTripCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			encoded := encode(t, tc.msg)
 
-			got, err := NewParser(bytes.NewReader(encoded), 18, tc.streamType).Read()
+			got, err := mustParser(t, bytes.NewReader(encoded), 18, tc.streamType).Read()
 			require.NoError(t, err)
 			assert.Equal(t, tc.msg, got)
 		})
@@ -155,7 +162,7 @@ func TestSetupOptionsBytes(t *testing.T) {
 
 	assert.Equal(t, deltaPairBytes, msg.append_v18(nil))
 
-	got, err := NewParser(bytes.NewReader(encode(t, msg)), 18, StreamTypeControl).Read()
+	got, err := mustParser(t, bytes.NewReader(encode(t, msg)), 18, StreamTypeControl).Read()
 	require.NoError(t, err)
 	assert.Equal(t, msg, got)
 }
@@ -167,7 +174,7 @@ func TestParameterListBytes(t *testing.T) {
 	want = append(want, deltaPairBytes...)
 	assert.Equal(t, want, msg.append_v18(nil))
 
-	got, err := NewParser(bytes.NewReader(encode(t, msg)), 18, StreamTypeRequest).Read()
+	got, err := mustParser(t, bytes.NewReader(encode(t, msg)), 18, StreamTypeRequest).Read()
 	require.NoError(t, err)
 	assert.Equal(t, msg, got)
 }
@@ -184,7 +191,7 @@ func TestMessageTruncated(t *testing.T) {
 				if i == 0 {
 					want = io.EOF
 				}
-				_, err := NewParser(bytes.NewReader(encoded[:i]), 18, tc.streamType).Read()
+				_, err := mustParser(t, bytes.NewReader(encoded[:i]), 18, tc.streamType).Read()
 				assert.ErrorIs(t, err, want, fmt.Sprintf("truncated to %v of %v bytes", i, len(encoded)))
 			}
 		})
@@ -203,7 +210,7 @@ func TestParseBodyLongerThanMessage(t *testing.T) {
 	encoded = append(encoded, body...)
 	encoded = append(encoded, 0xff)
 
-	_, err := NewParser(bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
+	_, err := mustParser(t, bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
 	assert.ErrorIs(t, err, errLengthMismatch)
 }
 
@@ -229,6 +236,11 @@ func TestParseFetchUnknownType(t *testing.T) {
 	require.Equal(t, byte(FetchTypeStandalone), encoded[body+1])
 	encoded[body+1] = 0x04
 
-	_, err := NewParser(bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
+	_, err := mustParser(t, bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
+	assert.Error(t, err)
+}
+
+func TestNewParserRejectsUnknownStreamType(t *testing.T) {
+	_, err := NewParser(bytes.NewReader(nil), 18, StreamType(7))
 	assert.Error(t, err)
 }
