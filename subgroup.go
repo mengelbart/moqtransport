@@ -7,9 +7,7 @@ import (
 )
 
 type Subgroup struct {
-	stream     controlMessageWriter
-	groupID    uint64
-	subgroupID uint64
+	stream controlMessageWriter
 
 	firstObject  bool
 	lastObjectID uint64
@@ -21,8 +19,6 @@ func newSubgroup(stream controlMessageWriter, trackAlias, groupID, subgroupID ui
 	}
 	return &Subgroup{
 		stream:      stream,
-		groupID:     groupID,
-		subgroupID:  subgroupID,
 		firstObject: true,
 	}, nil
 }
