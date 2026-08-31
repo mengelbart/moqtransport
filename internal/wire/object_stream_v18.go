@@ -4,15 +4,8 @@ package wire
 
 import "github.com/mengelbart/moqtransport/varint"
 
-func (m *ObjectDatagram) append_v18(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(m.TrackAlias))
-	buf = varint.Append(buf, uint64(m.GroupID))
-	if !m.ZeroObjectID() {
-		buf = varint.Append(buf, uint64(m.ObjectID))
-	}
-	if !m.DefaultPriority() {
-		buf = append(buf, m.PublisherPriority)
-	}
+func (m *ObjectStream) append_v18(buf []byte) []byte {
+	buf = varint.Append(buf, uint64(m.ObjectIDDelta))
 	if m.HasProperties() {
 		var PropertiesBuf []byte
 		for _, v := range m.Properties {
@@ -21,40 +14,20 @@ func (m *ObjectDatagram) append_v18(buf []byte) []byte {
 		buf = varint.Append(buf, uint64(len(PropertiesBuf)))
 		buf = append(buf, PropertiesBuf...)
 	}
-	if m.Status() {
+	buf = varint.Append(buf, uint64(len(m.ObjectPayload)))
+	buf = append(buf, m.ObjectPayload...)
+	if m.EmptyPayload() {
 		buf = varint.Append(buf, uint64(m.ObjectStatus))
-	}
-	if !m.Status() {
-		buf = append(buf, m.ObjectPayload...)
 	}
 	return buf
 }
 
-func (m *ObjectDatagram) parse_v18(r messageReader) error {
+func (m *ObjectStream) parse_v18(r messageReader) error {
 	var err error
 
-	m.TrackAlias, err = varint.Read(r)
+	m.ObjectIDDelta, err = varint.Read(r)
 	if err != nil {
 		return err
-	}
-
-	m.GroupID, err = varint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	if !m.ZeroObjectID() {
-		m.ObjectID, err = varint.Read(r)
-		if err != nil {
-			return err
-		}
-	}
-
-	if !m.DefaultPriority() {
-		m.PublisherPriority, err = r.ReadByte()
-		if err != nil {
-			return err
-		}
 	}
 
 	if m.HasProperties() {
@@ -74,15 +47,19 @@ func (m *ObjectDatagram) parse_v18(r messageReader) error {
 		}
 	}
 
-	if m.Status() {
-		m.ObjectStatus, err = varint.Read(r)
-		if err != nil {
-			return err
-		}
+	var ObjectPayloadLength uint64
+	ObjectPayloadLength, err = varint.Read(r)
+	if err != nil {
+		return err
 	}
 
-	if !m.Status() {
-		m.ObjectPayload, err = readRemaining(r)
+	m.ObjectPayload, err = readBytes(r, ObjectPayloadLength)
+	if err != nil {
+		return err
+	}
+
+	if m.EmptyPayload() {
+		m.ObjectStatus, err = varint.Read(r)
 		if err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@ package wire
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/mengelbart/moqtransport/varint"
@@ -106,5 +107,101 @@ func TestParseTruncatedSubgroupHeader(t *testing.T) {
 	for i := 1; i < len(full); i++ {
 		_, err := NewParser(bytes.NewReader(full[:i]), 18, StreamTypeData).Read()
 		assert.Error(t, err, "truncated after %v bytes", i)
+	}
+}
+
+func propertyObjects() []*ObjectStream {
+	first := &ObjectStream{
+		ObjectIDDelta: 0,
+		Properties: []KeyValuePair{
+			{Type: 2, Varint: 42},
+			{Type: 1, Bytes: []byte("A")},
+		},
+		ObjectPayload: []byte("ab"),
+	}
+	second := &ObjectStream{
+		ObjectIDDelta: 3,
+		ObjectStatus:  3,
+	}
+	first.SetHasProperties(true)
+	second.SetHasProperties(true)
+	return []*ObjectStream{first, second}
+}
+
+func TestSubgroupStreamPropertiesBytes(t *testing.T) {
+	var buf bytes.Buffer
+	appender := NewAppender(&buf, 18)
+
+	header := NewSubgroupHeader(4, 7, 9, 200)
+	header.SetProperties(true)
+	require.NoError(t, appender.Write(header))
+	for _, o := range propertyObjects() {
+		require.NoError(t, appender.Write(o))
+	}
+
+	assert.Equal(t, []byte{
+		0x15, // type: bit 4 set, properties, subgroup ID mode 0b10
+		0x04, // track alias
+		0x07, // group ID
+		0x09, // subgroup ID
+		200,  // publisher priority
+
+		0x00,       // object ID delta
+		0x05,       // properties length in bytes
+		0x02, 0x2a, // property type 2: varint 42
+		0x01, 0x01, 'A', // property type 1: one byte, 'A'
+		0x02, 'a', 'b', // payload
+
+		0x03, // object ID delta
+		0x00, // properties length in bytes
+		0x00, // payload length
+		0x03, // object status
+	}, buf.Bytes())
+}
+
+func TestSubgroupStreamPropertiesRoundTrip(t *testing.T) {
+	var buf bytes.Buffer
+	appender := NewAppender(&buf, 18)
+
+	header := NewSubgroupHeader(4, 7, 9, 200)
+	header.SetProperties(true)
+	require.NoError(t, appender.Write(header))
+	for _, o := range propertyObjects() {
+		require.NoError(t, appender.Write(o))
+	}
+
+	parser := NewParser(&buf, 18, StreamTypeData)
+
+	msg, err := parser.Read()
+	require.NoError(t, err)
+	assert.Equal(t, header, msg)
+
+	// An object with no properties parses to an empty list, not a nil one.
+	want := propertyObjects()
+	want[1].Properties = []KeyValuePair{}
+
+	for _, o := range want {
+		msg, err := parser.Read()
+		require.NoError(t, err)
+		assert.Equal(t, o, msg)
+	}
+}
+
+func TestParseTruncatedObjectProperties(t *testing.T) {
+	full := []byte{
+		0x15, 0x04, 0x07, 0x09, 200,
+		0x00,                        // object ID delta
+		0x05,                        // properties length in bytes
+		0x02, 0x2a, 0x01, 0x01, 'A', // properties
+		0x02, 'a', 'b', // payload
+	}
+	for i := 6; i < len(full); i++ {
+		parser := NewParser(bytes.NewReader(full[:i]), 18, StreamTypeData)
+
+		_, err := parser.Read()
+		require.NoError(t, err, "truncated after %v bytes", i)
+
+		_, err = parser.Read()
+		assert.ErrorIs(t, err, io.ErrUnexpectedEOF, "truncated after %v bytes", i)
 	}
 }

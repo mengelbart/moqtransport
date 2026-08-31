@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestObjectDatagramParseLargePropertyCount(t *testing.T) {
+func TestObjectDatagramParseLargePropertiesLength(t *testing.T) {
 	// typ bit 0 set: the datagram claims to carry properties.
 	data := []byte{0x01, 0x00, 0x00, 0x00, 0x00}
-	data = varint.Append(data, 1<<40)
+	data = varint.Append(data, 1<<40) // properties length in bytes
 
 	m := ObjectDatagram{}
 	err := m.Parse(data)
@@ -21,7 +21,7 @@ func TestObjectDatagramParseLargePropertyCount(t *testing.T) {
 
 func TestObjectDatagramParseTruncatedProperty(t *testing.T) {
 	data := []byte{0x01, 0x00, 0x00, 0x00, 0x00}
-	data = varint.Append(data, 2)
+	data = varint.Append(data, 3) // properties length in bytes
 	data = varint.Append(data, 1) // property type 1: length-prefixed bytes
 	data = varint.Append(data, 8) // claims 8 bytes
 	data = append(data, 'A')
@@ -34,7 +34,7 @@ func TestObjectDatagramParseTruncatedProperty(t *testing.T) {
 
 func TestObjectDatagramParseProperties(t *testing.T) {
 	data := []byte{0x01, 0x04, 0x05, 0x06, 0x07}
-	data = varint.Append(data, 2)
+	data = varint.Append(data, 5) // properties length in bytes
 	data = varint.Append(data, 2) // property type 2: varint value
 	data = varint.Append(data, 42)
 	data = varint.Append(data, 1) // property type 1: length-prefixed bytes

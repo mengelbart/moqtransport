@@ -3,6 +3,8 @@ package wire
 import (
 	"errors"
 	"io"
+
+	"github.com/mengelbart/moqtransport/varint"
 )
 
 var errNoMessageLength = errors.New("message is not length delimited")
@@ -126,6 +128,9 @@ func (r *unboundedReader) ReadByte() (byte, error) {
 // its remaining budget, otherwise the buffer grows in capped chunks so that a
 // bogus length allocates only what actually arrives.
 func readBytes(r messageReader, n uint64) ([]byte, error) {
+	if n == 0 {
+		return nil, nil
+	}
 	if rem := r.remaining(); rem >= 0 {
 		if n > uint64(rem) {
 			return nil, io.ErrUnexpectedEOF
@@ -147,6 +152,19 @@ func readBytes(r messageReader, n uint64) ([]byte, error) {
 		}
 	}
 	return buf, nil
+}
+
+// tlvReader reads a byte length and returns a reader bounded to it, for a block
+// that is length delimited inside a message.
+func tlvReader(r messageReader) (*boundedReader, error) {
+	n, err := varint.Read(r)
+	if err != nil {
+		return nil, err
+	}
+	if rem := r.remaining(); rem >= 0 && n > uint64(rem) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return &boundedReader{reader: r, n: int64(n)}, nil
 }
 
 // readRemaining reads the rest of a length delimited message body.

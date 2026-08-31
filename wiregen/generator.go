@@ -120,6 +120,14 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
+	"tlv_message_list": template.Must(template.New("tlv_message_list_append").Parse(`	var {{ .Field }}Buf []byte
+	for _, v := range m.{{ .Field }} {
+		{{ .Field }}Buf = v.append{{ .Suffix }}({{ .Field }}Buf)
+	}
+	buf = varint.Append(buf, uint64(len({{ .Field }}Buf)))
+	buf = append(buf, {{ .Field }}Buf...)
+`)),
+
 	"message_list_no_length": template.Must(template.New("message_list_no_length_append").Parse(`	for _, v := range m.{{ .Field }} {
 		buf = v.append{{ .Suffix }}(buf)
 	}

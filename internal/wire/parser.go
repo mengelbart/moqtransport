@@ -199,25 +199,29 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		if err := parseMessage(m, p.unbounded, p.version); err != nil {
 			return nil, err
 		}
-		p.objectParser = newObjectMessageParser(p.unbounded, p.version)
+		p.objectParser = newObjectMessageParser(p.unbounded, p.version, m.Properties())
 		return m, nil
 	}
 }
 
 type objectMessageParser struct {
-	reader  messageReader
-	version uint64
+	reader        messageReader
+	version       uint64
+	hasProperties bool
 }
 
-func newObjectMessageParser(r messageReader, version uint64) *objectMessageParser {
+func newObjectMessageParser(r messageReader, version uint64, hasProperties bool) *objectMessageParser {
 	return &objectMessageParser{
-		reader:  r,
-		version: version,
+		reader:        r,
+		version:       version,
+		hasProperties: hasProperties,
 	}
 }
 
 func (p *objectMessageParser) parse() (*ObjectStream, error) {
-	o := &ObjectStream{}
+	o := &ObjectStream{
+		hasProperties: p.hasProperties,
+	}
 	if err := parseMessage(o, p.reader, p.version); err != nil {
 		return nil, err
 	}
