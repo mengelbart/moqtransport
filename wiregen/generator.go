@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"text/template"
 
@@ -39,14 +38,12 @@ type field struct {
 // parseField reads the proto tag, a wire kind followed by comma separated
 // modifiers. The only modifier is if=Predicate, or if=!Predicate, naming a
 // method on the message.
-func parseField(f reflect.StructField) (field, error) {
-	parts := strings.Split(f.Tag.Get("proto"), ",")
+func parseField(name, tag, elem string) (field, error) {
+	parts := strings.Split(tag, ",")
 	out := field{
-		name: f.Name,
+		name: name,
+		elem: elem,
 		kind: parts[0],
-	}
-	if f.Type.Kind() == reflect.Slice {
-		out.elem = f.Type.Elem().Name()
 	}
 	for _, mod := range parts[1:] {
 		condition, ok := strings.CutPrefix(mod, "if=")
@@ -145,7 +142,7 @@ var appenderTemplates = map[string]*template.Template{
 `)),
 }
 
-func generate(typ reflect.Type, pkg, methodSuffix string) ([]byte, error) {
+func generate(m message, pkg, methodSuffix string) ([]byte, error) {
 	g := generator{
 		pkg:          pkg,
 		methodSuffix: methodSuffix,
@@ -155,11 +152,11 @@ func generate(typ reflect.Type, pkg, methodSuffix string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = g.generateAppend(typ)
+	err = g.generateAppend(m)
 	if err != nil {
 		return nil, err
 	}
-	err = g.generateParse(typ)
+	err = g.generateParse(m)
 	if err != nil {
 		return nil, err
 	}
@@ -185,13 +182,9 @@ import (
 	return nil
 }
 
-func (g *generator) generateAppend(typ reflect.Type) error {
-	g.printf("func (m *%s) append%s(buf []byte) []byte {\n", typ.Name(), g.methodSuffix)
-	fields, err := protoFields(typ)
-	if err != nil {
-		return err
-	}
-	for _, f := range fields {
+func (g *generator) generateAppend(m message) error {
+	g.printf("func (m *%s) append%s(buf []byte) []byte {\n", m.name, g.methodSuffix)
+	for _, f := range m.fields {
 		if err := g.emit(appenderTemplates, f); err != nil {
 			return err
 		}
@@ -200,24 +193,6 @@ func (g *generator) generateAppend(typ reflect.Type) error {
 	g.printf("}\n")
 	g.printf("\n")
 	return nil
-}
-
-// protoFields returns the fields of typ that carry a proto tag, i.e. the fields
-// that are serialized on the wire.
-func protoFields(typ reflect.Type) ([]field, error) {
-	var fields []field
-	for i := range typ.NumField() {
-		f := typ.Field(i)
-		if _, ok := f.Tag.Lookup("proto"); !ok {
-			continue
-		}
-		parsed, err := parseField(f)
-		if err != nil {
-			return nil, err
-		}
-		fields = append(fields, parsed)
-	}
-	return fields, nil
 }
 
 func (g *generator) printf(format string, args ...any) {
