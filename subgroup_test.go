@@ -34,7 +34,7 @@ func TestSubgroupWriteObject(t *testing.T) {
 	for _, want := range []uint64{0, 0, 3} {
 		msg, err := parser.Read()
 		require.NoError(t, err)
-		o, ok := msg.(*wire.ObjectStream)
+		o, ok := msg.(*wire.SubgroupObject)
 		require.True(t, ok)
 		assert.Equal(t, want, o.ObjectIDDelta)
 	}

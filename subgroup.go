@@ -37,7 +37,7 @@ func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
 		}
 		delta = objectID - s.lastObjectID - 1
 	}
-	o := &wire.ObjectStream{
+	o := &wire.SubgroupObject{
 		ObjectIDDelta: delta,
 		ObjectPayload: payload,
 	}

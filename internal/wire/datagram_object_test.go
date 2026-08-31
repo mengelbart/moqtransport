@@ -8,31 +8,31 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestObjectDatagramParseLargePropertiesLength(t *testing.T) {
+func TestDatagramObjectParseLargePropertiesLength(t *testing.T) {
 	// typ bit 0 set: the datagram claims to carry properties.
 	data := []byte{0x01, 0x00, 0x00, 0x00, 0x00}
 	data = varint.Append(data, 1<<40) // properties length in bytes
 
-	m := ObjectDatagram{}
+	m := DatagramObject{}
 	err := m.Parse(data)
 	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.Empty(t, m.Properties)
 }
 
-func TestObjectDatagramParseTruncatedProperty(t *testing.T) {
+func TestDatagramObjectParseTruncatedProperty(t *testing.T) {
 	data := []byte{0x01, 0x00, 0x00, 0x00, 0x00}
 	data = varint.Append(data, 3) // properties length in bytes
 	data = varint.Append(data, 1) // property type 1: length-prefixed bytes
 	data = varint.Append(data, 8) // claims 8 bytes
 	data = append(data, 'A')
 
-	m := ObjectDatagram{}
+	m := DatagramObject{}
 	err := m.Parse(data)
 	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 	assert.Empty(t, m.Properties)
 }
 
-func TestObjectDatagramParseProperties(t *testing.T) {
+func TestDatagramObjectParseProperties(t *testing.T) {
 	data := []byte{0x01, 0x04, 0x05, 0x06, 0x07}
 	data = varint.Append(data, 5) // properties length in bytes
 	data = varint.Append(data, 1) // delta 1, type 1: length-prefixed bytes
@@ -42,7 +42,7 @@ func TestObjectDatagramParseProperties(t *testing.T) {
 	data = varint.Append(data, 42)
 	data = append(data, "payload"...)
 
-	m := ObjectDatagram{}
+	m := DatagramObject{}
 	err := m.Parse(data)
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(4), m.TrackAlias)

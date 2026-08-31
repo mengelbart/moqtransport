@@ -34,7 +34,7 @@ func encodeDataStream(t *testing.T, trackAlias, groupID, subgroupID uint64, obje
 	appender := wire.NewAppender(&buf, 18)
 	require.NoError(t, appender.Write(wire.NewSubgroupHeader(trackAlias, groupID, subgroupID, 0)))
 	for _, o := range objects {
-		require.NoError(t, appender.Write(&wire.ObjectStream{
+		require.NoError(t, appender.Write(&wire.SubgroupObject{
 			ObjectIDDelta: o.delta,
 			ObjectPayload: []byte(o.payload),
 		}))
@@ -43,7 +43,7 @@ func encodeDataStream(t *testing.T, trackAlias, groupID, subgroupID uint64, obje
 }
 
 func encodeDatagram(trackAlias, groupID, objectID uint64, payload string) []byte {
-	msg := &wire.ObjectDatagram{
+	msg := &wire.DatagramObject{
 		TrackAlias:    trackAlias,
 		GroupID:       groupID,
 		ObjectID:      objectID,

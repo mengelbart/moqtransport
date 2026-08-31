@@ -4,7 +4,7 @@ package wire
 
 import "github.com/mengelbart/moqtransport/varint"
 
-func (m *ObjectStream) append_v18(buf []byte) []byte {
+func (m *SubgroupObject) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.ObjectIDDelta))
 	if m.HasProperties() {
 		PropertiesBuf := appendKeyValuePairs_v18(nil, m.Properties)
@@ -19,7 +19,7 @@ func (m *ObjectStream) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *ObjectStream) parse_v18(r messageReader) error {
+func (m *SubgroupObject) parse_v18(r messageReader) error {
 	var err error
 
 	m.ObjectIDDelta, err = varint.Read(r)
