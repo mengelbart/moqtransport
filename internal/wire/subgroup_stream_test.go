@@ -45,7 +45,7 @@ func TestSubgroupStreamRoundTrip(t *testing.T) {
 		require.NoError(t, appender.Write(o))
 	}
 
-	parser := NewParser(&buf, 18, StreamTypeData)
+	parser := mustParser(t, &buf, 18, StreamTypeData)
 
 	msg, err := parser.Read()
 	require.NoError(t, err)
@@ -67,7 +67,7 @@ func TestSubgroupStreamDefaultPriority(t *testing.T) {
 
 	assert.Equal(t, []byte{0x34, 0x04, 0x07, 0x09}, buf.Bytes())
 
-	msg, err := NewParser(&buf, 18, StreamTypeData).Read()
+	msg, err := mustParser(t, &buf, 18, StreamTypeData).Read()
 	require.NoError(t, err)
 	assert.Equal(t, &SubgroupHeader{typ: 0x34, TrackAlias: 4, GroupID: 7, SubgroupID: 9}, msg)
 }
@@ -78,7 +78,7 @@ func TestFetchHeaderRoundTrip(t *testing.T) {
 
 	assert.Equal(t, []byte{0x05, 0x2a}, buf.Bytes())
 
-	msg, err := NewParser(&buf, 18, StreamTypeData).Read()
+	msg, err := mustParser(t, &buf, 18, StreamTypeData).Read()
 	require.NoError(t, err)
 	assert.Equal(t, &FetchHeader{RequestID: 42}, msg)
 }
@@ -96,7 +96,7 @@ func TestParseInvalidDataStreamType(t *testing.T) {
 			buf := varint.Append(nil, typ)
 			buf = append(buf, 0x04, 0x07, 0x09, 0x00)
 
-			_, err := NewParser(bytes.NewReader(buf), 18, StreamTypeData).Read()
+			_, err := mustParser(t, bytes.NewReader(buf), 18, StreamTypeData).Read()
 			assert.Error(t, err)
 		})
 	}
@@ -105,7 +105,7 @@ func TestParseInvalidDataStreamType(t *testing.T) {
 func TestParseTruncatedSubgroupHeader(t *testing.T) {
 	full := []byte{0x14, 0x04, 0x07, 0x09, 200}
 	for i := 1; i < len(full); i++ {
-		_, err := NewParser(bytes.NewReader(full[:i]), 18, StreamTypeData).Read()
+		_, err := mustParser(t, bytes.NewReader(full[:i]), 18, StreamTypeData).Read()
 		assert.Error(t, err, "truncated after %v bytes", i)
 	}
 }
@@ -170,7 +170,7 @@ func TestSubgroupStreamPropertiesRoundTrip(t *testing.T) {
 		require.NoError(t, appender.Write(o))
 	}
 
-	parser := NewParser(&buf, 18, StreamTypeData)
+	parser := mustParser(t, &buf, 18, StreamTypeData)
 
 	msg, err := parser.Read()
 	require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestParseTruncatedObjectProperties(t *testing.T) {
 		0x02, 'a', 'b', // payload
 	}
 	for i := 6; i < len(full); i++ {
-		parser := NewParser(bytes.NewReader(full[:i]), 18, StreamTypeData)
+		parser := mustParser(t, bytes.NewReader(full[:i]), 18, StreamTypeData)
 
 		_, err := parser.Read()
 		require.NoError(t, err, "truncated after %v bytes", i)

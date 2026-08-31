@@ -273,7 +273,8 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	br := bufio.NewReader(stream)
 	firstVarint, err := peekFirstVarint(br)
 	if err != nil {
-		// Ignore stream
+		s.logger.Error("failed to peek first varint of stream", "streamID", stream.StreamID(), "error", err)
+		stream.Stop(uint32(StreamResetErrorCodeInternal))
 		return
 	}
 	typ, _, err := varint.Parse(firstVarint)
@@ -289,7 +290,12 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 	s.logger.Debug("got stream type", "streamID", stream.StreamID(), "streamType", streamType)
 
-	parser := wire.NewParser(br, uint64(s.version), streamType)
+	parser, err := wire.NewParser(br, uint64(s.version), streamType)
+	if err != nil {
+		s.logger.Error("failed to create parser", "streamID", stream.StreamID(), "error", err)
+		stream.Stop(uint32(StreamResetErrorCodeInternal))
+		return
+	}
 	msg, err := parser.Read()
 	if err != nil {
 		s.logger.Error("error while reading message", "streamID", stream.StreamID(), "error", err, "typ", typ)
@@ -376,10 +382,16 @@ func (s *Session) handleBidiStream(stream Stream) {
 		}
 	})
 
-	parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	parser, err := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	if err != nil {
+		stream.Stop(uint32(StreamResetErrorCodeInternal))
+		stream.Reset(uint32(StreamResetErrorCodeInternal))
+		return
+	}
 	msg, err := parser.Read()
 	if err != nil {
-		// Ignore stream
+		stream.Stop(uint32(StreamResetErrorCodeInternal))
+		stream.Reset(uint32(StreamResetErrorCodeInternal))
 		return
 	}
 	switch m := msg.(type) {
@@ -488,7 +500,10 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 	s.logger.Debug("opened new stream for subscribe request", "requestID", requestID, "namespace", namespace, "name", name)
-	parser := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	parser, err := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	if err != nil {
+		return nil, err
+	}
 	appender := wire.NewAppender(stream, uint64(s.version))
 
 	request, err := newOutgoingSubscribeRequest(requestID, s, appender, parser, namespace, []byte(name))

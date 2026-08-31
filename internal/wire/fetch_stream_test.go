@@ -112,7 +112,7 @@ func TestFetchStreamRoundTrip(t *testing.T) {
 		require.NoError(t, appender.Write(o))
 	}
 
-	parser := NewParser(&buf, 18, StreamTypeData)
+	parser := mustParser(t, &buf, 18, StreamTypeData)
 
 	msg, err := parser.Read()
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestParseInvalidSerializationFlags(t *testing.T) {
 			buf = varint.Append(buf, tc.flags)
 			buf = append(buf, tc.fields...)
 
-			parser := NewParser(bytes.NewReader(buf), 18, StreamTypeData)
+			parser := mustParser(t, bytes.NewReader(buf), 18, StreamTypeData)
 
 			_, err := parser.Read()
 			require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestParseTruncatedFetchObject(t *testing.T) {
 		0x02, 'a', 'b', // payload
 	}
 	for i := 3; i < len(full); i++ {
-		parser := NewParser(bytes.NewReader(full[:i]), 18, StreamTypeData)
+		parser := mustParser(t, bytes.NewReader(full[:i]), 18, StreamTypeData)
 
 		_, err := parser.Read()
 		require.NoError(t, err, "truncated after %v bytes", i)
@@ -186,7 +186,7 @@ func TestParseFetchObjectLargePropertiesLength(t *testing.T) {
 	buf = append(buf, 0x20)   // flags: properties present
 	buf = varint.Append(buf, 1<<40)
 
-	parser := NewParser(bytes.NewReader(buf), 18, StreamTypeData)
+	parser := mustParser(t, bytes.NewReader(buf), 18, StreamTypeData)
 
 	_, err := parser.Read()
 	require.NoError(t, err)
