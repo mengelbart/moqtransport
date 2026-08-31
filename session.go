@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	errMissingPathParameter    = errors.New("missing path parameter")                               //nolint:unused
-	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection") //nolint:unused
+	errMissingPathParameter    = errors.New("missing path parameter")
+	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection")
 )
 
 type controlMessageReader interface {
@@ -53,6 +53,7 @@ type Session struct {
 	controlStreamLock   sync.Mutex
 	remoteControlStream *remoteControlStream
 	localControlStream  *localControlStream
+	remotePath          string
 
 	handler Handler
 
@@ -139,7 +140,13 @@ func (s *Session) Context() context.Context {
 }
 
 func (s *Session) sendSetup() {
-	if err := s.localControlStream.write(&wire.Setup{}); err != nil {
+	setup := &wire.Setup{}
+	if s.conn.Protocol() == ProtocolQUIC {
+		setup.Options = []wire.KeyValuePair{
+			{Type: wire.PathParameterKey, Bytes: []byte(s.path)},
+		}
+	}
+	if err := s.localControlStream.write(setup); err != nil {
 		s.handleReaderError(err)
 		return
 	}
@@ -291,8 +298,13 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 	switch m := msg.(type) {
 	case *wire.Setup:
+		path, err := validatePathParameter(m.Options, s.conn.Protocol() == ProtocolQUIC)
+		if err != nil {
+			s.closeWithError(&SessionError{Code: uint64(ErrorCodeInvalidPath), Reason: err.Error(), Remote: false})
+			return
+		}
 		rcs := newRemoteControlStream(m, parser, s)
-		if !s.setRemoteControlStream(rcs) {
+		if !s.setRemoteControlStream(rcs, path) {
 			s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: "duplicate control stream", Remote: false})
 			return
 		}
@@ -306,14 +318,24 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 }
 
-func (s *Session) setRemoteControlStream(rcs *remoteControlStream) bool {
+func (s *Session) setRemoteControlStream(rcs *remoteControlStream, path string) bool {
 	s.controlStreamLock.Lock()
 	defer s.controlStreamLock.Unlock()
 	if s.remoteControlStream != nil {
 		return false
 	}
 	s.remoteControlStream = rcs
+	s.remotePath = path
 	return true
+}
+
+// Path returns the path the peer sent in its SETUP message. It is only
+// populated for QUIC connections, since WebTransport conveys the path in the
+// HTTP request instead. It is empty until the peer's SETUP has been received.
+func (s *Session) Path() string {
+	s.controlStreamLock.Lock()
+	defer s.controlStreamLock.Unlock()
+	return s.remotePath
 }
 
 func peekFirstVarint(br *bufio.Reader) ([]byte, error) {

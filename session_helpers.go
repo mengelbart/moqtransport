@@ -6,7 +6,6 @@ import (
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-//nolint:unused
 func validatePathParameter(setupParameters []wire.KeyValuePair, protocolIsQUIC bool) (string, error) {
 	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
 		return p.Type == wire.PathParameterKey

@@ -258,6 +258,14 @@ func encodeControlMessage(t *testing.T, msg wire.ControlMessage) []byte {
 	return buf.Bytes()
 }
 
+func setupWithPath(path string) *wire.Setup {
+	return &wire.Setup{
+		Options: []wire.KeyValuePair{
+			{Type: wire.PathParameterKey, Bytes: []byte(path)},
+		},
+	}
+}
+
 // The remote control stream reader must not panic when the session is closed,
 // and CloseWithError must not return before it is done.
 func TestCloseSessionWithRemoteControlStreamReader(t *testing.T) {
@@ -265,7 +273,7 @@ func TestCloseSessionWithRemoteControlStreamReader(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	reader := conn.acceptUniStream(encodeControlMessage(t, &wire.Setup{}))
+	reader := conn.acceptUniStream(encodeControlMessage(t, setupWithPath("/path")))
 	<-reader.drained
 
 	session.CloseWithError(0, "closing")
