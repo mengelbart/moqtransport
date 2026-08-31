@@ -5,44 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"reflect"
 	"regexp"
 	"strings"
-
-	"github.com/mengelbart/moqtransport/internal/wire"
 )
-
-var msgs = []any{
-	wire.Setup{},
-	wire.GoAwayCtrl{},
-	wire.GoAwayReq{},
-	wire.Subscribe{},
-	wire.SubscribeOk{},
-	wire.Publish{},
-	wire.PublishOk{},
-	wire.PublishDone{},
-	wire.Fetch{},
-	wire.FetchOk{},
-	wire.TrackStatus{},
-	wire.PublishNamespace{},
-	wire.SubscribeNamespace{},
-	wire.SubscribeTracks{},
-	wire.Namespace{},
-	wire.NamespaceDone{},
-	wire.PublishBlocked{},
-	wire.RequestUpdate{},
-	wire.RequestOk{},
-	wire.RequestError{},
-
-	wire.FetchHeader{},
-	wire.Padding{},
-
-	wire.SubgroupHeader{},
-	wire.ObjectDatagram{},
-
-	wire.KeyValuePair{},
-	wire.Location{},
-}
 
 var (
 	matchFirstCap = regexp.MustCompile("(.)([A-Z][a-z]+)")
@@ -57,17 +22,21 @@ func toSnakeCase(str string) string {
 
 func main() {
 	version := flag.Int("version", 18, "version suffix for generated files and methods")
-	directory := flag.String("dir", ".", "directory to save the generated files")
+	directory := flag.String("dir", ".", "directory to read the messages from and save the generated files to")
 	flag.Parse()
 
+	pkg, msgs, err := loadPackage(*directory)
+	if err != nil {
+		panic(err)
+	}
+
 	for _, m := range msgs {
-		mt := reflect.TypeOf(m)
-		format, err := generate(mt, "wire", fmt.Sprintf("_v%v", *version))
+		format, err := generate(m, pkg, fmt.Sprintf("_v%v", *version))
 		if err != nil {
 			panic(err)
 		}
 
-		filename := toSnakeCase(mt.Name()) + fmt.Sprintf("_v%v", *version) + ".go"
+		filename := toSnakeCase(m.name) + fmt.Sprintf("_v%v", *version) + ".go"
 		filename = path.Join(*directory, filename)
 		fmt.Println(filename)
 

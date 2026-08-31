@@ -237,6 +237,7 @@ func (m *FetchHeader) Type() ControlMessageType {
 	return ControlMessageTypeFetchHeader
 }
 
+// wiregen:message
 type Padding struct {
 }
 

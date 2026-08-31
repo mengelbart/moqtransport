@@ -1,7 +1,6 @@
 package main
 
 import (
-	"reflect"
 	"text/template"
 )
 
@@ -125,19 +124,14 @@ var parserTemplates = map[string]*template.Template{
 `)),
 }
 
-func (g *generator) generateParse(typ reflect.Type) error {
-	fields, err := protoFields(typ)
-	if err != nil {
-		return err
-	}
+func (g *generator) generateParse(m message) error {
+	g.printf("func (m *%s) parse%s(r messageReader) error {\n", m.name, g.methodSuffix)
 
-	g.printf("func (m *%s) parse%s(r messageReader) error {\n", typ.Name(), g.methodSuffix)
-
-	if len(fields) > 0 {
+	if len(m.fields) > 0 {
 		g.printf("	var err error\n\n")
 	}
 
-	for _, f := range fields {
+	for _, f := range m.fields {
 		if err := g.emit(parserTemplates, f); err != nil {
 			return err
 		}
