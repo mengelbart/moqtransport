@@ -114,8 +114,8 @@ func propertyObjects() []*ObjectStream {
 	first := &ObjectStream{
 		ObjectIDDelta: 0,
 		Properties: []KeyValuePair{
-			{Type: 2, Varint: 42},
 			{Type: 1, Bytes: []byte("A")},
+			{Type: 2, Varint: 42},
 		},
 		ObjectPayload: []byte("ab"),
 	}
@@ -146,10 +146,10 @@ func TestSubgroupStreamPropertiesBytes(t *testing.T) {
 		0x09, // subgroup ID
 		200,  // publisher priority
 
-		0x00,       // object ID delta
-		0x05,       // properties length in bytes
-		0x02, 0x2a, // property type 2: varint 42
-		0x01, 0x01, 'A', // property type 1: one byte, 'A'
+		0x00,            // object ID delta
+		0x05,            // properties length in bytes
+		0x01, 0x01, 'A', // property type delta 1, type 1: one byte, 'A'
+		0x01, 0x2a, // property type delta 1, type 2: varint 42
 		0x02, 'a', 'b', // payload
 
 		0x03, // object ID delta

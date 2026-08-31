@@ -94,48 +94,21 @@ var parserTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"message_list": template.Must(template.New("message_list_parse").Parse(`	var num{{ .Field }} uint64
-	num{{ .Field }}, err = varint.Read(r)
+	"kvp_list": template.Must(template.New("kvp_list_parse").Parse(`	m.{{ .Field }}, err = parseKeyValuePairsCount{{ .Suffix }}(r)
 	if err != nil {
 		return err
 	}
-
-	m.{{ .Field }} = make([]{{ .Elem }}, 0)
-	for range num{{ .Field }} {
-		var value {{ .Elem }}
-		if err = value.parse{{ .Suffix }}(r); err != nil {
-			return err
-		}
-		m.{{ .Field }} = append(m.{{ .Field }}, value)
-	}
 `)),
 
-	"tlv_message_list": template.Must(template.New("tlv_message_list_parse").Parse(`	var {{ .Field }}Reader *boundedReader
-	{{ .Field }}Reader, err = tlvReader(r)
+	"kvp_list_tlv": template.Must(template.New("kvp_list_tlv_parse").Parse(`	m.{{ .Field }}, err = parseKeyValuePairsTLV{{ .Suffix }}(r)
 	if err != nil {
 		return err
 	}
-
-	m.{{ .Field }} = make([]{{ .Elem }}, 0)
-	for {{ .Field }}Reader.remaining() > 0 {
-		var value {{ .Elem }}
-		if err = value.parse{{ .Suffix }}({{ .Field }}Reader); err != nil {
-			return err
-		}
-		m.{{ .Field }} = append(m.{{ .Field }}, value)
-	}
 `)),
 
-	"message_list_no_length": template.Must(template.New("message_list_no_length_parse").Parse(`	if r.remaining() < 0 {
-		return errNoMessageLength
-	}
-	m.{{ .Field }} = make([]{{ .Elem }}, 0)
-	for r.remaining() > 0 {
-		var value {{ .Elem }}
-		if err = value.parse{{ .Suffix }}(r); err != nil {
-			return err
-		}
-		m.{{ .Field }} = append(m.{{ .Field }}, value)
+	"kvp_list_remaining": template.Must(template.New("kvp_list_remaining_parse").Parse(`	m.{{ .Field }}, err = parseKeyValuePairsRemaining{{ .Suffix }}(r)
+	if err != nil {
+		return err
 	}
 `)),
 }

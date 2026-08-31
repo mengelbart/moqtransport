@@ -114,23 +114,16 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"message_list": template.Must(template.New("message_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
-	for _, v := range m.{{ .Field }} {
-		buf = v.append{{ .Suffix }}(buf)
-	}
+	"kvp_list": template.Must(template.New("kvp_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
+	buf = appendKeyValuePairs{{ .Suffix }}(buf, m.{{ .Field }})
 `)),
 
-	"tlv_message_list": template.Must(template.New("tlv_message_list_append").Parse(`	var {{ .Field }}Buf []byte
-	for _, v := range m.{{ .Field }} {
-		{{ .Field }}Buf = v.append{{ .Suffix }}({{ .Field }}Buf)
-	}
+	"kvp_list_tlv": template.Must(template.New("kvp_list_tlv_append").Parse(`	{{ .Field }}Buf := appendKeyValuePairs{{ .Suffix }}(nil, m.{{ .Field }})
 	buf = varint.Append(buf, uint64(len({{ .Field }}Buf)))
 	buf = append(buf, {{ .Field }}Buf...)
 `)),
 
-	"message_list_no_length": template.Must(template.New("message_list_no_length_append").Parse(`	for _, v := range m.{{ .Field }} {
-		buf = v.append{{ .Suffix }}(buf)
-	}
+	"kvp_list_remaining": template.Must(template.New("kvp_list_remaining_append").Parse(`	buf = appendKeyValuePairs{{ .Suffix }}(buf, m.{{ .Field }})
 `)),
 
 	"byte": template.Must(template.New("byte_append").Parse(`	buf = append(buf, m.{{ .Field }})

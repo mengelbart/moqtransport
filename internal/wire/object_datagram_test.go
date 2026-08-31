@@ -35,11 +35,11 @@ func TestObjectDatagramParseTruncatedProperty(t *testing.T) {
 func TestObjectDatagramParseProperties(t *testing.T) {
 	data := []byte{0x01, 0x04, 0x05, 0x06, 0x07}
 	data = varint.Append(data, 5) // properties length in bytes
-	data = varint.Append(data, 2) // property type 2: varint value
-	data = varint.Append(data, 42)
-	data = varint.Append(data, 1) // property type 1: length-prefixed bytes
+	data = varint.Append(data, 1) // delta 1, type 1: length-prefixed bytes
 	data = varint.Append(data, 1)
 	data = append(data, 'A')
+	data = varint.Append(data, 1) // delta 1, type 2: varint value
+	data = varint.Append(data, 42)
 	data = append(data, "payload"...)
 
 	m := ObjectDatagram{}
@@ -50,8 +50,8 @@ func TestObjectDatagramParseProperties(t *testing.T) {
 	assert.Equal(t, uint64(6), m.ObjectID)
 	assert.Equal(t, uint8(7), m.PublisherPriority)
 	assert.Equal(t, []KeyValuePair{
-		{Type: 2, Varint: 42},
 		{Type: 1, Bytes: []byte("A")},
+		{Type: 2, Varint: 42},
 	}, m.Properties)
 	assert.Equal(t, []byte("payload"), m.ObjectPayload)
 }
