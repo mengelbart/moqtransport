@@ -46,22 +46,22 @@ func parseMessage(m ControlMessage, r messageReader, version uint64) error {
 }
 
 type Parser struct {
-	bounded      *boundedReader
-	unbounded    *unboundedReader
-	version      uint64
-	streamType   StreamType
-	objectParser *objectMessageParser
-	closed       error
+	bounded    *boundedReader
+	unbounded  *unboundedReader
+	version    uint64
+	streamType StreamType
+	objects    objectParser
+	closed     error
 }
 
 func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 	reader := bufio.NewReader(r)
 	return &Parser{
-		bounded:      &boundedReader{reader: reader},
-		unbounded:    &unboundedReader{reader: reader},
-		version:      version,
-		streamType:   streamType,
-		objectParser: nil,
+		bounded:    &boundedReader{reader: reader},
+		unbounded:  &unboundedReader{reader: reader},
+		version:    version,
+		streamType: streamType,
+		objects:    nil,
 	}
 }
 
@@ -71,8 +71,8 @@ func (p *Parser) Read() (ControlMessage, error) {
 	}
 	p.unbounded.reset()
 
-	if p.objectParser != nil {
-		return p.objectParser.parse()
+	if p.objects != nil {
+		return p.objects.parse()
 	}
 	mt, err := varint.Read(p.unbounded)
 	if err != nil {
@@ -186,8 +186,10 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		if err := parseMessage(m, p.unbounded, p.version); err != nil {
 			return nil, err
 		}
-		// TODO: Parse fetch objects.
-		p.closed = fmt.Errorf("Read called on parser after %T, which starts no object sequence", m)
+		p.objects = &fetchObjectParser{
+			reader:  p.unbounded,
+			version: p.version,
+		}
 		return m, nil
 
 	case ControlMessageTypePadding:
@@ -205,28 +207,48 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		if err := parseMessage(m, p.unbounded, p.version); err != nil {
 			return nil, err
 		}
-		p.objectParser = newObjectMessageParser(p.unbounded, p.version, m.Properties())
+		p.objects = &subgroupObjectParser{
+			reader:        p.unbounded,
+			version:       p.version,
+			hasProperties: m.Properties(),
+		}
 		return m, nil
 	}
 }
 
-type objectMessageParser struct {
+// objectParser reads the objects that follow a data stream header.
+type objectParser interface {
+	parse() (ControlMessage, error)
+}
+
+type subgroupObjectParser struct {
 	reader        messageReader
 	version       uint64
 	hasProperties bool
 }
 
-func newObjectMessageParser(r messageReader, version uint64, hasProperties bool) *objectMessageParser {
-	return &objectMessageParser{
-		reader:        r,
-		version:       version,
-		hasProperties: hasProperties,
+func (p *subgroupObjectParser) parse() (ControlMessage, error) {
+	o := &SubgroupObject{
+		hasProperties: p.hasProperties,
 	}
+	if err := parseMessage(o, p.reader, p.version); err != nil {
+		return nil, err
+	}
+	return o, nil
 }
 
-func (p *objectMessageParser) parse() (*ObjectStream, error) {
-	o := &ObjectStream{
-		hasProperties: p.hasProperties,
+type fetchObjectParser struct {
+	reader  messageReader
+	version uint64
+}
+
+func (p *fetchObjectParser) parse() (ControlMessage, error) {
+	flags, err := varint.Read(p.reader)
+	if err != nil {
+		return nil, err
+	}
+	o := &FetchObject{
+		flags: flags,
 	}
 	if err := parseMessage(o, p.reader, p.version); err != nil {
 		return nil, err

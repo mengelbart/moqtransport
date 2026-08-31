@@ -6,7 +6,7 @@ import (
 	"github.com/mengelbart/moqtransport/varint"
 )
 
-type ObjectDatagram struct {
+type DatagramObject struct {
 	typ               uint64
 	TrackAlias        uint64         `proto:"varint"`
 	GroupID           uint64         `proto:"varint"`
@@ -17,56 +17,56 @@ type ObjectDatagram struct {
 	ObjectPayload     []byte         `proto:"remaining_bytes,if=!Status"`
 }
 
-func (m *ObjectDatagram) Type() ControlMessageType {
+func (m *DatagramObject) Type() ControlMessageType {
 	return ControlMessageType(m.typ)
 }
 
-func (m *ObjectDatagram) HasProperties() bool {
+func (m *DatagramObject) HasProperties() bool {
 	return getBit(m.typ, 0)
 }
 
-func (m *ObjectDatagram) SetHasProperties(v bool) {
+func (m *DatagramObject) SetHasProperties(v bool) {
 	m.typ = setBit(m.typ, 0, v)
 }
 
-func (m *ObjectDatagram) EndOfGroup() bool {
+func (m *DatagramObject) EndOfGroup() bool {
 	return getBit(m.typ, 1)
 }
 
-func (m *ObjectDatagram) SetEndOfGroup(v bool) {
+func (m *DatagramObject) SetEndOfGroup(v bool) {
 	m.typ = setBit(m.typ, 1, v)
 }
 
-func (m *ObjectDatagram) ZeroObjectID() bool {
+func (m *DatagramObject) ZeroObjectID() bool {
 	return getBit(m.typ, 2)
 }
 
-func (m *ObjectDatagram) SetZeroObjectID(v bool) {
+func (m *DatagramObject) SetZeroObjectID(v bool) {
 	m.typ = setBit(m.typ, 2, v)
 }
 
-func (m *ObjectDatagram) DefaultPriority() bool {
+func (m *DatagramObject) DefaultPriority() bool {
 	return getBit(m.typ, 3)
 }
 
-func (m *ObjectDatagram) SetDefaultPriority(v bool) {
+func (m *DatagramObject) SetDefaultPriority(v bool) {
 	m.typ = setBit(m.typ, 3, v)
 }
 
-func (m *ObjectDatagram) Status() bool {
+func (m *DatagramObject) Status() bool {
 	return getBit(m.typ, 5)
 }
 
-func (m *ObjectDatagram) SetStatus(v bool) {
+func (m *DatagramObject) SetStatus(v bool) {
 	m.typ = setBit(m.typ, 5, v)
 }
 
-func (m *ObjectDatagram) AppendDatagram(buf []byte) []byte {
+func (m *DatagramObject) AppendDatagram(buf []byte) []byte {
 	buf = varint.Append(buf, m.typ)
 	return m.append_v18(buf)
 }
 
-func (m *ObjectDatagram) Parse(data []byte) error {
+func (m *DatagramObject) Parse(data []byte) error {
 	br := bytes.NewReader(data)
 
 	typ, err := varint.Read(br)

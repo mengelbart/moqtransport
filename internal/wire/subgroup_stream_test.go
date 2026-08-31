@@ -15,8 +15,8 @@ func TestSubgroupStreamBytes(t *testing.T) {
 	appender := NewAppender(&buf, 18)
 
 	require.NoError(t, appender.Write(NewSubgroupHeader(4, 7, 9, 200)))
-	require.NoError(t, appender.Write(&ObjectStream{ObjectIDDelta: 0, ObjectPayload: []byte("ab")}))
-	require.NoError(t, appender.Write(&ObjectStream{ObjectIDDelta: 3, ObjectPayload: []byte("c")}))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 0, ObjectPayload: []byte("ab")}))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 3, ObjectPayload: []byte("c")}))
 
 	assert.Equal(t, []byte{
 		0x14, // type: bit 4 set, subgroup ID mode 0b10
@@ -36,7 +36,7 @@ func TestSubgroupStreamRoundTrip(t *testing.T) {
 	header := NewSubgroupHeader(4, 7, 9, 200)
 	require.NoError(t, appender.Write(header))
 
-	objects := []*ObjectStream{
+	objects := []*SubgroupObject{
 		{ObjectIDDelta: 0, ObjectPayload: []byte("hello")},
 		{ObjectIDDelta: 3, ObjectPayload: []byte("world")},
 		{ObjectIDDelta: 0, ObjectStatus: 3},
@@ -110,8 +110,8 @@ func TestParseTruncatedSubgroupHeader(t *testing.T) {
 	}
 }
 
-func propertyObjects() []*ObjectStream {
-	first := &ObjectStream{
+func propertyObjects() []*SubgroupObject {
+	first := &SubgroupObject{
 		ObjectIDDelta: 0,
 		Properties: []KeyValuePair{
 			{Type: 1, Bytes: []byte("A")},
@@ -119,13 +119,13 @@ func propertyObjects() []*ObjectStream {
 		},
 		ObjectPayload: []byte("ab"),
 	}
-	second := &ObjectStream{
+	second := &SubgroupObject{
 		ObjectIDDelta: 3,
 		ObjectStatus:  3,
 	}
 	first.SetHasProperties(true)
 	second.SetHasProperties(true)
-	return []*ObjectStream{first, second}
+	return []*SubgroupObject{first, second}
 }
 
 func TestSubgroupStreamPropertiesBytes(t *testing.T) {

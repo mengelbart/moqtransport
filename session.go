@@ -239,7 +239,7 @@ func (s *Session) readDatagrams() {
 			s.closeWithError(err)
 			return
 		}
-		msg := new(wire.ObjectDatagram)
+		msg := new(wire.DatagramObject)
 		if err = msg.Parse(dgram); err != nil {
 			s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("failed to parse datagram: %v", err), Remote: false})
 			return
@@ -420,7 +420,7 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMess
 			}
 			return
 		}
-		o, ok := m.(*wire.ObjectStream)
+		o, ok := m.(*wire.SubgroupObject)
 		if !ok {
 			s.closeWithError(&SessionError{
 				Code:   uint64(ErrorCodeProtocolViolation),
@@ -459,7 +459,7 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMess
 	}
 }
 
-func (s *Session) receiveDatagram(msg *wire.ObjectDatagram) {
+func (s *Session) receiveDatagram(msg *wire.DatagramObject) {
 	payload := make([]byte, len(msg.ObjectPayload))
 	copy(payload, msg.ObjectPayload)
 	s.pushObject(msg.TrackAlias, &Object{

@@ -13,8 +13,7 @@ func getBit(x uint64, bit uint) bool {
 	return (x & (1 << bit)) != 0
 }
 
-// Bit positions of the flags in the subgroup header type, draft-18 Section
-// 11.4.2.
+// Bit positions of the flags in the subgroup header type.
 const (
 	subgroupBitProperties      uint = 0
 	subgroupBitSubgroupIDMode  uint = 1 // two bits wide

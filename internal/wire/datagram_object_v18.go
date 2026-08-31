@@ -4,7 +4,7 @@ package wire
 
 import "github.com/mengelbart/moqtransport/varint"
 
-func (m *ObjectDatagram) append_v18(buf []byte) []byte {
+func (m *DatagramObject) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.TrackAlias))
 	buf = varint.Append(buf, uint64(m.GroupID))
 	if !m.ZeroObjectID() {
@@ -27,7 +27,7 @@ func (m *ObjectDatagram) append_v18(buf []byte) []byte {
 	return buf
 }
 
-func (m *ObjectDatagram) parse_v18(r messageReader) error {
+func (m *DatagramObject) parse_v18(r messageReader) error {
 	var err error
 
 	m.TrackAlias, err = varint.Read(r)

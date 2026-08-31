@@ -1,6 +1,6 @@
 package wire
 
-type ObjectStream struct {
+type SubgroupObject struct {
 	hasProperties bool
 
 	ObjectIDDelta uint64         `proto:"varint"`
@@ -9,18 +9,18 @@ type ObjectStream struct {
 	ObjectStatus  uint64         `proto:"varint,if=EmptyPayload"`
 }
 
-func (m *ObjectStream) Type() ControlMessageType {
+func (m *SubgroupObject) Type() ControlMessageType {
 	return 0
 }
 
-func (m *ObjectStream) HasProperties() bool {
+func (m *SubgroupObject) HasProperties() bool {
 	return m.hasProperties
 }
 
-func (m *ObjectStream) SetHasProperties(v bool) {
+func (m *SubgroupObject) SetHasProperties(v bool) {
 	m.hasProperties = v
 }
 
-func (m *ObjectStream) EmptyPayload() bool {
+func (m *SubgroupObject) EmptyPayload() bool {
 	return len(m.ObjectPayload) == 0
 }

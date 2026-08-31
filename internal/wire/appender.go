@@ -25,10 +25,11 @@ func (a *Appender) Write(msg ControlMessage) error {
 	buf := make([]byte, 0, 4096)
 
 	switch msg.(type) {
-	case *ObjectStream:
-		// Objects on a data stream are written without type and length.
-	case *SubgroupHeader, *FetchHeader, *Padding:
-		// Data stream headers are written with a type but without a length.
+	case *SubgroupObject:
+		// Objects on a subgroup stream are written without type and length.
+	case *SubgroupHeader, *FetchHeader, *Padding, *FetchObject:
+		// Data stream headers are written with a type but without a length, and
+		// a fetch object with its serialization flags in place of a type.
 		buf = varint.Append(buf, uint64(msg.Type()))
 	default:
 		return a.writeControlMessage(buf, msg)
