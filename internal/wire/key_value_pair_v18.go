@@ -5,7 +5,6 @@ package wire
 import "github.com/mengelbart/moqtransport/varint"
 
 func (m *KeyValuePair) append_v18(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(m.Type))
 	if m.hasBytes() {
 		buf = varint.Append(buf, uint64(len(m.Bytes)))
 		buf = append(buf, m.Bytes...)
@@ -18,11 +17,6 @@ func (m *KeyValuePair) append_v18(buf []byte) []byte {
 
 func (m *KeyValuePair) parse_v18(r messageReader) error {
 	var err error
-
-	m.Type, err = varint.Read(r)
-	if err != nil {
-		return err
-	}
 
 	if m.hasBytes() {
 		var BytesLength uint64

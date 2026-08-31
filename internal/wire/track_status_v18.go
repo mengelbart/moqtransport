@@ -14,9 +14,7 @@ func (m *TrackStatus) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(len(m.TrackName)))
 	buf = append(buf, m.TrackName...)
 	buf = varint.Append(buf, uint64(len(m.Parameters)))
-	for _, v := range m.Parameters {
-		buf = v.append_v18(buf)
-	}
+	buf = appendKeyValuePairs_v18(buf, m.Parameters)
 	return buf
 }
 
@@ -61,19 +59,9 @@ func (m *TrackStatus) parse_v18(r messageReader) error {
 		return err
 	}
 
-	var numParameters uint64
-	numParameters, err = varint.Read(r)
+	m.Parameters, err = parseKeyValuePairsCount_v18(r)
 	if err != nil {
 		return err
-	}
-
-	m.Parameters = make([]KeyValuePair, 0)
-	for range numParameters {
-		var value KeyValuePair
-		if err = value.parse_v18(r); err != nil {
-			return err
-		}
-		m.Parameters = append(m.Parameters, value)
 	}
 
 	return nil

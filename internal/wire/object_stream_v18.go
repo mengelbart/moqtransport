@@ -7,10 +7,7 @@ import "github.com/mengelbart/moqtransport/varint"
 func (m *ObjectStream) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.ObjectIDDelta))
 	if m.HasProperties() {
-		var PropertiesBuf []byte
-		for _, v := range m.Properties {
-			PropertiesBuf = v.append_v18(PropertiesBuf)
-		}
+		PropertiesBuf := appendKeyValuePairs_v18(nil, m.Properties)
 		buf = varint.Append(buf, uint64(len(PropertiesBuf)))
 		buf = append(buf, PropertiesBuf...)
 	}
@@ -31,19 +28,9 @@ func (m *ObjectStream) parse_v18(r messageReader) error {
 	}
 
 	if m.HasProperties() {
-		var PropertiesReader *boundedReader
-		PropertiesReader, err = tlvReader(r)
+		m.Properties, err = parseKeyValuePairsTLV_v18(r)
 		if err != nil {
 			return err
-		}
-
-		m.Properties = make([]KeyValuePair, 0)
-		for PropertiesReader.remaining() > 0 {
-			var value KeyValuePair
-			if err = value.parse_v18(PropertiesReader); err != nil {
-				return err
-			}
-			m.Properties = append(m.Properties, value)
 		}
 	}
 

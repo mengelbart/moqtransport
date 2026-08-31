@@ -2,32 +2,17 @@
 
 package wire
 
-import "github.com/mengelbart/moqtransport/varint"
-
 func (m *Setup) append_v18(buf []byte) []byte {
-	buf = varint.Append(buf, uint64(len(m.Options)))
-	for _, v := range m.Options {
-		buf = v.append_v18(buf)
-	}
+	buf = appendKeyValuePairs_v18(buf, m.Options)
 	return buf
 }
 
 func (m *Setup) parse_v18(r messageReader) error {
 	var err error
 
-	var numOptions uint64
-	numOptions, err = varint.Read(r)
+	m.Options, err = parseKeyValuePairsRemaining_v18(r)
 	if err != nil {
 		return err
-	}
-
-	m.Options = make([]KeyValuePair, 0)
-	for range numOptions {
-		var value KeyValuePair
-		if err = value.parse_v18(r); err != nil {
-			return err
-		}
-		m.Options = append(m.Options, value)
 	}
 
 	return nil

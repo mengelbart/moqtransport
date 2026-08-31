@@ -4,7 +4,7 @@ type ObjectStream struct {
 	hasProperties bool
 
 	ObjectIDDelta uint64         `proto:"varint"`
-	Properties    []KeyValuePair `proto:"tlv_message_list,if=HasProperties"`
+	Properties    []KeyValuePair `proto:"kvp_list_tlv,if=HasProperties"`
 	ObjectPayload []byte         `proto:"tlv_bytes"`
 	ObjectStatus  uint64         `proto:"varint,if=EmptyPayload"`
 }

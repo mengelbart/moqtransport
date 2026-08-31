@@ -135,6 +135,43 @@ func TestMessageRoundTrip(t *testing.T) {
 	}
 }
 
+func deltaPairs() []KeyValuePair {
+	return []KeyValuePair{
+		{Type: 2, Varint: 4200},
+		{Type: 77, Bytes: []byte("value")},
+		{Type: 77, Bytes: []byte("other")},
+	}
+}
+
+// deltaPairBytes is the delta encoding of deltaPairs, without any framing.
+var deltaPairBytes = []byte{
+	0x02, 0x90, 0x68, // delta 2, type 2: varint 4200
+	0x4b, 0x05, 'v', 'a', 'l', 'u', 'e', // delta 75, type 77: five bytes
+	0x00, 0x05, 'o', 't', 'h', 'e', 'r', // delta 0, type 77: five bytes
+}
+
+func TestSetupOptionsBytes(t *testing.T) {
+	msg := &Setup{Options: deltaPairs()}
+
+	assert.Equal(t, deltaPairBytes, msg.append_v18(nil))
+
+	got, err := NewParser(bytes.NewReader(encode(t, msg)), 18, StreamTypeControl).Read()
+	require.NoError(t, err)
+	assert.Equal(t, msg, got)
+}
+
+func TestParameterListBytes(t *testing.T) {
+	msg := &RequestUpdate{RequestID: 7, Parameters: deltaPairs()}
+
+	want := []byte{0x07, 0x03} // request ID, number of parameters
+	want = append(want, deltaPairBytes...)
+	assert.Equal(t, want, msg.append_v18(nil))
+
+	got, err := NewParser(bytes.NewReader(encode(t, msg)), 18, StreamTypeRequest).Read()
+	require.NoError(t, err)
+	assert.Equal(t, msg, got)
+}
+
 // TestMessageTruncated cuts every encoding at every prefix. io.EOF means only
 // that no byte of a message was read, so it is expected at offset 0 and nowhere
 // else: once a message has begun, ending early is io.ErrUnexpectedEOF.
