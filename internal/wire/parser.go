@@ -51,6 +51,7 @@ type Parser struct {
 	version      uint64
 	streamType   StreamType
 	objectParser *objectMessageParser
+	closed       error
 }
 
 func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
@@ -65,6 +66,9 @@ func NewParser(r io.Reader, version uint64, streamType StreamType) *Parser {
 }
 
 func (p *Parser) Read() (ControlMessage, error) {
+	if p.closed != nil {
+		return nil, p.closed
+	}
 	p.unbounded.reset()
 
 	if p.objectParser != nil {
@@ -183,11 +187,13 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 			return nil, err
 		}
 		// TODO: Parse fetch objects.
+		p.closed = fmt.Errorf("Read called on parser after %T, which starts no object sequence", m)
 		return m, nil
 
 	case ControlMessageTypePadding:
-		// TODO: Discard the rest of the stream.
-		return &Padding{}, nil
+		m := &Padding{}
+		p.closed = fmt.Errorf("Read called on parser after %T, which starts no object sequence", m)
+		return m, nil
 
 	default:
 		m := &SubgroupHeader{
