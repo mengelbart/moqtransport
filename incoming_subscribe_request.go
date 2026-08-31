@@ -12,8 +12,8 @@ import (
 type IncomingSubscribeRequest struct {
 	logger       *slog.Logger
 	session      *Session
-	streamWriter controlMessageWriter
-	streamReader controlMessageReader
+	streamWriter messageWriter
+	streamReader messageReader
 
 	namespace [][]byte
 	name      []byte
@@ -21,7 +21,7 @@ type IncomingSubscribeRequest struct {
 	trackAlias uint64
 }
 
-func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, streamWriter controlMessageWriter, streamReader controlMessageReader) *IncomingSubscribeRequest {
+func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, streamWriter messageWriter, streamReader messageReader) *IncomingSubscribeRequest {
 	isr := &IncomingSubscribeRequest{
 		logger:       defaultLogger,
 		session:      session,
