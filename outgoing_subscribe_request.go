@@ -16,16 +16,16 @@ type OutgoingSubscribeRequest struct {
 	logger       *slog.Logger
 	requestID    uint64
 	session      *Session
-	streamWriter controlMessageWriter
-	streamReader controlMessageReader
+	streamWriter messageWriter
+	streamReader messageReader
 	buffer       chan *Object
 }
 
 func newOutgoingSubscribeRequest(
 	requestID uint64,
 	session *Session,
-	streamWriter controlMessageWriter,
-	streamReader controlMessageReader,
+	streamWriter messageWriter,
+	streamReader messageReader,
 	namespace [][]byte,
 	trackName []byte,
 	parameters ...OutgoingSubscribeRequestOption,

@@ -7,13 +7,13 @@ import (
 )
 
 type Subgroup struct {
-	stream controlMessageWriter
+	stream messageWriter
 
 	firstObject  bool
 	lastObjectID uint64
 }
 
-func newSubgroup(stream controlMessageWriter, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
+func newSubgroup(stream messageWriter, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
 	if err := stream.Write(wire.NewSubgroupHeader(trackAlias, groupID, subgroupID, publisherPriority)); err != nil {
 		return nil, err
 	}

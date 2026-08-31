@@ -19,11 +19,11 @@ var (
 	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection")
 )
 
-type controlMessageReader interface {
+type messageReader interface {
 	Read() (wire.ControlMessage, error)
 }
 
-type controlMessageWriter interface {
+type messageWriter interface {
 	Write(wire.ControlMessage) error
 }
 
@@ -406,7 +406,7 @@ func (s *Session) handleBidiStream(stream Stream) {
 // readDataStream reads objects from a subgroup stream until it ends and routes
 // them by track alias. It must be called from a goroutine tracked by the
 // session WaitGroup.
-func (s *Session) readDataStream(header *wire.SubgroupHeader, parser controlMessageReader) {
+func (s *Session) readDataStream(header *wire.SubgroupHeader, parser messageReader) {
 	var (
 		firstObject  = true
 		lastObjectID uint64

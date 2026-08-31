@@ -9,11 +9,11 @@ import (
 
 type remoteControlStream struct {
 	logger *slog.Logger
-	r      controlMessageReader
+	r      messageReader
 	s      *Session
 }
 
-func newRemoteControlStream(msg *wire.Setup, r controlMessageReader, s *Session) *remoteControlStream {
+func newRemoteControlStream(msg *wire.Setup, r messageReader, s *Session) *remoteControlStream {
 	rcs := &remoteControlStream{
 		logger: defaultLogger.With("stream", "remote_control"),
 		r:      r,

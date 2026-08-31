@@ -3,10 +3,10 @@ package moqtransport
 import "github.com/mengelbart/moqtransport/internal/wire"
 
 type localControlStream struct {
-	w controlMessageWriter
+	w messageWriter
 }
 
-func newLocalControlStream(w controlMessageWriter) *localControlStream {
+func newLocalControlStream(w messageWriter) *localControlStream {
 	return &localControlStream{w: w}
 }
 
