@@ -21,12 +21,12 @@ func (h *handler) HandleSubscribe(r *moqtransport.IncomingSubscribeRequest) {
 	ns := tupleToStringList(r.Namespace())
 	if !h.endpoint.publish {
 		log.Printf("sessionNr: %d got unexpected subscribe request: %v", h.sessionID, ns)
-		r.Reject(moqtransport.SubscribeErrorCodeTrackDoesNotExist, "endpoint does not publish any tracks") //nolint:errcheck
+		r.Reject(moqtransport.RequestErrorCodeDoesNotExist, "endpoint does not publish any tracks") //nolint:errcheck
 		return
 	}
 	if !tupleEqual(ns, h.endpoint.namespace) || string(r.Name()) != h.endpoint.trackname {
 		log.Printf("got unexpected subscribe namespace/track: %v/%v, expected %v/%v", ns, r.Name(), h.endpoint.namespace, h.endpoint.trackname)
-		r.Reject(moqtransport.SubscribeErrorCodeTrackDoesNotExist, "unknown track")
+		r.Reject(moqtransport.RequestErrorCodeDoesNotExist, "unknown track")
 		return
 	}
 	// TODO: Set track alias
