@@ -12,7 +12,7 @@ type ObjectDatagram struct {
 	GroupID           uint64         `proto:"varint"`
 	ObjectID          uint64         `proto:"varint,if=!ZeroObjectID"`
 	PublisherPriority uint8          `proto:"byte,if=!DefaultPriority"`
-	Properties        []KeyValuePair `proto:"message_list,if=HasProperties"`
+	Properties        []KeyValuePair `proto:"tlv_message_list,if=HasProperties"`
 	ObjectStatus      uint64         `proto:"varint,if=Status"`
 	ObjectPayload     []byte         `proto:"remaining_bytes,if=!Status"`
 }

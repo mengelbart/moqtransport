@@ -110,6 +110,22 @@ var parserTemplates = map[string]*template.Template{
 	}
 `)),
 
+	"tlv_message_list": template.Must(template.New("tlv_message_list_parse").Parse(`	var {{ .Field }}Reader *boundedReader
+	{{ .Field }}Reader, err = tlvReader(r)
+	if err != nil {
+		return err
+	}
+
+	m.{{ .Field }} = make([]{{ .Elem }}, 0)
+	for {{ .Field }}Reader.remaining() > 0 {
+		var value {{ .Elem }}
+		if err = value.parse{{ .Suffix }}({{ .Field }}Reader); err != nil {
+			return err
+		}
+		m.{{ .Field }} = append(m.{{ .Field }}, value)
+	}
+`)),
+
 	"message_list_no_length": template.Must(template.New("message_list_no_length_parse").Parse(`	if r.remaining() < 0 {
 		return errNoMessageLength
 	}
