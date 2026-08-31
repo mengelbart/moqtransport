@@ -71,7 +71,7 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	}
 }
 
-func (r *IncomingSubscribeRequest) Reject(code SubscribeErrorCode, reason string) {
+func (r *IncomingSubscribeRequest) Reject(code RequestErrorCode, reason string) {
 	err := r.streamWriter.Write(&wire.RequestError{
 		ErrorCode:     uint64(code),
 		RetryInterval: 0, // TODO: Add retry interval if needed
