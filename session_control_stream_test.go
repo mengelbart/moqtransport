@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -29,12 +28,12 @@ func TestDuplicateControlStreamClosesSession(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	first := conn.acceptUniStream(encodeControlMessage(t, &wire.Setup{}))
+	first := conn.acceptUniStream(encodeControlMessage(t, setupWithPath("/path")))
 	<-first.drained
 	accepted := acceptedControlStream(session)
 	require.NotNil(t, accepted)
 
-	conn.acceptUniStream(encodeControlMessage(t, &wire.Setup{}))
+	conn.acceptUniStream(encodeControlMessage(t, setupWithPath("/path")))
 	require.Eventually(t, func() bool {
 		return sessionCloseError(session) != nil
 	}, time.Second, time.Millisecond)
