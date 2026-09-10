@@ -359,6 +359,29 @@ func TestBindDuplicateTrackAlias(t *testing.T) {
 	goleak.VerifyNone(t)
 }
 
+func TestDuplicateTrackAliasInSubscribeOkClosesSession(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	_, firstStream := subscribe(t, session, conn)
+	firstStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	require.Eventually(t, func() bool {
+		return hasTrackAlias(session, 17)
+	}, time.Second, time.Millisecond)
+
+	_, secondStream := subscribe(t, session, conn)
+	secondStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+
+	require.Eventually(t, func() bool {
+		return sessionCloseError(session) != nil
+	}, time.Second, time.Millisecond)
+	assert.ErrorIs(t, sessionCloseError(session), &SessionError{Code: uint64(ErrorCodeDuplicateTrackAlias)})
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
 // Closing a request removes its track alias entry.
 func TestCloseRequestRemovesTrackAlias(t *testing.T) {
 	conn := newTestConnection(t)
