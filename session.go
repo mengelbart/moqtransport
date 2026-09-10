@@ -448,6 +448,7 @@ func (s *Session) handleBidiStream(stream Stream) {
 	}
 	switch m := msg.(type) {
 	case *wire.TrackStatus:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	case *wire.Subscribe:
 		// TODO: Handle incoming request
 		if s.handler == nil {
@@ -457,14 +458,32 @@ func (s *Session) handleBidiStream(stream Stream) {
 		s.handler.HandleSubscribe(request)
 		request.readMessages()
 	case *wire.Publish:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	case *wire.Fetch:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	case *wire.PublishNamespace:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	case *wire.SubscribeNamespace:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	case *wire.SubscribeTracks:
+		s.rejectUnsupportedRequest(stream, m.RequestID)
 	default:
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
 		return
 	}
+}
+
+func (s *Session) rejectUnsupportedRequest(stream Stream, requestID uint64) {
+	s.logger.Debug("rejecting unsupported request", "streamID", stream.StreamID(), "requestID", requestID)
+	appender := wire.NewAppender(stream, uint64(s.version))
+	if err := appender.Write(&wire.RequestError{
+		ErrorCode:   uint64(RequestErrorCodeNotSupported),
+		ErrorReason: "not supported",
+	}); err != nil {
+		stream.Reset(uint32(StreamResetErrorCodeInternal))
+		return
+	}
+	_ = stream.Close()
 }
 
 // readDataStream reads objects from a subgroup stream until it ends and routes
