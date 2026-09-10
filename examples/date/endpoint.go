@@ -155,8 +155,17 @@ func (e *endpoint) setupDateTrack() {
 				continue
 			}
 			log.Printf("sending time to subgroup %v of publisher %v", groupID, p)
-			if _, err := sg.WriteObject(0, []byte(fmt.Sprintf("%v", ts))); err != nil {
+			payload := []byte(fmt.Sprintf("%v", ts))
+			object, err := sg.OpenObject(0, uint64(len(payload)))
+			if err != nil {
+				log.Printf("failed to open object: %v", err)
+				continue
+			}
+			if _, err := object.Write(payload); err != nil {
 				log.Printf("failed to write time to subgroup: %v", err)
+			}
+			if err := object.Close(); err != nil {
+				log.Printf("failed to close object: %v", err)
 			}
 			sg.Close() //nolint:errcheck
 			// if err := p.SendDatagram(moqtransport.Object{

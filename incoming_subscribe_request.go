@@ -93,8 +93,7 @@ func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, prio
 	if err != nil {
 		return nil, err
 	}
-	appender := wire.NewAppender(stream, r.session.version)
-	return newSubgroup(appender, r.trackAlias, groupID, subgroupID, priority)
+	return newSubgroup(stream, r.session.version, r.trackAlias, groupID, subgroupID, priority)
 }
 
 func (r *IncomingSubscribeRequest) Close() error {
