@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"io"
 	"testing"
 	"time"
 
@@ -23,8 +24,6 @@ func acceptedControlStream(s *Session) *remoteControlStream {
 	return s.remoteControlStream
 }
 
-// A session has exactly one remote control stream. A second one from the peer
-// is a protocol violation and must not replace the first.
 func TestDuplicateControlStreamClosesSession(t *testing.T) {
 	conn := newTestConnection(t)
 	session, err := NewSession(conn, "")
@@ -98,6 +97,26 @@ func TestDuplicateRequestIDClosesSession(t *testing.T) {
 		return sessionCloseError(session) != nil
 	}, time.Second, time.Millisecond)
 	assert.ErrorIs(t, sessionCloseError(session), &SessionError{Code: uint64(ErrorCodeInvalidRequestID)})
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestControlStreamFINClosesSessionWithProtocolViolation(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	reader := conn.acceptUniStream(encodeControlMessage(t, setupWithPath("/path")))
+	<-reader.drained
+	require.NotNil(t, acceptedControlStream(session))
+
+	reader.close(io.EOF)
+	require.Eventually(t, func() bool {
+		return sessionCloseError(session) != nil
+	}, time.Second, time.Millisecond)
+
+	assert.ErrorIs(t, sessionCloseError(session), &SessionError{Code: uint64(ErrorCodeProtocolViolation)})
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)

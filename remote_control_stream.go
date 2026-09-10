@@ -1,7 +1,9 @@
 package moqtransport
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -29,6 +31,13 @@ func (s *remoteControlStream) readMessages() {
 	for {
 		msg, err := s.r.Read()
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				s.s.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "control stream closed",
+				})
+				return
+			}
 			s.s.handleReaderError(err)
 			return
 		}
