@@ -53,6 +53,17 @@ func (a *Appender) Write(msg ControlMessage) error {
 	return a.writeBuffer(buf)
 }
 
+func (a *Appender) WriteObjectHeader(msg ControlMessage) error {
+	if _, ok := msg.(*SubgroupObject); !ok {
+		return fmt.Errorf("message carries no object payload: %T", msg)
+	}
+	buf, err := a.serializeMessage(make([]byte, 0, 64), msg)
+	if err != nil {
+		return err
+	}
+	return a.writeBuffer(buf)
+}
+
 func (a *Appender) writeControlMessage(buf []byte, msg ControlMessage) error {
 	buf = varint.Append(buf, uint64(msg.Type()))
 	tl := len(buf)
