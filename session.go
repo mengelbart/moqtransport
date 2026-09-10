@@ -378,6 +378,10 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		if _, err := io.Copy(io.Discard, br); err != nil {
 			s.logger.Debug("error while discarding padding stream", "streamID", stream.StreamID(), "error", err)
 		}
+	case *wire.FetchHeader:
+		if _, err := io.Copy(io.Discard, br); err != nil {
+			s.logger.Debug("error while discarding fetch stream", "streamID", stream.StreamID(), "error", err)
+		}
 	default:
 		// TODO
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
