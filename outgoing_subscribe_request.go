@@ -72,7 +72,7 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 		case *wire.SubscribeOk:
 			if err := r.session.bindTrackAlias(msg.TrackAlias, r); err != nil {
 				r.session.closeWithError(&SessionError{
-					Code:   uint64(ErrorCodeProtocolViolation),
+					Code:   uint64(ErrorCodeDuplicateTrackAlias),
 					Reason: err.Error(),
 				})
 				return
