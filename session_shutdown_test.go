@@ -422,3 +422,22 @@ func TestUnhandledRequestTypeRejected(t *testing.T) {
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
 }
+
+func TestUniStreamWithFetchHeaderDoesNotCloseSession(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	reader := conn.acceptUniStream(encodeControlMessage(t, &wire.FetchHeader{RequestID: 42}))
+	<-reader.drained
+
+	assert.Equal(t, 0, conn.closes())
+	select {
+	case <-session.Context().Done():
+		t.Fatal("session closed unexpectedly")
+	default:
+	}
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
