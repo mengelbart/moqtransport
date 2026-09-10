@@ -128,7 +128,12 @@ func (e *endpoint) subscribeAndRead(s *moqtransport.Session, namespace []string,
 				}
 				return
 			}
-			log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(o.Payload), string(o.Payload))
+			payload, err := io.ReadAll(o.Payload)
+			if err != nil {
+				log.Printf("failed to read object payload: %v", err)
+				return
+			}
+			log.Printf("got object %v/%v/%v of length %v: %v\n", o.ObjectID, o.GroupID, o.SubGroupID, len(payload), string(payload))
 		}
 	}()
 	return nil

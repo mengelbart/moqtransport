@@ -67,22 +67,66 @@ func (r *boundedReader) ReadByte() (byte, error) {
 }
 
 func (r *boundedReader) discard() error {
+	var err error
+	r.n, err = discard(r.reader, r.n)
+	return err
+}
+
+// payloadReader reads one object payload. The end of the payload is io.EOF,
+// the stream ending before it is io.ErrUnexpectedEOF.
+type payloadReader struct {
+	reader streamReader
+	n      int64
+}
+
+func (r *payloadReader) reset(n int64) {
+	r.n = n
+}
+
+func (r *payloadReader) Read(buf []byte) (int, error) {
+	if len(buf) == 0 {
+		return 0, nil
+	}
+	if r.n <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(buf)) > r.n {
+		buf = buf[:r.n]
+	}
+	n, err := r.reader.Read(buf)
+	r.n -= int64(n)
+	if errors.Is(err, io.EOF) {
+		err = io.ErrUnexpectedEOF
+	}
+	return n, err
+}
+
+// discard skips the rest of the payload so that the next object starts at the
+// right offset.
+func (r *payloadReader) discard() error {
+	var err error
+	r.n, err = discard(r.reader, r.n)
+	return err
+}
+
+// discard skips the next n bytes of r and reports how many are left.
+func discard(r streamReader, n int64) (int64, error) {
 	var scratch [512]byte
-	for r.n > 0 {
+	for n > 0 {
 		buf := scratch[:]
-		if int64(len(buf)) > r.n {
-			buf = buf[:r.n]
+		if int64(len(buf)) > n {
+			buf = buf[:n]
 		}
-		n, err := io.ReadFull(r.reader, buf)
-		r.n -= int64(n)
+		read, err := io.ReadFull(r, buf)
+		n -= int64(read)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return io.ErrUnexpectedEOF
+				return n, io.ErrUnexpectedEOF
 			}
-			return err
+			return n, err
 		}
 	}
-	return nil
+	return n, nil
 }
 
 // unboundedReader reads a message that is not length delimited. The stream

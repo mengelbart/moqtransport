@@ -1,71 +1,116 @@
 package moqtransport
 
 import (
+	"context"
 	"errors"
 )
 
-// maxPendingObjects is the number of objects buffered per track alias that is
-// not bound to a receiver yet.
-// TODO: Make configurable.
-const maxPendingObjects = 100
-
-// maxPendingTracks is the number of unbound track aliases that may buffer
-// objects at the same time.
-// TODO: Make configurable.
-const maxPendingTracks = 16
-
-var errDuplicateTrackAlias = errors.New("track alias already in use")
+var (
+	errDuplicateTrackAlias  = errors.New("track alias already in use")
+	errTooManyPendingTracks = errors.New("too many unbound track aliases")
+)
 
 type objectReceiver interface {
 	push(*Object)
 }
 
-// trackEntry routes the objects of one track alias. Objects that arrive before
-// the alias is bound to a receiver are buffered in pending.
 type trackEntry struct {
 	receiver objectReceiver
 	pending  []*Object
+	bound    chan struct{}
 }
 
-// pushObject delivers o to the receiver of trackAlias. The track alias is
-// assigned by the peer in SUBSCRIBE_OK, so objects can arrive before it is
-// known. They are buffered until the alias is bound to a receiver.
-func (s *Session) pushObject(trackAlias uint64, o *Object) {
+func newTrackEntry() *trackEntry {
+	return &trackEntry{
+		bound: make(chan struct{}),
+	}
+}
+
+func (s *Session) pushStreamObject(trackAlias uint64, o *Object) error {
+	receiver, err := s.waitForReceiver(trackAlias)
+	if err != nil {
+		return err
+	}
+	receiver.push(o)
+	return nil
+}
+
+func (s *Session) pushDatagramObject(trackAlias uint64, o *Object) {
 	s.tracksLock.Lock()
-	defer s.tracksLock.Unlock()
 
 	entry, ok := s.tracks[trackAlias]
 	if ok && entry.receiver != nil {
 		entry.receiver.push(o)
-		return
-	}
-	// TODO: Decide whether exceeding a limit should close the session with a
-	// protocol violation instead of dropping the object.
-	if !ok && s.pendingTracks >= maxPendingTracks {
-		s.logger.Info("too many unbound track aliases: dropping incoming object", "trackAlias", trackAlias)
-		return
-	}
-	if ok && len(entry.pending) >= maxPendingObjects {
-		s.logger.Info("pending object buffer overflow: dropping incoming object", "trackAlias", trackAlias)
+		s.tracksLock.Unlock()
 		return
 	}
 	if !ok {
-		entry = &trackEntry{}
+		if s.pendingTracks >= s.maxPendingTracks {
+			s.tracksLock.Unlock()
+			s.closeTooManyPendingTracks()
+			return
+		}
+		entry = newTrackEntry()
 		s.tracks[trackAlias] = entry
 		s.pendingTracks++
 	}
+	if len(entry.pending) >= s.maxPendingObjects {
+		s.tracksLock.Unlock()
+		s.logger.Info("pending object buffer overflow: dropping incoming object", "trackAlias", trackAlias)
+		return
+	}
 	entry.pending = append(entry.pending, o)
+	s.tracksLock.Unlock()
 }
 
-// bindTrackAlias attaches r to trackAlias and hands it the objects that
-// arrived before the alias was known.
+func (s *Session) waitForReceiver(trackAlias uint64) (objectReceiver, error) {
+	s.tracksLock.Lock()
+	entry, ok := s.tracks[trackAlias]
+	if ok && entry.receiver != nil {
+		s.tracksLock.Unlock()
+		return entry.receiver, nil
+	}
+	if !ok {
+		if s.pendingTracks >= s.maxPendingTracks {
+			s.tracksLock.Unlock()
+			s.closeTooManyPendingTracks()
+			return nil, errTooManyPendingTracks
+		}
+		entry = newTrackEntry()
+		s.tracks[trackAlias] = entry
+		s.pendingTracks++
+	}
+	bound := entry.bound
+	s.tracksLock.Unlock()
+
+	select {
+	case <-bound:
+	case <-s.ctx.Done():
+		return nil, context.Cause(s.ctx)
+	}
+
+	s.tracksLock.Lock()
+	defer s.tracksLock.Unlock()
+	return entry.receiver, nil
+}
+
+func (s *Session) closeTooManyPendingTracks() {
+	s.closeWithError(&SessionError{
+		Code:   uint64(ErrorCodeInternal),
+		Reason: errTooManyPendingTracks.Error(),
+	})
+}
+
 func (s *Session) bindTrackAlias(trackAlias uint64, r objectReceiver) error {
 	s.tracksLock.Lock()
 	defer s.tracksLock.Unlock()
 
 	entry, ok := s.tracks[trackAlias]
 	if !ok {
-		s.tracks[trackAlias] = &trackEntry{receiver: r}
+		entry = newTrackEntry()
+		entry.receiver = r
+		close(entry.bound)
+		s.tracks[trackAlias] = entry
 		return nil
 	}
 	if entry.receiver != nil {
@@ -77,6 +122,7 @@ func (s *Session) bindTrackAlias(trackAlias uint64, r objectReceiver) error {
 		r.push(o)
 	}
 	entry.pending = nil
+	close(entry.bound)
 	return nil
 }
 

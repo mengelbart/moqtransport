@@ -1,6 +1,9 @@
 package wire
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Bit positions and masks of the fetch object serialization flags.
 const (
@@ -41,12 +44,18 @@ var errInvalidSerializationFlags = fmt.Errorf("invalid fetch object serializatio
 type FetchObject struct {
 	flags uint64
 
+	// Payload carries the object payload when the object is written.
+	Payload []byte
+	// PayloadReader carries the object payload when the object is parsed. It
+	// is valid until the next read from the parser it came from.
+	PayloadReader io.Reader
+
 	GroupIDDelta      uint64         `proto:"varint,if=HasGroupIDDelta"`
 	SubgroupID        uint64         `proto:"varint,if=explicitSubgroupID"`
 	ObjectIDDelta     uint64         `proto:"varint,if=HasObjectIDDelta"`
 	PublisherPriority uint8          `proto:"byte,if=HasPriority"`
 	Properties        []KeyValuePair `proto:"kvp_list_tlv,if=HasProperties"`
-	ObjectPayload     []byte         `proto:"tlv_bytes"`
+	PayloadLength     uint64         `proto:"varint"`
 }
 
 func NewEndOfNonExistentRange(groupIDDelta, objectIDDelta uint64) *FetchObject {

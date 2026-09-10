@@ -123,6 +123,36 @@ func encode(t *testing.T, msg ControlMessage) []byte {
 	return buf.Bytes()
 }
 
+// readObject reads the next message and saves an object payload into the
+// object.Payload field.
+func readObject(t *testing.T, p *Parser) (ControlMessage, error) {
+	t.Helper()
+	msg, err := p.Read()
+	if err != nil {
+		return nil, err
+	}
+	switch o := msg.(type) {
+	case *SubgroupObject:
+		o.Payload, err = drainPayload(o.PayloadReader)
+		o.PayloadReader = nil
+	case *FetchObject:
+		o.Payload, err = drainPayload(o.PayloadReader)
+		o.PayloadReader = nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func drainPayload(r io.Reader) ([]byte, error) {
+	payload, err := io.ReadAll(r)
+	if err != nil || len(payload) == 0 {
+		return nil, err
+	}
+	return payload, nil
+}
+
 func mustParser(t *testing.T, r io.Reader, version uint64, streamType StreamType) *Parser {
 	t.Helper()
 	p, err := NewParser(r, version, streamType)

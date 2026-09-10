@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func encodeDataStream(t *testing.T, trackAlias, groupID, subgroupID uint64, obje
 	for _, o := range objects {
 		require.NoError(t, appender.Write(&wire.SubgroupObject{
 			ObjectIDDelta: o.delta,
-			ObjectPayload: []byte(o.payload),
+			Payload:       []byte(o.payload),
 		}))
 	}
 	return buf.Bytes()
@@ -52,6 +53,22 @@ func encodeDatagram(trackAlias, groupID, objectID uint64, payload string) []byte
 	return msg.AppendDatagram(nil)
 }
 
+// datagramObject is an object as it arrives from a datagram, carrying its own
+// payload.
+func datagramObject(payload string) *Object {
+	return &Object{
+		ForwardingPreference: ObjectForwardingPreferenceDatagram,
+		Payload:              bytes.NewReader([]byte(payload)),
+	}
+}
+
+func readPayload(t *testing.T, o *Object) []byte {
+	t.Helper()
+	payload, err := io.ReadAll(o.Payload)
+	require.NoError(t, err)
+	return payload
+}
+
 func readObject(t *testing.T, request *OutgoingSubscribeRequest) *Object {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -65,6 +82,16 @@ func trackCount(s *Session) int {
 	s.tracksLock.Lock()
 	defer s.tracksLock.Unlock()
 	return len(s.tracks)
+}
+
+func pendingObjects(s *Session, trackAlias uint64) []*Object {
+	s.tracksLock.Lock()
+	defer s.tracksLock.Unlock()
+	entry, ok := s.tracks[trackAlias]
+	if !ok {
+		return nil
+	}
+	return entry.pending
 }
 
 func hasTrackAlias(s *Session, trackAlias uint64) bool {
@@ -92,13 +119,17 @@ func TestSubgroupBeforeSubscribeOk(t *testing.T) {
 
 	request, requestStream := subscribe(t, session, conn)
 
-	reader := conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
-	<-reader.drained
+	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
+	// The stream holds the object until the alias is bound, so the entry for it
+	// shows that the object arrived first.
+	require.Eventually(t, func() bool {
+		return trackCount(session) == 1
+	}, time.Second, time.Millisecond)
 
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
 
 	o := readObject(t, request)
-	assert.Equal(t, []byte("hello"), o.Payload)
+	assert.Equal(t, []byte("hello"), readPayload(t, o))
 	assert.Equal(t, uint64(3), o.GroupID)
 	assert.Equal(t, uint64(5), o.SubGroupID)
 	assert.Equal(t, uint64(0), o.ObjectID)
@@ -121,7 +152,7 @@ func TestSubgroupAfterSubscribeOk(t *testing.T) {
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
 
-	assert.Equal(t, []byte("hello"), readObject(t, request).Payload)
+	assert.Equal(t, []byte("hello"), readPayload(t, readObject(t, request)))
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
@@ -170,7 +201,7 @@ func TestDatagramBeforeSubscribeOk(t *testing.T) {
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
 
 	o := readObject(t, request)
-	assert.Equal(t, []byte("hello"), o.Payload)
+	assert.Equal(t, []byte("hello"), readPayload(t, o))
 	assert.Equal(t, uint64(3), o.GroupID)
 	assert.Equal(t, uint64(4), o.ObjectID)
 	assert.Equal(t, ObjectForwardingPreferenceDatagram, o.ForwardingPreference)
@@ -192,48 +223,124 @@ func TestDatagramAfterSubscribeOk(t *testing.T) {
 
 	conn.sendDatagram(encodeDatagram(17, 3, 4, "hello"))
 
-	assert.Equal(t, []byte("hello"), readObject(t, request).Payload)
+	assert.Equal(t, []byte("hello"), readPayload(t, readObject(t, request)))
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
 }
 
-// Objects buffered for an unbound track alias are capped, and the ones that fit
-// are delivered in order.
+// Datagram objects buffered for an unbound track alias are capped, and the ones
+// that fit are delivered in order.
 func TestPendingObjectLimit(t *testing.T) {
+	const maxPending = 4
+
 	conn := newTestConnection(t)
-	session, err := NewSession(conn, "")
+	session, err := NewSession(conn, "", WithMaxPendingObjects(maxPending))
 	require.NoError(t, err)
 
-	for i := range maxPendingObjects + 5 {
-		session.pushObject(17, &Object{Payload: []byte(fmt.Sprintf("object-%d", i))})
+	for i := range maxPending + 5 {
+		session.pushDatagramObject(17, datagramObject(fmt.Sprintf("object-%d", i)))
 	}
 
 	receiver := &testReceiver{}
 	require.NoError(t, session.bindTrackAlias(17, receiver))
 
-	require.Len(t, receiver.objects, maxPendingObjects)
-	assert.Equal(t, []byte("object-0"), receiver.objects[0].Payload)
-	assert.Equal(t, []byte(fmt.Sprintf("object-%d", maxPendingObjects-1)), receiver.objects[maxPendingObjects-1].Payload)
+	require.Len(t, receiver.objects, maxPending)
+	assert.Equal(t, []byte("object-0"), readPayload(t, receiver.objects[0]))
+	assert.Equal(t, []byte(fmt.Sprintf("object-%d", maxPending-1)), readPayload(t, receiver.objects[maxPending-1]))
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
 }
 
-// The number of unbound track aliases buffering objects is capped.
 func TestPendingTrackLimit(t *testing.T) {
+	const maxTracks = 4
+
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "", WithMaxPendingTracks(maxTracks))
+	require.NoError(t, err)
+
+	for i := range uint64(maxTracks) {
+		session.pushDatagramObject(i, datagramObject("payload"))
+	}
+	assert.Equal(t, maxTracks, trackCount(session))
+
+	session.pushDatagramObject(maxTracks, datagramObject("payload"))
+	assert.Equal(t, maxTracks, trackCount(session))
+
+	<-session.Context().Done()
+	var sessionErr *SessionError
+	require.ErrorAs(t, context.Cause(session.Context()), &sessionErr)
+	assert.Equal(t, uint64(ErrorCodeInternal), sessionErr.Code)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestInvalidLimitOptions(t *testing.T) {
+	options := map[string]Option{
+		"max pending objects":   WithMaxPendingObjects(0),
+		"max pending tracks":    WithMaxPendingTracks(-1),
+		"subscribe buffer size": WithSubscribeBufferSize(0),
+	}
+	for name, option := range options {
+		t.Run(name, func(t *testing.T) {
+			conn := newTestConnection(t)
+			session, err := NewSession(conn, "", option)
+			assert.Error(t, err)
+			assert.Nil(t, session)
+			assert.Equal(t, 0, conn.openedUniStreams())
+			goleak.VerifyNone(t)
+		})
+	}
+}
+
+func TestSubgroupStreamWaitsForBind(t *testing.T) {
 	conn := newTestConnection(t)
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	for i := range uint64(maxPendingTracks) + 1 {
-		session.pushObject(i, &Object{Payload: []byte("payload")})
-	}
-	assert.Equal(t, maxPendingTracks, trackCount(session))
+	request, requestStream := subscribe(t, session, conn)
 
-	receiver := &testReceiver{}
-	require.NoError(t, session.bindTrackAlias(maxPendingTracks, receiver))
-	assert.Empty(t, receiver.objects)
+	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
+		testObject{0, "first"},
+		testObject{0, "second"},
+	))
+	require.Eventually(t, func() bool {
+		return trackCount(session) == 1
+	}, time.Second, time.Millisecond)
+	assert.Empty(t, pendingObjects(session, 17))
+
+	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+
+	assert.Equal(t, []byte("first"), readPayload(t, readObject(t, request)))
+	assert.Equal(t, []byte("second"), readPayload(t, readObject(t, request)))
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupObjectPayloadNotRead(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	request, requestStream := subscribe(t, session, conn)
+	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	require.Eventually(t, func() bool {
+		return hasTrackAlias(session, 17)
+	}, time.Second, time.Millisecond)
+
+	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
+		testObject{0, "first"},
+		testObject{0, "second"},
+	))
+
+	assert.Equal(t, uint64(0), readObject(t, request).ObjectID)
+
+	second := readObject(t, request)
+	assert.Equal(t, uint64(1), second.ObjectID)
+	assert.Equal(t, []byte("second"), readPayload(t, second))
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)

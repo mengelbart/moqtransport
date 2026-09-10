@@ -35,7 +35,7 @@ func (s *Subgroup) WriteObject(objectID uint64, payload []byte) (int, error) {
 	}
 	o := &wire.SubgroupObject{
 		ObjectIDDelta: delta,
-		ObjectPayload: payload,
+		Payload:       payload,
 	}
 	if err := s.stream.Write(o); err != nil {
 		return 0, err

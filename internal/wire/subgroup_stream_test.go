@@ -15,8 +15,8 @@ func TestSubgroupStreamBytes(t *testing.T) {
 	appender := NewAppender(&buf, 18)
 
 	require.NoError(t, appender.Write(NewSubgroupHeader(4, 7, 9, 200)))
-	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 0, ObjectPayload: []byte("ab")}))
-	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 3, ObjectPayload: []byte("c")}))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 0, Payload: []byte("ab")}))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 3, Payload: []byte("c")}))
 
 	assert.Equal(t, []byte{
 		0x14, // type: bit 4 set, subgroup ID mode 0b10
@@ -37,8 +37,8 @@ func TestSubgroupStreamRoundTrip(t *testing.T) {
 	require.NoError(t, appender.Write(header))
 
 	objects := []*SubgroupObject{
-		{ObjectIDDelta: 0, ObjectPayload: []byte("hello")},
-		{ObjectIDDelta: 3, ObjectPayload: []byte("world")},
+		{ObjectIDDelta: 0, Payload: []byte("hello")},
+		{ObjectIDDelta: 3, Payload: []byte("world")},
 		{ObjectIDDelta: 0, ObjectStatus: 3},
 	}
 	for _, o := range objects {
@@ -52,7 +52,7 @@ func TestSubgroupStreamRoundTrip(t *testing.T) {
 	assert.Equal(t, header, msg)
 
 	for _, want := range objects {
-		msg, err := parser.Read()
+		msg, err := readObject(t, parser)
 		require.NoError(t, err)
 		assert.Equal(t, want, msg)
 	}
@@ -117,7 +117,8 @@ func propertyObjects() []*SubgroupObject {
 			{Type: 1, Bytes: []byte("A")},
 			{Type: 2, Varint: 42},
 		},
-		ObjectPayload: []byte("ab"),
+		Payload:       []byte("ab"),
+		PayloadLength: 2,
 	}
 	second := &SubgroupObject{
 		ObjectIDDelta: 3,
@@ -181,7 +182,7 @@ func TestSubgroupStreamPropertiesRoundTrip(t *testing.T) {
 	want[1].Properties = []KeyValuePair{}
 
 	for _, o := range want {
-		msg, err := parser.Read()
+		msg, err := readObject(t, parser)
 		require.NoError(t, err)
 		assert.Equal(t, o, msg)
 	}
@@ -201,7 +202,53 @@ func TestParseTruncatedObjectProperties(t *testing.T) {
 		_, err := parser.Read()
 		require.NoError(t, err, "truncated after %v bytes", i)
 
-		_, err = parser.Read()
+		// A truncation inside the payload only shows up when it is read.
+		_, err = readObject(t, parser)
 		assert.ErrorIs(t, err, io.ErrUnexpectedEOF, "truncated after %v bytes", i)
 	}
+}
+
+func TestSubgroupStreamPartiallyReadPayload(t *testing.T) {
+	var buf bytes.Buffer
+	appender := NewAppender(&buf, 18)
+
+	require.NoError(t, appender.Write(NewSubgroupHeader(4, 7, 9, 200)))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 0, Payload: []byte("hello")}))
+	require.NoError(t, appender.Write(&SubgroupObject{ObjectIDDelta: 0, Payload: []byte("world")}))
+
+	parser := mustParser(t, &buf, 18, StreamTypeData)
+
+	_, err := parser.Read()
+	require.NoError(t, err)
+
+	msg, err := parser.Read()
+	require.NoError(t, err)
+	head := make([]byte, 2)
+	_, err = io.ReadFull(msg.(*SubgroupObject).PayloadReader, head)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("he"), head)
+
+	// The rest of the payload is discarded, so the next object is intact.
+	msg, err = readObject(t, parser)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("world"), msg.(*SubgroupObject).Payload)
+}
+
+// A length no stream could deliver must not be allocated up front.
+func TestParseSubgroupObjectBogusPayloadLength(t *testing.T) {
+	buf := []byte{0x14, 0x04, 0x07, 0x09, 200, 0x00}
+	buf = varint.Append(buf, 1<<40)
+	buf = append(buf, "abcdef"...)
+
+	parser := mustParser(t, bytes.NewReader(buf), 18, StreamTypeData)
+
+	_, err := parser.Read()
+	require.NoError(t, err)
+
+	// The stream ending short of the announced length only shows up when the
+	// payload is read.
+	msg, err := parser.Read()
+	require.NoError(t, err)
+	_, err = io.ReadAll(msg.(*SubgroupObject).PayloadReader)
+	assert.ErrorIs(t, err, io.ErrUnexpectedEOF)
 }

@@ -11,8 +11,7 @@ func (m *SubgroupObject) append_v18(buf []byte) []byte {
 		buf = varint.Append(buf, uint64(len(PropertiesBuf)))
 		buf = append(buf, PropertiesBuf...)
 	}
-	buf = varint.Append(buf, uint64(len(m.ObjectPayload)))
-	buf = append(buf, m.ObjectPayload...)
+	buf = varint.Append(buf, uint64(m.PayloadLength))
 	if m.EmptyPayload() {
 		buf = varint.Append(buf, uint64(m.ObjectStatus))
 	}
@@ -34,13 +33,7 @@ func (m *SubgroupObject) parse_v18(r messageReader) error {
 		}
 	}
 
-	var ObjectPayloadLength uint64
-	ObjectPayloadLength, err = varint.Read(r)
-	if err != nil {
-		return err
-	}
-
-	m.ObjectPayload, err = readBytes(r, ObjectPayloadLength)
+	m.PayloadLength, err = varint.Read(r)
 	if err != nil {
 		return err
 	}

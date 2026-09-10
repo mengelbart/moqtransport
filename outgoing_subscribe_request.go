@@ -19,6 +19,7 @@ type OutgoingSubscribeRequest struct {
 	streamWriter messageWriter
 	streamReader messageReader
 	buffer       chan *Object
+	last         *Object
 }
 
 func newOutgoingSubscribeRequest(
@@ -36,7 +37,7 @@ func newOutgoingSubscribeRequest(
 		session:      session,
 		streamWriter: streamWriter,
 		streamReader: streamReader,
-		buffer:       make(chan *Object, 100), // TODO: Make buffer size configurable
+		buffer:       make(chan *Object, session.subscribeBufferSize),
 	}
 	for _, opt := range parameters {
 		if err := opt(r); err != nil {
@@ -89,26 +90,53 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 }
 
 func (t *OutgoingSubscribeRequest) push(o *Object) {
+	if o.ForwardingPreference == ObjectForwardingPreferenceDatagram {
+		select {
+		case t.buffer <- o:
+		default:
+			t.logger.Info("buffer overflow: dropping incoming object")
+		}
+		return
+	}
+	// An object read from a data stream holds that stream, so it waits here
+	// rather than being dropped.
 	select {
 	case t.buffer <- o:
-	default:
-		t.logger.Info("buffer overflow: dropping incoming object")
+	case <-t.session.ctx.Done():
 	}
 }
 
 func (r *OutgoingSubscribeRequest) Close() error {
 	// TODO: Send a message to the peer to stop the subscription.
 	r.session.removeReceiver(r)
-	return nil
+	return r.releaseLast()
 }
 
+// ReadObject returns the next object of the subscription. The payload of the
+// object returned by the previous call is released, so it must be read before
+// the next call. ReadObject must be called from one goroutine at a time.
 func (r *OutgoingSubscribeRequest) ReadObject(ctx context.Context) (*Object, error) {
 	r.logger.Debug("waiting for next object")
+	if err := r.releaseLast(); err != nil {
+		return nil, err
+	}
 	// TODO: Add case for shutdown when request is closed
 	select {
 	case <-ctx.Done():
 		return nil, context.Cause(ctx)
 	case obj := <-r.buffer:
+		r.last = obj
 		return obj, nil
 	}
+}
+
+func (r *OutgoingSubscribeRequest) releaseLast() error {
+	if r.last == nil {
+		return nil
+	}
+	if err := r.last.Close(); err != nil {
+		return err
+	}
+	r.last = nil
+	return nil
 }
