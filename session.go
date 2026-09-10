@@ -95,6 +95,10 @@ type Session struct {
 	conn       Connection
 	requestIDs *requestIDGenerator
 
+	peerRequestIDsLock   sync.Mutex
+	peerRequestIDs       map[uint64]struct{}
+	largestPeerRequestID uint64
+
 	controlStreamLock   sync.Mutex
 	remoteControlStream *remoteControlStream
 	localControlStream  *localControlStream
@@ -132,6 +136,7 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 		wg:                  sync.WaitGroup{},
 		conn:                conn,
 		requestIDs:          newRequestIDGenerator(uint64(conn.Perspective())),
+		peerRequestIDs:      make(map[uint64]struct{}),
 		remoteControlStream: nil,
 		localControlStream:  nil,
 		handler:             nil,
@@ -417,6 +422,44 @@ func peekFirstVarint(br *bufio.Reader) ([]byte, error) {
 	return br.Peek(needed)
 }
 
+func requestIDOfMessage(msg wire.ControlMessage) (uint64, bool) {
+	switch m := msg.(type) {
+	case *wire.Subscribe:
+		return m.RequestID, true
+	case *wire.Publish:
+		return m.RequestID, true
+	case *wire.Fetch:
+		return m.RequestID, true
+	case *wire.TrackStatus:
+		return m.RequestID, true
+	case *wire.PublishNamespace:
+		return m.RequestID, true
+	case *wire.SubscribeNamespace:
+		return m.RequestID, true
+	case *wire.SubscribeTracks:
+		return m.RequestID, true
+	}
+	return 0, false
+}
+
+func (s *Session) validatePeerRequestID(id uint64) error {
+	expectedLSB := (uint64(s.conn.Perspective()) + 1) % 2
+	if id%2 != expectedLSB {
+		return &SessionError{Code: uint64(ErrorCodeInvalidRequestID), Reason: "invalid request ID parity", Remote: false}
+	}
+
+	s.peerRequestIDsLock.Lock()
+	defer s.peerRequestIDsLock.Unlock()
+	if _, ok := s.peerRequestIDs[id]; ok {
+		return &SessionError{Code: uint64(ErrorCodeInvalidRequestID), Reason: "duplicate request ID", Remote: false}
+	}
+	s.peerRequestIDs[id] = struct{}{}
+	if id > s.largestPeerRequestID {
+		s.largestPeerRequestID = id
+	}
+	return nil
+}
+
 func (s *Session) handleBidiStream(stream Stream) {
 	s.logger.Debug("accepted new bidi stream", "streamID", stream.StreamID())
 
@@ -446,6 +489,15 @@ func (s *Session) handleBidiStream(stream Stream) {
 		stream.Reset(uint32(StreamResetErrorCodeInternal))
 		return
 	}
+	if requestID, ok := requestIDOfMessage(msg); ok {
+		if err := s.validatePeerRequestID(requestID); err != nil {
+			s.closeWithError(err)
+			stream.Stop(uint32(StreamResetErrorCodeInternal))
+			stream.Reset(uint32(StreamResetErrorCodeInternal))
+			return
+		}
+	}
+
 	switch m := msg.(type) {
 	case *wire.TrackStatus:
 	case *wire.Subscribe:
