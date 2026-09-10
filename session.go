@@ -317,7 +317,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		select {
 		case <-ctx.Done():
 		case <-s.ctx.Done():
-			stream.Stop(0) // TODO: Set correct error code?
+			stream.Stop(uint32(StreamResetErrorCodeSessionClosed))
 		}
 	})
 
@@ -476,8 +476,8 @@ func (s *Session) handleBidiStream(stream Stream) {
 		select {
 		case <-ctx.Done():
 		case <-s.ctx.Done():
-			stream.Stop(0)  // TODO: Set correct error code?
-			stream.Reset(0) // TODO: Set correct error code?
+			stream.Stop(uint32(StreamResetErrorCodeSessionClosed))
+			stream.Reset(uint32(StreamResetErrorCodeSessionClosed))
 		}
 	})
 
