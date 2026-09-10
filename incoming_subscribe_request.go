@@ -83,7 +83,7 @@ func (r *IncomingSubscribeRequest) Reject(code RequestErrorCode, reason string) 
 	}
 }
 
-func (r *IncomingSubscribeRequest) SendDatagram(o Object) error {
+func (r *IncomingSubscribeRequest) SendDatagram(o *Object) error {
 	// TODO
 	return nil
 }

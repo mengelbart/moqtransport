@@ -1,11 +1,19 @@
 package wire
 
+import "io"
+
 type SubgroupObject struct {
 	hasProperties bool
 
+	// Payload carries the object payload when the object is written.
+	Payload []byte
+	// PayloadReader carries the object payload when the object is parsed. It
+	// is valid until the next read from the parser it came from.
+	PayloadReader io.Reader
+
 	ObjectIDDelta uint64         `proto:"varint"`
 	Properties    []KeyValuePair `proto:"kvp_list_tlv,if=HasProperties"`
-	ObjectPayload []byte         `proto:"tlv_bytes"`
+	PayloadLength uint64         `proto:"varint"`
 	ObjectStatus  uint64         `proto:"varint,if=EmptyPayload"`
 }
 
@@ -22,5 +30,5 @@ func (m *SubgroupObject) SetHasProperties(v bool) {
 }
 
 func (m *SubgroupObject) EmptyPayload() bool {
-	return len(m.ObjectPayload) == 0
+	return m.PayloadLength == 0
 }

@@ -48,6 +48,7 @@ func parseMessage(m ControlMessage, r messageReader, version uint64) error {
 type Parser struct {
 	bounded    *boundedReader
 	unbounded  *unboundedReader
+	payload    *payloadReader
 	version    uint64
 	streamType StreamType
 	objects    objectParser
@@ -64,6 +65,7 @@ func NewParser(r io.Reader, version uint64, streamType StreamType) (*Parser, err
 	return &Parser{
 		bounded:    &boundedReader{reader: reader},
 		unbounded:  &unboundedReader{reader: reader},
+		payload:    &payloadReader{reader: reader},
 		version:    version,
 		streamType: streamType,
 		objects:    nil,
@@ -73,6 +75,11 @@ func NewParser(r io.Reader, version uint64, streamType StreamType) (*Parser, err
 func (p *Parser) Read() (ControlMessage, error) {
 	if p.closed != nil {
 		return nil, p.closed
+	}
+	// The payload of the previous object is only valid until the next read, so
+	// what is left of it has to go before the stream can continue.
+	if err := p.payload.discard(); err != nil {
+		return nil, err
 	}
 	p.unbounded.reset()
 
@@ -193,6 +200,7 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		}
 		p.objects = &fetchObjectParser{
 			reader:  p.unbounded,
+			payload: p.payload,
 			version: p.version,
 		}
 		return m, nil
@@ -214,6 +222,7 @@ func (p *Parser) readDataHeader(mt uint64) (ControlMessage, error) {
 		}
 		p.objects = &subgroupObjectParser{
 			reader:        p.unbounded,
+			payload:       p.payload,
 			version:       p.version,
 			hasProperties: m.Properties(),
 		}
@@ -228,6 +237,7 @@ type objectParser interface {
 
 type subgroupObjectParser struct {
 	reader        messageReader
+	payload       *payloadReader
 	version       uint64
 	hasProperties bool
 }
@@ -239,11 +249,14 @@ func (p *subgroupObjectParser) parse() (ControlMessage, error) {
 	if err := parseMessage(o, p.reader, p.version); err != nil {
 		return nil, err
 	}
+	p.payload.reset(int64(o.PayloadLength))
+	o.PayloadReader = p.payload
 	return o, nil
 }
 
 type fetchObjectParser struct {
 	reader  messageReader
+	payload *payloadReader
 	version uint64
 }
 
@@ -258,5 +271,7 @@ func (p *fetchObjectParser) parse() (ControlMessage, error) {
 	if err := parseMessage(o, p.reader, p.version); err != nil {
 		return nil, err
 	}
+	p.payload.reset(int64(o.PayloadLength))
+	o.PayloadReader = p.payload
 	return o, nil
 }

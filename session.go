@@ -2,6 +2,7 @@ package moqtransport
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,6 +20,12 @@ var (
 	errUnexpectedPathParameter = errors.New("unexpected path parameter on WebTransport connection")
 )
 
+const (
+	defaultMaxPendingObjects   = 100
+	defaultMaxPendingTracks    = 16
+	defaultSubscribeBufferSize = 100
+)
+
 type messageReader interface {
 	Read() (wire.ControlMessage, error)
 }
@@ -32,6 +39,44 @@ type Option func(*Session) error
 func WithHandler(handler Handler) Option {
 	return func(s *Session) error {
 		s.handler = handler
+		return nil
+	}
+}
+
+// WithMaxPendingObjects sets the number of datagram objects buffered per track
+// alias that is not bound to a receiver yet. Objects over the limit are
+// dropped.
+func WithMaxPendingObjects(n int) Option {
+	return func(s *Session) error {
+		if n <= 0 {
+			return fmt.Errorf("max pending objects must be greater than zero: %v", n)
+		}
+		s.maxPendingObjects = n
+		return nil
+	}
+}
+
+// WithMaxPendingTracks sets the number of unbound track aliases that may buffer
+// objects or hold a blocked data stream at the same time. Exceeding it ends the
+// session.
+func WithMaxPendingTracks(n int) Option {
+	return func(s *Session) error {
+		if n <= 0 {
+			return fmt.Errorf("max pending tracks must be greater than zero: %v", n)
+		}
+		s.maxPendingTracks = n
+		return nil
+	}
+}
+
+// WithSubscribeBufferSize sets the number of objects buffered in a
+// subscription.
+func WithSubscribeBufferSize(n int) Option {
+	return func(s *Session) error {
+		if n <= 0 {
+			return fmt.Errorf("subscribe buffer size must be greater than zero: %v", n)
+		}
+		s.subscribeBufferSize = n
 		return nil
 	}
 }
@@ -63,6 +108,10 @@ type Session struct {
 	tracksLock    sync.Mutex
 	tracks        map[uint64]*trackEntry
 	pendingTracks int
+
+	maxPendingObjects   int
+	maxPendingTracks    int
+	subscribeBufferSize int
 }
 
 // NewSession creates a session on conn. It never closes conn: if NewSession
@@ -89,6 +138,9 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 		version:             version,
 		path:                path,
 		tracks:              make(map[uint64]*trackEntry),
+		maxPendingObjects:   defaultMaxPendingObjects,
+		maxPendingTracks:    defaultMaxPendingTracks,
+		subscribeBufferSize: defaultSubscribeBufferSize,
 	}
 
 	for _, opt := range options {
@@ -458,27 +510,36 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser messageRead
 		firstObject = false
 		lastObjectID = objectID
 
-		payload := make([]byte, len(o.ObjectPayload))
-		copy(payload, o.ObjectPayload)
-		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "payloadLength", len(payload))
-		s.pushObject(header.TrackAlias, &Object{
+		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "payloadLength", o.PayloadLength)
+		object := &Object{
 			GroupID:              header.GroupID,
 			ObjectID:             objectID,
 			ForwardingPreference: ObjectForwardingPreferenceSubgroup,
 			SubGroupID:           subgroupID,
-			Payload:              payload,
-		})
+			Payload:              o.PayloadReader,
+			done:                 make(chan struct{}),
+		}
+		if err := s.pushStreamObject(header.TrackAlias, object); err != nil {
+			return
+		}
+		// The object reads from this stream, so the next one can only be
+		// parsed once the receiver is done with it.
+		select {
+		case <-object.done:
+		case <-s.ctx.Done():
+			return
+		}
 	}
 }
 
 func (s *Session) receiveDatagram(msg *wire.DatagramObject) {
 	payload := make([]byte, len(msg.ObjectPayload))
 	copy(payload, msg.ObjectPayload)
-	s.pushObject(msg.TrackAlias, &Object{
+	s.pushDatagramObject(msg.TrackAlias, &Object{
 		GroupID:              msg.GroupID,
 		ObjectID:             msg.ObjectID,
 		ForwardingPreference: ObjectForwardingPreferenceDatagram,
-		Payload:              payload,
+		Payload:              bytes.NewReader(payload),
 	})
 }
 

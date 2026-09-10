@@ -21,7 +21,7 @@ func TestFetchStreamBytes(t *testing.T) {
 		SubgroupID:        9,
 		ObjectIDDelta:     0,
 		PublisherPriority: 200,
-		ObjectPayload:     []byte("ab"),
+		Payload:           []byte("ab"),
 	}
 	first.SetHasGroupIDDelta(true)
 	first.SetSubgroupIDMode(FetchSubgroupIDModeExplicit)
@@ -29,7 +29,7 @@ func TestFetchStreamBytes(t *testing.T) {
 	first.SetHasPriority(true)
 	require.NoError(t, appender.Write(first))
 
-	require.NoError(t, appender.Write(&FetchObject{ObjectPayload: []byte("c")}))
+	require.NoError(t, appender.Write(&FetchObject{Payload: []byte("c")}))
 	require.NoError(t, appender.Write(NewEndOfNonExistentRange(2, 5)))
 
 	assert.Equal(t, []byte{
@@ -60,18 +60,18 @@ func fetchObjects() []*FetchObject {
 		SubgroupID:        9,
 		ObjectIDDelta:     0,
 		PublisherPriority: 200,
-		ObjectPayload:     []byte("hello"),
+		Payload:           []byte("hello"),
 	}
 	explicit.SetHasGroupIDDelta(true)
 	explicit.SetSubgroupIDMode(FetchSubgroupIDModeExplicit)
 	explicit.SetHasObjectIDDelta(true)
 	explicit.SetHasPriority(true)
 
-	prior := &FetchObject{ObjectIDDelta: 3, ObjectPayload: []byte("world")}
+	prior := &FetchObject{ObjectIDDelta: 3, Payload: []byte("world")}
 	prior.SetSubgroupIDMode(FetchSubgroupIDModePrior)
 	prior.SetHasObjectIDDelta(true)
 
-	priorPlusOne := &FetchObject{ObjectPayload: []byte("!")}
+	priorPlusOne := &FetchObject{Payload: []byte("!")}
 	priorPlusOne.SetSubgroupIDMode(FetchSubgroupIDModePriorPlusOne)
 
 	properties := &FetchObject{
@@ -79,12 +79,12 @@ func fetchObjects() []*FetchObject {
 			{Type: 1, Bytes: []byte("A")},
 			{Type: 2, Varint: 42},
 		},
-		ObjectPayload: []byte("ab"),
+		Payload: []byte("ab"),
 	}
 	properties.SetHasProperties(true)
 
 	// A datagram object has no subgroup ID, the mode bits are ignored.
-	datagram := &FetchObject{ObjectPayload: []byte("d")}
+	datagram := &FetchObject{Payload: []byte("d")}
 	datagram.SetDatagram(true)
 	datagram.SetSubgroupIDMode(FetchSubgroupIDModeExplicit)
 
@@ -119,7 +119,7 @@ func TestFetchStreamRoundTrip(t *testing.T) {
 	assert.Equal(t, header, msg)
 
 	for i, want := range objects {
-		msg, err := parser.Read()
+		msg, err := readObject(t, parser)
 		require.NoError(t, err, "object %v", i)
 		assert.Equal(t, want, msg, "object %v", i)
 	}
@@ -176,7 +176,8 @@ func TestParseTruncatedFetchObject(t *testing.T) {
 		_, err := parser.Read()
 		require.NoError(t, err, "truncated after %v bytes", i)
 
-		_, err = parser.Read()
+		// A truncation inside the payload only shows up when it is read.
+		_, err = readObject(t, parser)
 		assert.ErrorIs(t, err, io.ErrUnexpectedEOF, "truncated after %v bytes", i)
 	}
 }

@@ -24,12 +24,22 @@ func NewAppender(w io.Writer, version uint64) *Appender {
 func (a *Appender) Write(msg ControlMessage) error {
 	buf := make([]byte, 0, 4096)
 
-	switch msg.(type) {
+	// An object payload follows the serialized message, which carries only its
+	// length.
+	var payload []byte
+
+	switch m := msg.(type) {
 	case *SubgroupObject:
 		// Objects on a subgroup stream are written without type and length.
-	case *SubgroupHeader, *FetchHeader, *Padding, *FetchObject:
-		// Data stream headers are written with a type but without a length, and
-		// a fetch object with its serialization flags in place of a type.
+		m.PayloadLength = uint64(len(m.Payload))
+		payload = m.Payload
+	case *FetchObject:
+		// A fetch object carries its serialization flags in place of a type.
+		buf = varint.Append(buf, uint64(msg.Type()))
+		m.PayloadLength = uint64(len(m.Payload))
+		payload = m.Payload
+	case *SubgroupHeader, *FetchHeader, *Padding:
+		// Data stream headers are written with a type but without a length.
 		buf = varint.Append(buf, uint64(msg.Type()))
 	default:
 		return a.writeControlMessage(buf, msg)
@@ -39,6 +49,7 @@ func (a *Appender) Write(msg ControlMessage) error {
 	if err != nil {
 		return err
 	}
+	buf = append(buf, payload...)
 	return a.writeBuffer(buf)
 }
 
