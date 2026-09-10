@@ -246,6 +246,43 @@ func (c *testConnection) acceptStream(data []byte) *blockingReader {
 	return r
 }
 
+// capturingStream records everything written to it and signals closed once
+// Close is called.
+type capturingStream struct {
+	mu     sync.Mutex
+	buf    bytes.Buffer
+	closed chan struct{}
+}
+
+func (s *capturingStream) write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *capturingStream) written() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.buf.Bytes()...)
+}
+
+func (c *testConnection) acceptStreamCapturing(data []byte) (*blockingReader, *capturingStream) {
+	r, id := c.newReader(data)
+	cs := &capturingStream{closed: make(chan struct{})}
+	stream := NewMockStream(c.ctrl)
+	stream.EXPECT().Read(gomock.Any()).DoAndReturn(r.Read).AnyTimes()
+	stream.EXPECT().Write(gomock.Any()).DoAndReturn(cs.write).AnyTimes()
+	stream.EXPECT().Close().DoAndReturn(func() error {
+		close(cs.closed)
+		return nil
+	}).AnyTimes()
+	stream.EXPECT().Stop(gomock.Any()).Do(func(uint32) { r.close(errTestStreamStopped) }).AnyTimes()
+	stream.EXPECT().Reset(gomock.Any()).AnyTimes()
+	stream.EXPECT().StreamID().Return(id).AnyTimes()
+	c.bidiStreams <- stream
+	return r, cs
+}
+
 // sendDatagram delivers a datagram as if the peer had sent it.
 func (c *testConnection) sendDatagram(data []byte) {
 	c.datagrams <- data
@@ -361,5 +398,27 @@ func TestNewSessionSetupWriteErrorClosesSession(t *testing.T) {
 	session.CloseWithError(0, "closing")
 	assert.Equal(t, 1, conn.openedUniStreams())
 	assert.Equal(t, 1, conn.closes())
+	goleak.VerifyNone(t)
+}
+
+func TestUnhandledRequestTypeRejected(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	_, stream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.PublishNamespace{
+		TrackNamespace: [][]byte{[]byte("namespace")},
+	}))
+	<-stream.closed
+
+	parser, err := wire.NewParser(bytes.NewReader(stream.written()), 18, wire.StreamTypeRequest)
+	require.NoError(t, err)
+	msg, err := parser.Read()
+	require.NoError(t, err)
+	reqErr, ok := msg.(*wire.RequestError)
+	require.True(t, ok, "expected *wire.RequestError, got %T", msg)
+	assert.Equal(t, uint64(RequestErrorCodeNotSupported), reqErr.ErrorCode)
+
+	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
 }
