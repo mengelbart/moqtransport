@@ -66,8 +66,7 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 		TrackAlias: trackAlias,
 	})
 	if err != nil {
-		// TODO
-		panic(err)
+		r.session.handleReaderError(err)
 	}
 }
 
@@ -78,8 +77,7 @@ func (r *IncomingSubscribeRequest) Reject(code RequestErrorCode, reason string) 
 		ErrorReason:   reason,
 	})
 	if err != nil {
-		// TODO
-		panic(err)
+		r.session.handleReaderError(err)
 	}
 }
 
