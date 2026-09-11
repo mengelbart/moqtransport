@@ -210,6 +210,72 @@ func TestSubgroupObjectWriterAfterClose(t *testing.T) {
 	assert.ErrorIs(t, err, errObjectWriterClosed)
 }
 
+func TestSubgroupClose(t *testing.T) {
+	subgroup, stream := newTestSubgroup(t)
+	writeObject(t, subgroup, 0, "payload")
+
+	require.NoError(t, subgroup.Close())
+	assert.True(t, stream.closed)
+	assert.Empty(t, stream.resets)
+
+	// Close is idempotent, writing after it is not allowed.
+	require.NoError(t, subgroup.Close())
+	_, err := subgroup.OpenObject(1, 1)
+	assert.ErrorIs(t, err, errSubgroupClosed)
+
+	_, objects := readObjects(t, stream, 1)
+	assert.Equal(t, []byte("payload"), objects[0].Payload)
+}
+
+func TestSubgroupCloseWithOpenObject(t *testing.T) {
+	subgroup, stream := newTestSubgroup(t)
+
+	object, err := subgroup.OpenObject(0, 5)
+	require.NoError(t, err)
+	assert.ErrorIs(t, subgroup.Close(), errObjectOpen)
+	assert.False(t, stream.closed)
+
+	_, err = object.Write([]byte("hello"))
+	require.NoError(t, err)
+	require.NoError(t, object.Close())
+	require.NoError(t, subgroup.Close())
+	assert.True(t, stream.closed)
+}
+
+func TestSubgroupCloseAfterFailure(t *testing.T) {
+	subgroup, stream := newTestSubgroup(t)
+
+	object, err := subgroup.OpenObject(0, 10)
+	require.NoError(t, err)
+	assert.ErrorIs(t, object.Close(), errPayloadTooShort)
+
+	assert.ErrorIs(t, subgroup.Close(), errPayloadTooShort)
+	assert.False(t, stream.closed)
+}
+
+func TestSubgroupReset(t *testing.T) {
+	subgroup, stream := newTestSubgroup(t)
+	writeObject(t, subgroup, 0, "payload")
+
+	object, err := subgroup.OpenObject(1, 5)
+	require.NoError(t, err)
+
+	subgroup.Reset(StreamResetErrorCodeCancelled)
+	assert.Equal(t, []uint32{uint32(StreamResetErrorCodeCancelled)}, stream.resets)
+	assert.False(t, stream.closed)
+
+	_, err = object.Write([]byte("hello"))
+	assert.ErrorIs(t, err, errSubgroupReset)
+	assert.ErrorIs(t, object.Close(), errSubgroupReset)
+	_, err = subgroup.OpenObject(2, 1)
+	assert.ErrorIs(t, err, errSubgroupReset)
+	assert.ErrorIs(t, subgroup.Close(), errSubgroupReset)
+
+	// A second reset does nothing.
+	subgroup.Reset(StreamResetErrorCodeInternal)
+	assert.Len(t, stream.resets, 1)
+}
+
 func TestSubgroupEmptyObject(t *testing.T) {
 	streamed, streamedStream := newTestSubgroup(t)
 	object, err := streamed.OpenObject(0, 0)

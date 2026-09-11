@@ -8,10 +8,12 @@ import (
 )
 
 var (
-	errObjectOpen         = errors.New("subgroup already has an open object")
+	errObjectOpen         = errors.New("subgroup has an open object")
 	errObjectWriterClosed = errors.New("object writer is closed")
 	errPayloadTooLong     = errors.New("payload longer than the declared object length")
 	errPayloadTooShort    = errors.New("payload shorter than the declared object length")
+	errSubgroupClosed     = errors.New("subgroup is closed")
+	errSubgroupReset      = errors.New("subgroup was reset")
 )
 
 type Subgroup struct {
@@ -100,10 +102,32 @@ func (s *Subgroup) fail(err error) error {
 	return err
 }
 
-// Close closes the subgroup.
+// Close ends the subgroup by finishing its stream. Every object written to the
+// subgroup is delivered before the peer sees the end. Close fails while an
+// object is still open.
 func (s *Subgroup) Close() error {
-	// TODO
-	return nil
+	if s.err != nil {
+		if errors.Is(s.err, errSubgroupClosed) {
+			return nil
+		}
+		return s.err
+	}
+	if s.open != nil {
+		return errObjectOpen
+	}
+	s.err = errSubgroupClosed
+	return s.stream.Close()
+}
+
+// Reset abandons the subgroup by resetting its stream with the given code.
+// Objects not yet delivered may be lost. An open object is discarded.
+func (s *Subgroup) Reset(code StreamResetErrorCode) {
+	if s.err != nil {
+		return
+	}
+	s.err = errSubgroupReset
+	s.open = nil
+	s.stream.Reset(uint32(code))
 }
 
 // An ObjectWriter writes the payload of one object.

@@ -10,10 +10,9 @@ import (
 )
 
 type IncomingSubscribeRequest struct {
-	logger       *slog.Logger
-	session      *Session
-	streamWriter messageWriter
-	streamReader messageReader
+	logger  *slog.Logger
+	session *Session
+	stream  *requestStream
 
 	namespace [][]byte
 	name      []byte
@@ -21,15 +20,14 @@ type IncomingSubscribeRequest struct {
 	trackAlias uint64
 }
 
-func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, streamWriter messageWriter, streamReader messageReader) *IncomingSubscribeRequest {
+func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, stream *requestStream) *IncomingSubscribeRequest {
 	isr := &IncomingSubscribeRequest{
-		logger:       defaultLogger,
-		session:      session,
-		streamWriter: streamWriter,
-		streamReader: streamReader,
-		namespace:    msg.TrackNamespace,
-		name:         msg.TrackName,
-		trackAlias:   0,
+		logger:     defaultLogger,
+		session:    session,
+		stream:     stream,
+		namespace:  msg.TrackNamespace,
+		name:       msg.TrackName,
+		trackAlias: 0,
 	}
 	isr.logger.Debug("incoming subscribe request created", "requestID", msg.RequestID, "namespace", msg.TrackNamespace, "trackName", msg.TrackName)
 	return isr
@@ -39,7 +37,7 @@ func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, streamWr
 // from a goroutine tracked by the session WaitGroup.
 func (r *IncomingSubscribeRequest) readMessages() {
 	for {
-		msg, err := r.streamReader.Read()
+		msg, err := r.stream.Read()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				r.session.handleReaderError(err)
@@ -62,7 +60,7 @@ func (r *IncomingSubscribeRequest) readMessages() {
 func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	r.logger.Debug("accepting subscribe request")
 	r.trackAlias = trackAlias
-	err := r.streamWriter.Write(&wire.SubscribeOk{
+	err := r.stream.Write(&wire.SubscribeOk{
 		TrackAlias: trackAlias,
 	})
 	if err != nil {
@@ -71,7 +69,7 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 }
 
 func (r *IncomingSubscribeRequest) Reject(code RequestErrorCode, reason string) {
-	err := r.streamWriter.Write(&wire.RequestError{
+	err := r.stream.Write(&wire.RequestError{
 		ErrorCode:     uint64(code),
 		RetryInterval: 0, // TODO: Add retry interval if needed
 		ErrorReason:   reason,
@@ -95,8 +93,7 @@ func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, prio
 }
 
 func (r *IncomingSubscribeRequest) Close() error {
-	// TODO
-	return nil
+	return r.stream.Close()
 }
 
 func (r *IncomingSubscribeRequest) Namespace() [][]byte {

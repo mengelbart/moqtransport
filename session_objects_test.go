@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
+	"go.uber.org/mock/gomock"
 )
 
 type testReceiver struct {
@@ -396,6 +397,88 @@ func TestCloseRequestRemovesTrackAlias(t *testing.T) {
 
 	require.NoError(t, request.Close())
 	assert.Equal(t, 0, trackCount(session))
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func acceptSubscribe(t *testing.T, conn *testConnection, handler *MockHandler) (*IncomingSubscribeRequest, *capturingStream) {
+	t.Helper()
+	requests := make(chan *IncomingSubscribeRequest, 1)
+	handler.EXPECT().HandleSubscribe(gomock.Any()).Do(func(r *IncomingSubscribeRequest) {
+		requests <- r
+	})
+	_, requestStream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.Subscribe{
+		RequestID:      0,
+		TrackNamespace: [][]byte{[]byte("namespace")},
+		TrackName:      []byte("track"),
+	}))
+	return <-requests, requestStream
+}
+
+func TestSubgroupCloseFinishesStream(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	subgroup, err := request.OpenSubgroup(0, 0, 0)
+	require.NoError(t, err)
+	writeObject(t, subgroup, 0, "payload")
+	assert.Equal(t, 0, conn.closedUniStreams())
+
+	require.NoError(t, subgroup.Close())
+	assert.Equal(t, 1, conn.closedUniStreams())
+	assert.Empty(t, conn.uniStreamResets())
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupResetResetsStream(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	subgroup, err := request.OpenSubgroup(0, 0, 0)
+	require.NoError(t, err)
+	writeObject(t, subgroup, 0, "payload")
+
+	subgroup.Reset(StreamResetErrorCodeCancelled)
+	assert.Equal(t, []uint32{uint32(StreamResetErrorCodeCancelled)}, conn.uniStreamResets())
+	assert.Equal(t, 0, conn.closedUniStreams())
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestIncomingSubscribeRequestCloseFinishesStream(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, requestStream := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	select {
+	case <-requestStream.closed:
+		t.Fatal("request stream closed before Close")
+	default:
+	}
+	require.NoError(t, request.Close())
+	select {
+	case <-requestStream.closed:
+	case <-time.After(time.Second):
+		t.Fatal("request stream not closed")
+	}
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
