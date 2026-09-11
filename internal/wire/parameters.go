@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	PathParameterKey               = 0x01
-	MaxRequestIDParameterKey       = 0x02
-	AuthorizationTokenParameterKey = 0x03
+	SetupOptionTypePath                  uint64 = 0x01
+	SetupOptionTypeAuthorizationToken    uint64 = 0x03
+	SetupOptionTypeMaxAuthTokenCacheSize uint64 = 0x04
+	SetupOptionTypeAuthority             uint64 = 0x05
+	SetupOptionTypeMoqtImplementation    uint64 = 0x07
 )
 
 const (

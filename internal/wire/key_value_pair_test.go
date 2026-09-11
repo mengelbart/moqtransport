@@ -50,7 +50,7 @@ func TestAppendKeyValuePairs(t *testing.T) {
 		},
 		{
 			pairs: []KeyValuePair{{
-				Type:   MaxRequestIDParameterKey,
+				Type:   0x02,
 				Varint: uint64(2),
 			}},
 			buf:    []byte{},
@@ -58,7 +58,7 @@ func TestAppendKeyValuePairs(t *testing.T) {
 		},
 		{
 			pairs: []KeyValuePair{{
-				Type:   MaxRequestIDParameterKey,
+				Type:   0x02,
 				Varint: uint64(3),
 			}},
 			buf:    []byte{0x01, 0x02},
@@ -108,16 +108,16 @@ func TestParseKeyValuePair(t *testing.T) {
 		consumed int64
 	}{
 		{
-			data: []byte{byte(MaxRequestIDParameterKey), 0x01},
+			data: []byte{byte(0x02), 0x01},
 			expect: KeyValuePair{
-				Type:   MaxRequestIDParameterKey,
+				Type:   0x02,
 				Varint: uint64(1),
 			},
 			err:      nil,
 			consumed: 2,
 		},
 		{
-			data: append([]byte{byte(PathParameterKey), 11}, "/path/param"...),
+			data: append([]byte{byte(SetupOptionTypePath), 11}, "/path/param"...),
 			expect: KeyValuePair{
 				Type:  1,
 				Bytes: []byte("/path/param"),
@@ -143,7 +143,7 @@ func TestParseKeyValuePair(t *testing.T) {
 		{
 			data: []byte{0x01, 0x01, 'A'},
 			expect: KeyValuePair{
-				Type:  PathParameterKey,
+				Type:  SetupOptionTypePath,
 				Bytes: []byte("A"),
 			},
 			err:      nil,
