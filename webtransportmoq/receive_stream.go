@@ -1,6 +1,8 @@
 package webtransportmoq
 
 import (
+	"time"
+
 	"github.com/mengelbart/moqtransport"
 	"github.com/quic-go/webtransport-go"
 )
@@ -16,9 +18,12 @@ func (r *ReceiveStream) Read(p []byte) (n int, err error) {
 	return r.stream.Read(p)
 }
 
-// Stop implements moqtransport.ReceiveStream.
+// Stop implements moqtransport.ReceiveStream. The deadline unblocks a Read
+// that waits for the session to close after the peer reset the stream with
+// WTSessionGoneErrorCode, which CancelRead alone does not.
 func (r *ReceiveStream) Stop(code uint32) {
 	r.stream.CancelRead(webtransport.StreamErrorCode(code))
+	_ = r.stream.SetReadDeadline(time.Now())
 }
 
 // StreamID implements moqtransport.ReceiveStream
