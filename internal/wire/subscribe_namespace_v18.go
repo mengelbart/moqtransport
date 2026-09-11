@@ -11,8 +11,7 @@ func (m *SubscribeNamespace) append_v18(buf []byte) []byte {
 		buf = varint.Append(buf, uint64(len(v)))
 		buf = append(buf, v...)
 	}
-	buf = varint.Append(buf, uint64(len(m.Parameters)))
-	buf = appendKeyValuePairs_v18(buf, m.Parameters)
+	buf = appendParameters_v18(buf, m.Parameters)
 	return buf
 }
 
@@ -46,7 +45,7 @@ func (m *SubscribeNamespace) parse_v18(r messageReader) error {
 		m.TrackNamespacePrefix = append(m.TrackNamespacePrefix, value)
 	}
 
-	m.Parameters, err = parseKeyValuePairsCount_v18(r)
+	m.Parameters, err = parseParameters_v18(r)
 	if err != nil {
 		return err
 	}

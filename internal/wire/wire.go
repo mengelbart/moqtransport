@@ -30,10 +30,10 @@ func (m *GoAwayReq) Type() ControlMessageType {
 }
 
 type Subscribe struct {
-	RequestID      uint64         `proto:"varint"`
-	TrackNamespace [][]byte       `proto:"ntlv_bytes"`
-	TrackName      []byte         `proto:"tlv_bytes"`
-	Parameters     []KeyValuePair `proto:"kvp_list"`
+	RequestID      uint64      `proto:"varint"`
+	TrackNamespace [][]byte    `proto:"ntlv_bytes"`
+	TrackName      []byte      `proto:"tlv_bytes"`
+	Parameters     []Parameter `proto:"param_list"`
 }
 
 func (m *Subscribe) Type() ControlMessageType {
@@ -42,7 +42,7 @@ func (m *Subscribe) Type() ControlMessageType {
 
 type SubscribeOk struct {
 	TrackAlias uint64         `proto:"varint"`
-	Parameters []KeyValuePair `proto:"kvp_list"`
+	Parameters []Parameter    `proto:"param_list"`
 	Properties []KeyValuePair `proto:"kvp_list_remaining"`
 }
 
@@ -55,7 +55,7 @@ type Publish struct {
 	TrackNamespace [][]byte       `proto:"ntlv_bytes"`
 	TrackName      []byte         `proto:"tlv_bytes"`
 	TrackAlias     uint64         `proto:"varint"`
-	Parameters     []KeyValuePair `proto:"kvp_list"`
+	Parameters     []Parameter    `proto:"param_list"`
 	Properties     []KeyValuePair `proto:"kvp_list_remaining"`
 }
 
@@ -64,7 +64,7 @@ func (m *Publish) Type() ControlMessageType {
 }
 
 type PublishOk struct {
-	Parameters []KeyValuePair `proto:"kvp_list"`
+	Parameters []Parameter    `proto:"param_list"`
 	Properties []KeyValuePair `proto:"kvp_list_remaining"`
 }
 
@@ -100,7 +100,7 @@ type Fetch struct {
 	JoiningRequestID uint64 `proto:"varint,if=isJoining"`
 	JoiningStart     uint64 `proto:"varint,if=isJoining"`
 
-	Parameters []KeyValuePair `proto:"kvp_list"`
+	Parameters []Parameter `proto:"param_list"`
 }
 
 func (m *Fetch) Type() ControlMessageType {
@@ -126,7 +126,7 @@ func (m *Fetch) validate() error {
 type FetchOk struct {
 	EndOfTrack  bool           `proto:"bool"`
 	EndLocation Location       `proto:"message"`
-	Parameters  []KeyValuePair `proto:"kvp_list"`
+	Parameters  []Parameter    `proto:"param_list"`
 	Properties  []KeyValuePair `proto:"kvp_list_remaining"`
 }
 
@@ -135,10 +135,10 @@ func (m *FetchOk) Type() ControlMessageType {
 }
 
 type TrackStatus struct {
-	RequestID      uint64         `proto:"varint"`
-	TrackNamespace [][]byte       `proto:"ntlv_bytes"`
-	TrackName      []byte         `proto:"tlv_bytes"`
-	Parameters     []KeyValuePair `proto:"kvp_list"`
+	RequestID      uint64      `proto:"varint"`
+	TrackNamespace [][]byte    `proto:"ntlv_bytes"`
+	TrackName      []byte      `proto:"tlv_bytes"`
+	Parameters     []Parameter `proto:"param_list"`
 }
 
 func (m *TrackStatus) Type() ControlMessageType {
@@ -146,9 +146,9 @@ func (m *TrackStatus) Type() ControlMessageType {
 }
 
 type PublishNamespace struct {
-	RequestID      uint64         `proto:"varint"`
-	TrackNamespace [][]byte       `proto:"ntlv_bytes"`
-	Parameters     []KeyValuePair `proto:"kvp_list"`
+	RequestID      uint64      `proto:"varint"`
+	TrackNamespace [][]byte    `proto:"ntlv_bytes"`
+	Parameters     []Parameter `proto:"param_list"`
 }
 
 func (m *PublishNamespace) Type() ControlMessageType {
@@ -156,9 +156,9 @@ func (m *PublishNamespace) Type() ControlMessageType {
 }
 
 type SubscribeNamespace struct {
-	RequestID            uint64         `proto:"varint"`
-	TrackNamespacePrefix [][]byte       `proto:"ntlv_bytes"`
-	Parameters           []KeyValuePair `proto:"kvp_list"`
+	RequestID            uint64      `proto:"varint"`
+	TrackNamespacePrefix [][]byte    `proto:"ntlv_bytes"`
+	Parameters           []Parameter `proto:"param_list"`
 }
 
 func (m *SubscribeNamespace) Type() ControlMessageType {
@@ -166,9 +166,9 @@ func (m *SubscribeNamespace) Type() ControlMessageType {
 }
 
 type SubscribeTracks struct {
-	RequestID            uint64         `proto:"varint"`
-	TrackNamespacePrefix [][]byte       `proto:"ntlv_bytes"`
-	Parameters           []KeyValuePair `proto:"kvp_list"`
+	RequestID            uint64      `proto:"varint"`
+	TrackNamespacePrefix [][]byte    `proto:"ntlv_bytes"`
+	Parameters           []Parameter `proto:"param_list"`
 }
 
 func (m *SubscribeTracks) Type() ControlMessageType {
@@ -201,8 +201,8 @@ func (m *PublishBlocked) Type() ControlMessageType {
 }
 
 type RequestUpdate struct {
-	RequestID  uint64         `proto:"varint"`
-	Parameters []KeyValuePair `proto:"kvp_list"`
+	RequestID  uint64      `proto:"varint"`
+	Parameters []Parameter `proto:"param_list"`
 }
 
 func (m *RequestUpdate) Type() ControlMessageType {
@@ -210,7 +210,7 @@ func (m *RequestUpdate) Type() ControlMessageType {
 }
 
 type RequestOk struct {
-	Parameters []KeyValuePair `proto:"kvp_list"`
+	Parameters []Parameter    `proto:"param_list"`
 	Properties []KeyValuePair `proto:"kvp_list_remaining"`
 }
 

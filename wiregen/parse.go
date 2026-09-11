@@ -94,7 +94,7 @@ var parserTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"kvp_list": template.Must(template.New("kvp_list_parse").Parse(`	m.{{ .Field }}, err = parseKeyValuePairsCount{{ .Suffix }}(r)
+	"param_list": template.Must(template.New("param_list_parse").Parse(`	m.{{ .Field }}, err = parseParameters{{ .Suffix }}(r)
 	if err != nil {
 		return err
 	}

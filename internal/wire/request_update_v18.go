@@ -6,8 +6,7 @@ import "github.com/mengelbart/moqtransport/varint"
 
 func (m *RequestUpdate) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RequestID))
-	buf = varint.Append(buf, uint64(len(m.Parameters)))
-	buf = appendKeyValuePairs_v18(buf, m.Parameters)
+	buf = appendParameters_v18(buf, m.Parameters)
 	return buf
 }
 
@@ -19,7 +18,7 @@ func (m *RequestUpdate) parse_v18(r messageReader) error {
 		return err
 	}
 
-	m.Parameters, err = parseKeyValuePairsCount_v18(r)
+	m.Parameters, err = parseParameters_v18(r)
 	if err != nil {
 		return err
 	}

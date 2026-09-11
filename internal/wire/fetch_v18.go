@@ -30,8 +30,7 @@ func (m *Fetch) append_v18(buf []byte) []byte {
 	if m.isJoining() {
 		buf = varint.Append(buf, uint64(m.JoiningStart))
 	}
-	buf = varint.Append(buf, uint64(len(m.Parameters)))
-	buf = appendKeyValuePairs_v18(buf, m.Parameters)
+	buf = appendParameters_v18(buf, m.Parameters)
 	return buf
 }
 
@@ -111,7 +110,7 @@ func (m *Fetch) parse_v18(r messageReader) error {
 		}
 	}
 
-	m.Parameters, err = parseKeyValuePairsCount_v18(r)
+	m.Parameters, err = parseParameters_v18(r)
 	if err != nil {
 		return err
 	}
