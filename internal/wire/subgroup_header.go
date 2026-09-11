@@ -117,10 +117,10 @@ func (m *SubgroupHeader) SetDefaultPriority(v bool) {
 	m.typ = setBit(m.typ, subgroupBitDefaultPriority, v)
 }
 
-func (m *SubgroupHeader) FirstBit() bool {
+func (m *SubgroupHeader) FirstObject() bool {
 	return getBit(m.typ, subgroupBitFirstObject)
 }
 
-func (m *SubgroupHeader) SetFirstBit(v bool) {
+func (m *SubgroupHeader) SetFirstObject(v bool) {
 	m.typ = setBit(m.typ, subgroupBitFirstObject, v)
 }

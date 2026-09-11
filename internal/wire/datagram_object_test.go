@@ -55,3 +55,18 @@ func TestDatagramObjectParseProperties(t *testing.T) {
 	}, m.Properties)
 	assert.Equal(t, []byte("payload"), m.ObjectPayload)
 }
+
+func TestDatagramObjectParseInvalidType(t *testing.T) {
+	for _, typ := range []byte{0x10, 0x22, 0x2B, 0x30, 0x40} {
+		m := DatagramObject{}
+		assert.Error(t, m.Parse([]byte{typ, 0x00, 0x00, 0x00, 0x00}), "type %#x", typ)
+	}
+}
+
+func TestDatagramObjectParseEmptyProperties(t *testing.T) {
+	data := []byte{0x01, 0x00, 0x00, 0x00, 0x00}
+	data = varint.Append(data, 0) // properties length in bytes
+
+	m := DatagramObject{}
+	assert.ErrorIs(t, m.Parse(data), errEmptyDatagramProperties)
+}

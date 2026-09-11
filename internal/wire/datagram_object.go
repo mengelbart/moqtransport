@@ -2,9 +2,17 @@ package wire
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 
 	"github.com/mengelbart/moqtransport/varint"
 )
+
+// Datagram types take the form 0b00X0XXXX, bit 4 and everything above bit 5
+// must be zero.
+const datagramTypeFormMask uint64 = ^uint64(0b0010_1111)
+
+var errEmptyDatagramProperties = errors.New("datagram has PROPERTIES bit set but no properties")
 
 type DatagramObject struct {
 	typ               uint64
@@ -74,8 +82,26 @@ func (m *DatagramObject) Parse(data []byte) error {
 		return err
 	}
 	m.typ = typ
+	if !m.validType() {
+		return fmt.Errorf("invalid datagram type: %d", typ)
+	}
 
 	r := &boundedReader{reader: br}
 	r.reset(int64(br.Len()))
-	return m.parse_v18(r)
+	if err := m.parse_v18(r); err != nil {
+		return err
+	}
+	if m.HasProperties() && len(m.Properties) == 0 {
+		return errEmptyDatagramProperties
+	}
+	return nil
+}
+
+// validType reports whether the type has the form 0b00X0XXXX and does not
+// combine the STATUS and END_OF_GROUP bits.
+func (m *DatagramObject) validType() bool {
+	if m.typ&datagramTypeFormMask != 0 {
+		return false
+	}
+	return !m.Status() || !m.EndOfGroup()
 }

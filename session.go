@@ -24,6 +24,8 @@ const (
 	defaultMaxPendingObjects   = 100
 	defaultMaxPendingTracks    = 16
 	defaultSubscribeBufferSize = 100
+
+	defaultPublisherPriority uint8 = 128
 )
 
 type messageReader interface {
@@ -591,12 +593,26 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser messageRead
 		firstObject = false
 		lastObjectID = objectID
 
-		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "payloadLength", o.PayloadLength)
+		status := ObjectStatus(o.ObjectStatus)
+		if err := validateObjectStatus(status, o.Properties); err != nil {
+			s.closeWithError(err)
+			return
+		}
+		priority := defaultPublisherPriority
+		if !header.DefaultPriority() {
+			priority = header.PublisherPriority
+		}
+
+		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "status", status, "payloadLength", o.PayloadLength)
 		object := &Object{
 			GroupID:              header.GroupID,
 			ObjectID:             objectID,
 			ForwardingPreference: ObjectForwardingPreferenceSubgroup,
 			SubGroupID:           subgroupID,
+			PublisherPriority:    priority,
+			Status:               status,
+			EndOfGroup:           header.EndOfGroup(),
+			FirstObject:          header.FirstObject(),
 			Payload:              o.PayloadReader,
 			done:                 make(chan struct{}),
 		}
@@ -614,14 +630,42 @@ func (s *Session) readDataStream(header *wire.SubgroupHeader, parser messageRead
 }
 
 func (s *Session) receiveDatagram(msg *wire.DatagramObject) {
+	status := ObjectStatus(msg.ObjectStatus)
+	if err := validateObjectStatus(status, msg.Properties); err != nil {
+		s.closeWithError(err)
+		return
+	}
+	priority := defaultPublisherPriority
+	if !msg.DefaultPriority() {
+		priority = msg.PublisherPriority
+	}
 	payload := make([]byte, len(msg.ObjectPayload))
 	copy(payload, msg.ObjectPayload)
 	s.pushDatagramObject(msg.TrackAlias, &Object{
 		GroupID:              msg.GroupID,
 		ObjectID:             msg.ObjectID,
 		ForwardingPreference: ObjectForwardingPreferenceDatagram,
+		PublisherPriority:    priority,
+		Status:               status,
+		EndOfGroup:           msg.EndOfGroup(),
 		Payload:              bytes.NewReader(payload),
 	})
+}
+
+func validateObjectStatus(status ObjectStatus, properties []wire.KeyValuePair) error {
+	if !status.valid() {
+		return &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: fmt.Sprintf("unknown object status: %v", uint64(status)),
+		}
+	}
+	if status != ObjectStatusNormal && len(properties) > 0 {
+		return &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "properties on object with non-normal status",
+		}
+	}
+	return nil
 }
 
 func (s *Session) Subscribe(

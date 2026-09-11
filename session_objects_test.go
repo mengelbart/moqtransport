@@ -44,6 +44,36 @@ func encodeDataStream(t *testing.T, trackAlias, groupID, subgroupID uint64, obje
 	return buf.Bytes()
 }
 
+func encodeSubgroupStream(t *testing.T, header *wire.SubgroupHeader, objects ...*wire.SubgroupObject) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	appender := wire.NewAppender(&buf, 18)
+	require.NoError(t, appender.Write(header))
+	for _, o := range objects {
+		o.SetHasProperties(header.Properties())
+		require.NoError(t, appender.Write(o))
+	}
+	return buf.Bytes()
+}
+
+func subscribeBound(t *testing.T, session *Session, conn *testConnection, trackAlias uint64) *OutgoingSubscribeRequest {
+	t.Helper()
+	request, requestStream := subscribe(t, session, conn)
+	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: trackAlias}))
+	require.Eventually(t, func() bool {
+		return hasTrackAlias(session, trackAlias)
+	}, time.Second, time.Millisecond)
+	return request
+}
+
+func requireProtocolViolation(t *testing.T, session *Session) {
+	t.Helper()
+	require.Eventually(t, func() bool {
+		return sessionCloseError(session) != nil
+	}, time.Second, time.Millisecond)
+	assert.ErrorIs(t, sessionCloseError(session), &SessionError{Code: uint64(ErrorCodeProtocolViolation)})
+}
+
 func encodeDatagram(trackAlias, groupID, objectID uint64, payload string) []byte {
 	msg := &wire.DatagramObject{
 		TrackAlias:    trackAlias,
@@ -183,6 +213,165 @@ func TestSubgroupObjectIDDeltas(t *testing.T) {
 	}
 
 	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupObjectMetadata(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	request := subscribeBound(t, session, conn, 17)
+
+	header := wire.NewSubgroupHeader(17, 3, 5, 42)
+	header.SetEndOfGroup(true)
+	header.SetFirstObject(true)
+	header.SetProperties(true)
+	conn.acceptUniStream(encodeSubgroupStream(t, header,
+		&wire.SubgroupObject{
+			Payload:    []byte("hello"),
+			Properties: []wire.KeyValuePair{{Type: 2, Varint: 7}},
+		},
+		&wire.SubgroupObject{
+			ObjectStatus: uint64(ObjectStatusEndOfGroup),
+		},
+	))
+
+	o := readObject(t, request)
+	assert.Equal(t, ObjectStatusNormal, o.Status)
+	assert.Equal(t, uint8(42), o.PublisherPriority)
+	assert.True(t, o.EndOfGroup)
+	assert.True(t, o.FirstObject)
+	assert.Equal(t, []byte("hello"), readPayload(t, o))
+
+	o = readObject(t, request)
+	assert.Equal(t, uint64(1), o.ObjectID)
+	assert.Equal(t, ObjectStatusEndOfGroup, o.Status)
+	assert.Empty(t, readPayload(t, o))
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupDefaultPriority(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	request := subscribeBound(t, session, conn, 17)
+
+	header := wire.NewSubgroupHeader(17, 3, 5, 0)
+	header.SetDefaultPriority(true)
+	conn.acceptUniStream(encodeSubgroupStream(t, header, &wire.SubgroupObject{Payload: []byte("hello")}))
+
+	o := readObject(t, request)
+	assert.Equal(t, defaultPublisherPriority, o.PublisherPriority)
+	assert.False(t, o.EndOfGroup)
+	assert.False(t, o.FirstObject)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupUnknownObjectStatus(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	subscribeBound(t, session, conn, 17)
+
+	conn.acceptUniStream(encodeSubgroupStream(t, wire.NewSubgroupHeader(17, 3, 5, 0),
+		&wire.SubgroupObject{ObjectStatus: 0x1},
+	))
+
+	requireProtocolViolation(t, session)
+	goleak.VerifyNone(t)
+}
+
+func TestSubgroupPropertiesOnStatusObject(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	subscribeBound(t, session, conn, 17)
+
+	header := wire.NewSubgroupHeader(17, 3, 5, 0)
+	header.SetProperties(true)
+	conn.acceptUniStream(encodeSubgroupStream(t, header,
+		&wire.SubgroupObject{
+			ObjectStatus: uint64(ObjectStatusEndOfTrack),
+			Properties:   []wire.KeyValuePair{{Type: 2, Varint: 7}},
+		},
+	))
+
+	requireProtocolViolation(t, session)
+	goleak.VerifyNone(t)
+}
+
+func TestDatagramObjectMetadata(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	request := subscribeBound(t, session, conn, 17)
+
+	msg := &wire.DatagramObject{
+		TrackAlias:        17,
+		GroupID:           3,
+		ObjectID:          4,
+		PublisherPriority: 42,
+		Properties:        []wire.KeyValuePair{{Type: 2, Varint: 7}},
+		ObjectPayload:     []byte("hello"),
+	}
+	msg.SetEndOfGroup(true)
+	msg.SetHasProperties(true)
+	conn.sendDatagram(msg.AppendDatagram(nil))
+
+	o := readObject(t, request)
+	assert.Equal(t, ObjectStatusNormal, o.Status)
+	assert.Equal(t, uint8(42), o.PublisherPriority)
+	assert.True(t, o.EndOfGroup)
+	assert.False(t, o.FirstObject)
+	assert.Equal(t, []byte("hello"), readPayload(t, o))
+
+	msg = &wire.DatagramObject{
+		TrackAlias:   17,
+		GroupID:      3,
+		ObjectID:     5,
+		ObjectStatus: uint64(ObjectStatusEndOfTrack),
+	}
+	msg.SetDefaultPriority(true)
+	msg.SetStatus(true)
+	conn.sendDatagram(msg.AppendDatagram(nil))
+
+	o = readObject(t, request)
+	assert.Equal(t, ObjectStatusEndOfTrack, o.Status)
+	assert.Equal(t, defaultPublisherPriority, o.PublisherPriority)
+	assert.Empty(t, readPayload(t, o))
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestDatagramPropertiesOnStatusObject(t *testing.T) {
+	conn := newTestConnection(t)
+	session, err := NewSession(conn, "")
+	require.NoError(t, err)
+
+	subscribeBound(t, session, conn, 17)
+
+	msg := &wire.DatagramObject{
+		TrackAlias:   17,
+		GroupID:      3,
+		ObjectID:     4,
+		Properties:   []wire.KeyValuePair{{Type: 2, Varint: 7}},
+		ObjectStatus: uint64(ObjectStatusEndOfGroup),
+	}
+	msg.SetHasProperties(true)
+	msg.SetStatus(true)
+	conn.sendDatagram(msg.AppendDatagram(nil))
+
+	requireProtocolViolation(t, session)
 	goleak.VerifyNone(t)
 }
 
