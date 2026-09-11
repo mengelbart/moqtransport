@@ -114,8 +114,7 @@ var appenderTemplates = map[string]*template.Template{
 	}
 `)),
 
-	"kvp_list": template.Must(template.New("kvp_list_append").Parse(`	buf = varint.Append(buf, uint64(len(m.{{ .Field }})))
-	buf = appendKeyValuePairs{{ .Suffix }}(buf, m.{{ .Field }})
+	"param_list": template.Must(template.New("param_list_append").Parse(`	buf = appendParameters{{ .Suffix }}(buf, m.{{ .Field }})
 `)),
 
 	"kvp_list_tlv": template.Must(template.New("kvp_list_tlv_append").Parse(`	{{ .Field }}Buf := appendKeyValuePairs{{ .Suffix }}(nil, m.{{ .Field }})

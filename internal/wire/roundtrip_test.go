@@ -19,6 +19,17 @@ func kvps() []KeyValuePair {
 	}
 }
 
+// params covers every parameter encoding.
+func params() []Parameter {
+	return []Parameter{
+		{Type: ParameterTypeObjectDeliveryTimeout, Varint: 4200},
+		{Type: ParameterTypeAuthorizationToken, Bytes: []byte("value")},
+		{Type: ParameterTypeLargestObject, Location: Location{Group: 1, Object: 2}},
+		{Type: ParameterTypeSubscriberPriority, Uint8: 200},
+		{Type: ParameterTypeTrackNamespacePrefix, Namespace: [][]byte{[]byte("ns"), []byte("sub")}},
+	}
+}
+
 func roundTripCases() []struct {
 	name       string
 	streamType StreamType
@@ -37,18 +48,18 @@ func roundTripCases() []struct {
 			RequestID:      7,
 			TrackNamespace: [][]byte{[]byte("ns"), []byte("sub")},
 			TrackName:      []byte("track"),
-			Parameters:     kvps(),
+			Parameters:     params(),
 		}},
-		{"SubscribeOk", StreamTypeRequest, &SubscribeOk{TrackAlias: 9, Parameters: kvps(), Properties: kvps()}},
+		{"SubscribeOk", StreamTypeRequest, &SubscribeOk{TrackAlias: 9, Parameters: params(), Properties: kvps()}},
 		{"Publish", StreamTypeRequest, &Publish{
 			RequestID:      7,
 			TrackNamespace: [][]byte{[]byte("ns")},
 			TrackName:      []byte("track"),
 			TrackAlias:     9,
-			Parameters:     kvps(),
+			Parameters:     params(),
 			Properties:     kvps(),
 		}},
-		{"PublishOk", StreamTypeRequest, &PublishOk{Parameters: kvps(), Properties: kvps()}},
+		{"PublishOk", StreamTypeRequest, &PublishOk{Parameters: params(), Properties: kvps()}},
 		{"PublishDone", StreamTypeRequest, &PublishDone{StatusCode: 2, StreamCount: 11, ErrorReason: "done"}},
 		{"FetchStandalone", StreamTypeRequest, &Fetch{
 			RequestID:      7,
@@ -57,48 +68,48 @@ func roundTripCases() []struct {
 			TrackName:      []byte("track"),
 			StartLocation:  Location{Group: 1, Object: 2},
 			EndLocation:    Location{Group: 3, Object: 4},
-			Parameters:     kvps(),
+			Parameters:     params(),
 		}},
 		{"FetchRelativeJoining", StreamTypeRequest, &Fetch{
 			RequestID:        7,
 			FetchType:        FetchTypeRelativeJoining,
 			JoiningRequestID: 3,
 			JoiningStart:     2,
-			Parameters:       kvps(),
+			Parameters:       params(),
 		}},
 		{"FetchAbsoluteJoining", StreamTypeRequest, &Fetch{
 			RequestID:        7,
 			FetchType:        FetchTypeAbsoluteJoining,
 			JoiningRequestID: 3,
 			JoiningStart:     9,
-			Parameters:       kvps(),
+			Parameters:       params(),
 		}},
 		{"FetchOk", StreamTypeRequest, &FetchOk{
 			EndOfTrack:  true,
 			EndLocation: Location{Group: 4, Object: 5},
-			Parameters:  kvps(),
+			Parameters:  params(),
 			Properties:  kvps(),
 		}},
 		{"TrackStatus", StreamTypeRequest, &TrackStatus{
 			RequestID:      7,
 			TrackNamespace: [][]byte{[]byte("ns")},
 			TrackName:      []byte("track"),
-			Parameters:     kvps(),
+			Parameters:     params(),
 		}},
 		{"PublishNamespace", StreamTypeRequest, &PublishNamespace{
 			RequestID:      7,
 			TrackNamespace: [][]byte{[]byte("ns")},
-			Parameters:     kvps(),
+			Parameters:     params(),
 		}},
 		{"SubscribeNamespace", StreamTypeRequest, &SubscribeNamespace{
 			RequestID:            7,
 			TrackNamespacePrefix: [][]byte{[]byte("ns")},
-			Parameters:           kvps(),
+			Parameters:           params(),
 		}},
 		{"SubscribeTracks", StreamTypeRequest, &SubscribeTracks{
 			RequestID:            7,
 			TrackNamespacePrefix: [][]byte{[]byte("ns")},
-			Parameters:           kvps(),
+			Parameters:           params(),
 		}},
 		{"Namespace", StreamTypeRequest, &Namespace{TrackNamespaceSuffix: [][]byte{[]byte("a"), []byte("b")}}},
 		{"NamespaceDone", StreamTypeRequest, &NamespaceDone{TrackNamespaceSuffix: [][]byte{[]byte("a")}}},
@@ -106,8 +117,8 @@ func roundTripCases() []struct {
 			TrackNamespaceSuffix: [][]byte{[]byte("a")},
 			TrackName:            []byte("track"),
 		}},
-		{"RequestUpdate", StreamTypeRequest, &RequestUpdate{RequestID: 7, Parameters: kvps()}},
-		{"RequestOk", StreamTypeRequest, &RequestOk{Parameters: kvps(), Properties: kvps()}},
+		{"RequestUpdate", StreamTypeRequest, &RequestUpdate{RequestID: 7, Parameters: params()}},
+		{"RequestOk", StreamTypeRequest, &RequestOk{Parameters: params(), Properties: kvps()}},
 		{"RequestError", StreamTypeRequest, &RequestError{ErrorCode: 3, RetryInterval: 8, ErrorReason: "nope"}},
 
 		{"FetchHeader", StreamTypeData, &FetchHeader{RequestID: 42}},
@@ -198,15 +209,32 @@ func TestSetupOptionsBytes(t *testing.T) {
 }
 
 func TestParameterListBytes(t *testing.T) {
-	msg := &RequestUpdate{RequestID: 7, Parameters: deltaPairs()}
+	msg := &RequestUpdate{RequestID: 7, Parameters: []Parameter{
+		{Type: ParameterTypeSubscriberPriority, Uint8: 200},
+		{Type: ParameterTypeAuthorizationToken, Bytes: []byte("value")},
+		{Type: ParameterTypeAuthorizationToken, Bytes: []byte("other")},
+		{Type: ParameterTypeObjectDeliveryTimeout, Varint: 4200},
+		{Type: ParameterTypeLargestObject, Location: Location{Group: 1, Object: 2}},
+		{Type: ParameterTypeTrackNamespacePrefix, Namespace: [][]byte{[]byte("ns")}},
+	}}
 
-	want := []byte{0x07, 0x03} // request ID, number of parameters
-	want = append(want, deltaPairBytes...)
+	want := []byte{
+		0x07, 0x06, // request ID, number of parameters
+		0x02, 0x90, 0x68, // delta 2, OBJECT_DELIVERY_TIMEOUT: varint 4200
+		0x01, 0x05, 'v', 'a', 'l', 'u', 'e', // delta 1, AUTHORIZATION_TOKEN: five bytes
+		0x00, 0x05, 'o', 't', 'h', 'e', 'r', // delta 0, AUTHORIZATION_TOKEN: five bytes
+		0x06, 0x01, 0x02, // delta 6, LARGEST_OBJECT: group 1, object 2
+		0x17, 0xc8, // delta 23, SUBSCRIBER_PRIORITY: uint8 200
+		0x14, 0x01, 0x02, 'n', 's', // delta 20, TRACK_NAMESPACE_PREFIX: one tuple
+	}
 	assert.Equal(t, want, msg.append_v18(nil))
 
+	sorted := &RequestUpdate{RequestID: 7, Parameters: []Parameter{
+		msg.Parameters[3], msg.Parameters[1], msg.Parameters[2], msg.Parameters[4], msg.Parameters[0], msg.Parameters[5],
+	}}
 	got, err := mustParser(t, bytes.NewReader(encode(t, msg)), 18, StreamTypeRequest).Read()
 	require.NoError(t, err)
-	assert.Equal(t, msg, got)
+	assert.Equal(t, sorted, got)
 }
 
 // TestMessageTruncated cuts every encoding at every prefix. io.EOF means only
@@ -256,7 +284,7 @@ func TestParseFetchUnknownType(t *testing.T) {
 		TrackName:      []byte("track"),
 		StartLocation:  Location{Group: 1, Object: 2},
 		EndLocation:    Location{Group: 3, Object: 4},
-		Parameters:     kvps(),
+		Parameters:     params(),
 	}
 	encoded := encode(t, standalone)
 
