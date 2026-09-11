@@ -8,7 +8,7 @@ import (
 
 func validatePathParameter(setupParameters []wire.KeyValuePair, protocolIsQUIC bool) (string, error) {
 	index := slices.IndexFunc(setupParameters, func(p wire.KeyValuePair) bool {
-		return p.Type == wire.PathParameterKey
+		return p.Type == wire.SetupOptionTypePath
 	})
 	if index < 0 {
 		if protocolIsQUIC {
@@ -23,9 +23,9 @@ func validatePathParameter(setupParameters []wire.KeyValuePair, protocolIsQUIC b
 }
 
 //nolint:unused
-func validateAuthParameter(subscribeParameters []wire.KeyValuePair) (string, error) {
-	index := slices.IndexFunc(subscribeParameters, func(p wire.KeyValuePair) bool {
-		return p.Type == wire.AuthorizationTokenParameterKey
+func validateAuthParameter(subscribeParameters []wire.Parameter) (string, error) {
+	index := slices.IndexFunc(subscribeParameters, func(p wire.Parameter) bool {
+		return p.Type == wire.ParameterTypeAuthorizationToken
 	})
 	if index < 0 {
 		return "", nil

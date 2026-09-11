@@ -321,7 +321,7 @@ func encodeControlMessage(t *testing.T, msg wire.ControlMessage) []byte {
 func setupWithPath(path string) *wire.Setup {
 	return &wire.Setup{
 		Options: []wire.KeyValuePair{
-			{Type: wire.PathParameterKey, Bytes: []byte(path)},
+			{Type: wire.SetupOptionTypePath, Bytes: []byte(path)},
 		},
 	}
 }

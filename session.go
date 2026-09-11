@@ -208,7 +208,7 @@ func (s *Session) sendSetup() {
 	setup := &wire.Setup{}
 	if s.conn.Protocol() == ProtocolQUIC {
 		setup.Options = []wire.KeyValuePair{
-			{Type: wire.PathParameterKey, Bytes: []byte(s.path)},
+			{Type: wire.SetupOptionTypePath, Bytes: []byte(s.path)},
 		}
 	}
 	if err := s.localControlStream.write(setup); err != nil {
