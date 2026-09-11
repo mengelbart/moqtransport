@@ -106,6 +106,8 @@ type testConnection struct {
 	readers        []*blockingReader
 	lastID         uint64
 	openedUniCount int
+	closedUniCount int
+	uniResets      []uint32
 	closeCount     int
 }
 
@@ -174,6 +176,18 @@ func (c *testConnection) openedUniStreams() int {
 	return c.openedUniCount
 }
 
+func (c *testConnection) closedUniStreams() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closedUniCount
+}
+
+func (c *testConnection) uniStreamResets() []uint32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]uint32(nil), c.uniResets...)
+}
+
 func (c *testConnection) closes() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -203,8 +217,17 @@ func (c *testConnection) newSendStream() *MockSendStream {
 		}
 		return len(p), nil
 	}).AnyTimes()
-	stream.EXPECT().Close().Return(nil).AnyTimes()
-	stream.EXPECT().Reset(gomock.Any()).AnyTimes()
+	stream.EXPECT().Close().DoAndReturn(func() error {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.closedUniCount++
+		return nil
+	}).AnyTimes()
+	stream.EXPECT().Reset(gomock.Any()).Do(func(code uint32) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.uniResets = append(c.uniResets, code)
+	}).AnyTimes()
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
 	return stream
 }

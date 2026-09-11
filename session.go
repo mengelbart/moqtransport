@@ -34,6 +34,12 @@ type messageWriter interface {
 	Write(wire.ControlMessage) error
 }
 
+type requestStream struct {
+	messageReader
+	messageWriter
+	io.Closer
+}
+
 type Option func(*Session) error
 
 func WithHandler(handler Handler) Option {
@@ -510,7 +516,7 @@ func (s *Session) handleBidiStream(stream Stream) {
 		if s.handler == nil {
 			return
 		}
-		request := newIncomingSubscribeRequest(m, s, wire.NewAppender(stream, uint64(s.version)), parser)
+		request := newIncomingSubscribeRequest(m, s, &requestStream{parser, wire.NewAppender(stream, uint64(s.version)), stream})
 		s.handler.HandleSubscribe(request)
 		request.readMessages()
 	case *wire.Publish:
