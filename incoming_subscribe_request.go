@@ -1,6 +1,7 @@
 package moqtransport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,12 +17,15 @@ var (
 	errSubscriptionClosed      = errors.New("subscription is closed")
 	errSubscriptionNotAccepted = errors.New("subscription was not accepted")
 	errSubgroupsOpen           = errors.New("subscription has open subgroups")
+	errSubscriptionCancelled   = errors.New("subscription was cancelled by the subscriber")
 )
 
 type IncomingSubscribeRequest struct {
 	logger  *slog.Logger
 	session *Session
 	stream  *requestStream
+	ctx     context.Context
+	cancel  context.CancelCauseFunc
 
 	namespace [][]byte
 	name      []byte
@@ -31,30 +35,35 @@ type IncomingSubscribeRequest struct {
 	accepted    bool
 	closed      bool
 	streamCount uint64
-	openStreams int
+	subgroups   map[*Subgroup]struct{}
 }
 
 func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, stream *requestStream) *IncomingSubscribeRequest {
+	ctx, cancel := context.WithCancelCause(session.ctx)
 	isr := &IncomingSubscribeRequest{
 		logger:     defaultLogger,
 		session:    session,
 		stream:     stream,
+		ctx:        ctx,
+		cancel:     cancel,
 		namespace:  msg.TrackNamespace,
 		name:       msg.TrackName,
 		trackAlias: 0,
+		subgroups:  map[*Subgroup]struct{}{},
 	}
 	isr.logger.Debug("incoming subscribe request created", "requestID", msg.RequestID, "namespace", msg.TrackNamespace, "trackName", msg.TrackName)
 	return isr
 }
 
-// readMessages reads from the request stream until it fails. It must be called
-// from a goroutine tracked by the session WaitGroup.
+// readMessages reads from the request stream until it ends. A reset of the
+// stream by the subscriber cancels the subscription. It must be called from a
+// goroutine tracked by the session WaitGroup.
 func (r *IncomingSubscribeRequest) readMessages() {
 	for {
 		msg, err := r.stream.Read()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				r.session.closeOnError(err)
+				r.cancelled(err)
 			}
 			return
 		}
@@ -81,8 +90,37 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 		TrackAlias: trackAlias,
 	})
 	if err != nil {
-		r.session.closeOnError(err)
+		r.cancelled(err)
 	}
+}
+
+// Context is cancelled once the subscription ended, either by Close, Reject or
+// Redirect or because the subscriber cancelled it. The cause names the reason.
+func (r *IncomingSubscribeRequest) Context() context.Context {
+	return r.ctx
+}
+
+// cancelled ends the subscription after the request stream failed. Open
+// subgroups are reset and the subscription state is dropped.
+func (r *IncomingSubscribeRequest) cancelled(err error) {
+	r.lock.Lock()
+	if r.closed {
+		r.lock.Unlock()
+		return
+	}
+	r.closed = true
+	subgroups := make([]*Subgroup, 0, len(r.subgroups))
+	for sg := range r.subgroups {
+		subgroups = append(subgroups, sg)
+	}
+	r.lock.Unlock()
+
+	r.logger.Debug("subscription cancelled", "error", err)
+	r.stream.cancel(StreamResetErrorCodeCancelled)
+	for _, sg := range subgroups {
+		sg.stream.Reset(uint32(StreamResetErrorCodeCancelled))
+	}
+	r.cancel(fmt.Errorf("%w: %w", errSubscriptionCancelled, err))
 }
 
 // Reject answers the request with REQUEST_ERROR and asks the peer not to retry.
@@ -126,12 +164,13 @@ func (r *IncomingSubscribeRequest) sendRequestError(msg *wire.RequestError) {
 	r.lock.Lock()
 	r.closed = true
 	r.lock.Unlock()
+	defer r.cancel(errSubscriptionClosed)
 	if err := r.stream.Write(msg); err != nil {
-		r.session.closeOnError(err)
+		r.stream.cancel(StreamResetErrorCodeCancelled)
 		return
 	}
 	if err := r.stream.Close(); err != nil {
-		r.session.closeOnError(err)
+		r.stream.cancel(StreamResetErrorCodeCancelled)
 	}
 }
 
@@ -155,23 +194,30 @@ func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, prio
 	if err != nil {
 		return nil, err
 	}
+	var subgroup *Subgroup
+	subgroup, err = newSubgroup(stream, r.session.version, trackAlias, groupID, subgroupID, priority, func() {
+		r.subgroupDone(subgroup)
+	})
 	r.lock.Lock()
 	r.streamCount++
-	r.openStreams++
-	r.lock.Unlock()
-
-	subgroup, err := newSubgroup(stream, r.session.version, trackAlias, groupID, subgroupID, priority, r.subgroupDone)
 	if err != nil {
-		r.subgroupDone()
+		r.lock.Unlock()
 		return nil, err
 	}
+	if r.closed {
+		r.lock.Unlock()
+		subgroup.Reset(StreamResetErrorCodeCancelled)
+		return nil, errSubscriptionClosed
+	}
+	r.subgroups[subgroup] = struct{}{}
+	r.lock.Unlock()
 	return subgroup, nil
 }
 
-func (r *IncomingSubscribeRequest) subgroupDone() {
+func (r *IncomingSubscribeRequest) subgroupDone(sg *Subgroup) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	r.openStreams--
+	delete(r.subgroups, sg)
 }
 
 // Close ends the subscription with PUBLISH_DONE and finishes the request
@@ -186,13 +232,14 @@ func (r *IncomingSubscribeRequest) Close(status PublishDoneStatusCode, reason st
 		r.lock.Unlock()
 		return errSubscriptionNotAccepted
 	}
-	if r.openStreams > 0 {
+	if len(r.subgroups) > 0 {
 		r.lock.Unlock()
 		return errSubgroupsOpen
 	}
 	r.closed = true
 	streamCount := r.streamCount
 	r.lock.Unlock()
+	defer r.cancel(errSubscriptionClosed)
 
 	r.logger.Debug("closing subscription", "status", status, "streamCount", streamCount)
 	if err := r.stream.Write(&wire.PublishDone{
@@ -200,11 +247,11 @@ func (r *IncomingSubscribeRequest) Close(status PublishDoneStatusCode, reason st
 		StreamCount: streamCount,
 		ErrorReason: reason,
 	}); err != nil {
-		r.session.closeOnError(err)
+		r.stream.cancel(StreamResetErrorCodeCancelled)
 		return err
 	}
 	if err := r.stream.Close(); err != nil {
-		r.session.closeOnError(err)
+		r.stream.cancel(StreamResetErrorCodeCancelled)
 		return err
 	}
 	return nil

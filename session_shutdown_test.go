@@ -17,6 +17,7 @@ import (
 var (
 	errTestConnectionClosed = errors.New("test connection closed")
 	errTestStreamStopped    = errors.New("test stream stopped")
+	errTestStreamReset      = errors.New("test stream reset by peer")
 	errTestOptionFailed     = errors.New("test option failed")
 	errTestSetupWriteFailed = errors.New("test setup write failed")
 )
@@ -328,7 +329,11 @@ func (c *testConnection) acceptStreamCapturing(data []byte) (*blockingReader, *c
 		return nil
 	}).AnyTimes()
 	stream.EXPECT().Stop(gomock.Any()).Do(func(uint32) { r.close(errTestStreamStopped) }).AnyTimes()
-	stream.EXPECT().Reset(gomock.Any()).AnyTimes()
+	stream.EXPECT().Reset(gomock.Any()).Do(func(code uint32) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.bidiResets = append(c.bidiResets, code)
+	}).AnyTimes()
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
 	c.bidiStreams <- stream
 	return r, cs

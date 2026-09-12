@@ -199,3 +199,36 @@ func TestPublishDoneEndsSubscription(t *testing.T) {
 		assert.NoError(t, client.Context().Err())
 	})
 }
+
+func TestSubscriberCloseCancelsPublisher(t *testing.T) {
+	forEachTransport(t, func(t *testing.T, tr transport) {
+		handler, requests := subscribeHandler(1)
+		server, client := setup(t, tr, handler, nil)
+
+		sub, err := client.Subscribe(testContext(t), testNamespace, testTrack)
+		require.NoError(t, err)
+		r := waitForRequest(t, requests)
+
+		sg, err := r.OpenSubgroup(0, 0, 0)
+		require.NoError(t, err)
+		writeObject(t, sg, 0, []byte("first"))
+		o, err := sub.ReadObject(testContext(t))
+		require.NoError(t, err)
+		assert.Equal(t, []byte("first"), readPayload(t, o))
+
+		require.NoError(t, sub.Close())
+
+		select {
+		case <-r.Context().Done():
+		case <-testContext(t).Done():
+			require.FailNow(t, "timeout waiting for publisher to see the cancellation")
+		}
+		assert.Error(t, context.Cause(r.Context()))
+		assert.NoError(t, context.Cause(server.Context()))
+		assert.NoError(t, context.Cause(client.Context()))
+
+		_, err = r.OpenSubgroup(1, 0, 0)
+		assert.Error(t, err)
+		assert.Error(t, r.Close(moqtransport.PublishDoneStatusCodeTrackEnded, ""))
+	})
+}
