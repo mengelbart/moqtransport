@@ -23,6 +23,9 @@ func (r *testReceiver) push(o *Object) {
 	r.objects = append(r.objects, o)
 }
 
+func (r *testReceiver) addSubgroupStream(*subgroupStream)    {}
+func (r *testReceiver) removeSubgroupStream(*subgroupStream) {}
+
 // testObject is an object on a subgroup stream, identified by its wire object
 // ID delta rather than its object ID.
 type testObject struct {
@@ -156,6 +159,8 @@ func pendingObjects(s *Session, trackAlias uint64) []*Object {
 	if !ok {
 		return nil
 	}
+	entry.lock.Lock()
+	defer entry.lock.Unlock()
 	return entry.pending
 }
 
@@ -163,7 +168,12 @@ func hasTrackAlias(s *Session, trackAlias uint64) bool {
 	s.tracksLock.Lock()
 	defer s.tracksLock.Unlock()
 	entry, ok := s.tracks[trackAlias]
-	return ok && entry.receiver != nil
+	if !ok {
+		return false
+	}
+	entry.lock.Lock()
+	defer entry.lock.Unlock()
+	return entry.receiver != nil
 }
 
 // The track alias is assigned by the peer in SUBSCRIBE_OK, so a subgroup stream
@@ -672,7 +682,7 @@ func TestIncomingSubscribeRequestCloseFinishesStream(t *testing.T) {
 		t.Fatal("request stream closed before Close")
 	default:
 	}
-	require.NoError(t, request.Close())
+	require.NoError(t, request.Close(PublishDoneStatusCodeTrackEnded, ""))
 	select {
 	case <-requestStream.closed:
 	case <-time.After(time.Second):

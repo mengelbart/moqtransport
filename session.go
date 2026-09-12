@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"sync"
+	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 	"github.com/mengelbart/moqtransport/varint"
@@ -24,6 +24,7 @@ const (
 	defaultMaxPendingObjects   = 100
 	defaultMaxPendingTracks    = 16
 	defaultSubscribeBufferSize = 100
+	defaultPublishDoneTimeout  = 5 * time.Second
 
 	defaultPublisherPriority uint8 = 128
 )
@@ -108,6 +109,19 @@ func WithSubscribeBufferSize(n int) Option {
 	}
 }
 
+// WithPublishDoneTimeout sets how long a subscription waits for late data
+// streams after PUBLISH_DONE before its state is dropped. The wait ends early
+// once every stream announced in PUBLISH_DONE has ended.
+func WithPublishDoneTimeout(d time.Duration) Option {
+	return func(s *Session) error {
+		if d <= 0 {
+			return fmt.Errorf("publish done timeout must be greater than zero: %v", d)
+		}
+		s.publishDoneTimeout = d
+		return nil
+	}
+}
+
 // A Session is an endpoint of a MoQ Session session.
 type Session struct {
 	logger *slog.Logger
@@ -143,6 +157,7 @@ type Session struct {
 	maxPendingObjects   int
 	maxPendingTracks    int
 	subscribeBufferSize int
+	publishDoneTimeout  time.Duration
 }
 
 // NewSession creates a session on conn. It never closes conn: if NewSession
@@ -173,6 +188,7 @@ func NewSession(conn Connection, path string, options ...Option) (*Session, erro
 		maxPendingObjects:   defaultMaxPendingObjects,
 		maxPendingTracks:    defaultMaxPendingTracks,
 		subscribeBufferSize: defaultSubscribeBufferSize,
+		publishDoneTimeout:  defaultPublishDoneTimeout,
 	}
 
 	for _, opt := range options {
@@ -231,7 +247,7 @@ func (s *Session) sendSetup() {
 		}
 	}
 	if err := s.localControlStream.write(setup); err != nil {
-		s.handleReaderError(err)
+		s.closeOnError(err)
 		return
 	}
 	s.logger.Debug("setup message sent", "version", s.version, "path", s.path)
@@ -301,11 +317,11 @@ func (s *Session) goTracked(f func()) error {
 	return nil
 }
 
-// handleReaderError closes the session unless it is already shutting down, in
+// closeOnError closes the session unless it is already shutting down, in
 // which case the error is expected and ignored.
-func (s *Session) handleReaderError(err error) {
+func (s *Session) closeOnError(err error) {
 	if s.ctx.Err() != nil {
-		s.logger.Debug("ignoring reader error during session shutdown", "error", err)
+		s.logger.Debug("ignoring error during session shutdown", "error", err)
 		return
 	}
 	s.closeWithError(err)
@@ -432,7 +448,14 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 		}
 		rcs.readMessages()
 	case *wire.SubgroupHeader:
-		s.readDataStream(m, parser)
+		receiver, err := s.waitForReceiver(m.TrackAlias)
+		if err != nil {
+			return
+		}
+		ds := newSubgroupStream(stream, receiver, s)
+		receiver.addSubgroupStream(ds)
+		defer receiver.removeSubgroupStream(ds)
+		ds.read(m, parser)
 	case *wire.Padding:
 		if _, err := io.Copy(io.Discard, br); err != nil {
 			s.logger.Debug("error while discarding padding stream", "streamID", stream.StreamID(), "error", err)
@@ -601,85 +624,6 @@ func (s *Session) rejectUnsupportedRequest(stream Stream, requestID uint64) {
 	_ = stream.Close()
 }
 
-// readDataStream reads objects from a subgroup stream until it ends and routes
-// them by track alias. It must be called from a goroutine tracked by the
-// session WaitGroup.
-func (s *Session) readDataStream(header *wire.SubgroupHeader, parser messageReader) {
-	var (
-		firstObject  = true
-		lastObjectID uint64
-		subgroupID   = header.SubgroupID
-	)
-	for {
-		m, err := parser.Read()
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				s.handleReaderError(err)
-			}
-			return
-		}
-		o, ok := m.(*wire.SubgroupObject)
-		if !ok {
-			s.closeWithError(&SessionError{
-				Code:   uint64(ErrorCodeProtocolViolation),
-				Reason: fmt.Sprintf("unexpected message type: %T", m),
-			})
-			return
-		}
-		objectID := o.ObjectIDDelta
-		if firstObject {
-			if header.SubgroupIDMode() == wire.SubgroupIDModeFirstObject {
-				subgroupID = objectID
-			}
-		} else {
-			if o.ObjectIDDelta >= math.MaxUint64-lastObjectID {
-				s.closeWithError(&SessionError{
-					Code:   uint64(ErrorCodeProtocolViolation),
-					Reason: "object ID out of range",
-				})
-				return
-			}
-			objectID = lastObjectID + o.ObjectIDDelta + 1
-		}
-		firstObject = false
-		lastObjectID = objectID
-
-		status := ObjectStatus(o.ObjectStatus)
-		if err := validateObjectStatus(status, o.Properties); err != nil {
-			s.closeWithError(err)
-			return
-		}
-		priority := defaultPublisherPriority
-		if !header.DefaultPriority() {
-			priority = header.PublisherPriority
-		}
-
-		s.logger.Debug("received object", "groupID", header.GroupID, "subgroupID", subgroupID, "objectID", objectID, "status", status, "payloadLength", o.PayloadLength)
-		object := &Object{
-			GroupID:              header.GroupID,
-			ObjectID:             objectID,
-			ForwardingPreference: ObjectForwardingPreferenceSubgroup,
-			SubGroupID:           subgroupID,
-			PublisherPriority:    priority,
-			Status:               status,
-			EndOfGroup:           header.EndOfGroup(),
-			FirstObject:          header.FirstObject(),
-			Payload:              o.PayloadReader,
-			done:                 make(chan struct{}),
-		}
-		if err := s.pushStreamObject(header.TrackAlias, object); err != nil {
-			return
-		}
-		// The object reads from this stream, so the next one can only be
-		// parsed once the receiver is done with it.
-		select {
-		case <-object.done:
-		case <-s.ctx.Done():
-			return
-		}
-	}
-}
-
 func (s *Session) receiveDatagram(msg *wire.DatagramObject) {
 	status := ObjectStatus(msg.ObjectStatus)
 	if err := validateObjectStatus(status, msg.Properties); err != nil {
@@ -717,6 +661,79 @@ func validateObjectStatus(status ObjectStatus, properties []wire.KeyValuePair) e
 		}
 	}
 	return nil
+}
+
+// getOrCreateEntry returns the entry of trackAlias, creating a pending one if
+// needed. Exceeding the pending track limit is a session error.
+func (s *Session) getOrCreateEntry(trackAlias uint64) (*trackEntry, error) {
+	s.tracksLock.Lock()
+	defer s.tracksLock.Unlock()
+	entry, ok := s.tracks[trackAlias]
+	if ok {
+		return entry, nil
+	}
+	if s.pendingTracks >= s.maxPendingTracks {
+		return nil, &SessionError{
+			Code:   uint64(ErrorCodeInternal),
+			Reason: "too many unbound track aliases",
+		}
+	}
+	entry = newTrackEntry()
+	s.tracks[trackAlias] = entry
+	s.pendingTracks++
+	return entry, nil
+}
+
+// waitForReceiver blocks until trackAlias is bound to a receiver.
+func (s *Session) waitForReceiver(trackAlias uint64) (objectReceiver, error) {
+	entry, err := s.getOrCreateEntry(trackAlias)
+	if err != nil {
+		s.closeWithError(err)
+		return nil, err
+	}
+	return entry.waitForReceiver(s.ctx)
+}
+
+func (s *Session) pushDatagramObject(trackAlias uint64, o *Object) {
+	entry, err := s.getOrCreateEntry(trackAlias)
+	if err != nil {
+		s.closeWithError(err)
+		return
+	}
+	if !entry.pushDatagram(o, s.maxPendingObjects) {
+		s.logger.Info("pending object buffer overflow: dropping incoming object", "trackAlias", trackAlias)
+	}
+}
+
+func (s *Session) bindTrackAlias(trackAlias uint64, r objectReceiver) error {
+	s.tracksLock.Lock()
+	defer s.tracksLock.Unlock()
+
+	entry, pending := s.tracks[trackAlias]
+	if !pending {
+		entry = newTrackEntry()
+		s.tracks[trackAlias] = entry
+	}
+	if err := entry.bind(r); err != nil {
+		return err
+	}
+	if pending {
+		s.pendingTracks--
+	}
+	return nil
+}
+
+// removeReceiver drops the track alias entry of r, if it has one.
+func (s *Session) removeReceiver(r objectReceiver) {
+	s.tracksLock.Lock()
+	defer s.tracksLock.Unlock()
+
+	for trackAlias, entry := range s.tracks {
+		if entry.boundTo(r) {
+			delete(s.tracks, trackAlias)
+			return
+		}
+	}
 }
 
 func (s *Session) Subscribe(

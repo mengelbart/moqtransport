@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
@@ -34,6 +35,16 @@ type OutgoingSubscribeRequest struct {
 	requestErr error
 	closed     chan struct{}
 	closeOnce  sync.Once
+
+	// streamsLock guards the data stream accounting. done is the PUBLISH_DONE
+	// received for the subscription, streamsDone is closed once the number of
+	// streams it announced arrived and all of them ended.
+	streamsLock     sync.Mutex
+	done            *PublishDone
+	streamsReceived uint64
+	openStreams     map[*subgroupStream]struct{}
+	streamsDone     chan struct{}
+	dropped         bool
 }
 
 func newOutgoingSubscribeRequest(
@@ -45,13 +56,15 @@ func newOutgoingSubscribeRequest(
 	parameters ...OutgoingSubscribeRequestOption,
 ) (*OutgoingSubscribeRequest, error) {
 	r := &OutgoingSubscribeRequest{
-		logger:    defaultLogger,
-		requestID: requestID,
-		session:   session,
-		stream:    stream,
-		buffer:    make(chan *Object, session.subscribeBufferSize),
-		response:  make(chan error, 1),
-		closed:    make(chan struct{}),
+		logger:      defaultLogger,
+		requestID:   requestID,
+		session:     session,
+		stream:      stream,
+		buffer:      make(chan *Object, session.subscribeBufferSize),
+		response:    make(chan error, 1),
+		closed:      make(chan struct{}),
+		openStreams: make(map[*subgroupStream]struct{}),
+		streamsDone: make(chan struct{}),
 	}
 	for _, opt := range parameters {
 		if err := opt(r); err != nil {
@@ -74,14 +87,28 @@ func newOutgoingSubscribeRequest(
 // readMessages reads from the request stream until it fails. It must be called
 // from a goroutine tracked by the session WaitGroup.
 func (r *OutgoingSubscribeRequest) readMessages() {
-	defer r.markClosed()
+	publishDone := false
+	defer func() {
+		if !publishDone {
+			r.markClosed()
+		}
+	}()
 	for {
 		msg, err := r.stream.Read()
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !r.isClosed() {
-				r.session.handleReaderError(err)
+				r.session.closeOnError(err)
 			}
-			r.respond(fmt.Errorf("%w: %w", ErrRequestClosed, err))
+			if !publishDone {
+				r.respond(fmt.Errorf("%w: %w", ErrRequestClosed, err))
+			}
+			return
+		}
+		if publishDone {
+			r.session.closeWithError(&SessionError{
+				Code:   uint64(ErrorCodeProtocolViolation),
+				Reason: fmt.Sprintf("%T after PUBLISH_DONE", msg),
+			})
 			return
 		}
 		switch msg := msg.(type) {
@@ -120,6 +147,23 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 				r.respond(reqErr)
 				return
 			}
+		case *wire.PublishDone:
+			if !r.established {
+				r.session.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "PUBLISH_DONE before SUBSCRIBE_OK",
+				})
+				return
+			}
+			publishDone = true
+			r.setPublishDone(&PublishDone{
+				StatusCode:  PublishDoneStatusCode(msg.StatusCode),
+				Reason:      msg.ErrorReason,
+				StreamCount: msg.StreamCount,
+			})
+			if err := r.session.goTracked(r.awaitTeardown); err != nil {
+				return
+			}
 		default:
 			r.session.closeWithError(&SessionError{
 				Code:   uint64(ErrorCodeProtocolViolation),
@@ -146,6 +190,94 @@ func (r *OutgoingSubscribeRequest) respond(err error) {
 
 func (r *OutgoingSubscribeRequest) markClosed() {
 	r.closeOnce.Do(func() { close(r.closed) })
+}
+
+func (r *OutgoingSubscribeRequest) addSubgroupStream(s *subgroupStream) {
+	r.streamsLock.Lock()
+	defer r.streamsLock.Unlock()
+	if r.dropped {
+		s.stop()
+		return
+	}
+	r.streamsReceived++
+	r.openStreams[s] = struct{}{}
+	r.accountStreams()
+}
+
+func (r *OutgoingSubscribeRequest) removeSubgroupStream(s *subgroupStream) {
+	r.streamsLock.Lock()
+	defer r.streamsLock.Unlock()
+	delete(r.openStreams, s)
+	r.accountStreams()
+}
+
+func (r *OutgoingSubscribeRequest) setPublishDone(done *PublishDone) {
+	r.streamsLock.Lock()
+	defer r.streamsLock.Unlock()
+	r.done = done
+	r.accountStreams()
+}
+
+// accountStreams compares the data streams seen against the Stream Count of
+// PUBLISH_DONE and closes streamsDone once they all arrived and ended, so the
+// teardown does not have to wait for the timeout. More streams than announced
+// fail the session. Before PUBLISH_DONE there is nothing to compare against.
+// It must be called with streamsLock held.
+func (r *OutgoingSubscribeRequest) accountStreams() {
+	if r.done == nil {
+		return
+	}
+	if r.streamsReceived > r.done.StreamCount {
+		r.session.closeWithError(&SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "more data streams than announced in PUBLISH_DONE",
+		})
+		return
+	}
+	if r.streamsReceived == r.done.StreamCount && len(r.openStreams) == 0 {
+		select {
+		case <-r.streamsDone:
+		default:
+			close(r.streamsDone)
+		}
+	}
+}
+
+// dropState removes the subscription from the session and stops the data
+// streams still open for it.
+func (r *OutgoingSubscribeRequest) dropState() {
+	r.session.removeReceiver(r)
+	r.streamsLock.Lock()
+	defer r.streamsLock.Unlock()
+	r.dropped = true
+	for s := range r.openStreams {
+		s.stop()
+	}
+}
+
+// awaitTeardown drops the subscription state once every data stream announced
+// in PUBLISH_DONE has ended or the timeout expired. It must be called from a
+// goroutine tracked by the session WaitGroup.
+func (r *OutgoingSubscribeRequest) awaitTeardown() {
+	timer := time.NewTimer(r.session.publishDoneTimeout)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-r.streamsDone:
+	case <-r.session.ctx.Done():
+	case <-r.closed:
+		return
+	}
+	r.dropState()
+	r.streamsLock.Lock()
+	done := r.done
+	r.streamsLock.Unlock()
+	r.errLock.Lock()
+	if r.requestErr == nil {
+		r.requestErr = done
+	}
+	r.errLock.Unlock()
+	r.markClosed()
 }
 
 func (r *OutgoingSubscribeRequest) isClosed() bool {
@@ -177,7 +309,7 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 func (r *OutgoingSubscribeRequest) Close() error {
 	r.markClosed()
 	r.stream.cancel(StreamResetErrorCodeCancelled)
-	r.session.removeReceiver(r)
+	r.dropState()
 	return r.releaseLast()
 }
 
@@ -196,7 +328,13 @@ func (r *OutgoingSubscribeRequest) ReadObject(ctx context.Context) (*Object, err
 		r.last = obj
 		return obj, nil
 	case <-r.closed:
-		return nil, r.closeError()
+		select {
+		case obj := <-r.buffer:
+			r.last = obj
+			return obj, nil
+		default:
+			return nil, r.closeError()
+		}
 	}
 }
 

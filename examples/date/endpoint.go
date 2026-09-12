@@ -149,8 +149,7 @@ func (e *endpoint) setupDateTrack() {
 			sg, err := p.OpenSubgroup(uint64(groupID), 0, 0)
 			if err != nil {
 				log.Printf("failed to open new subgroup: %v", err)
-				// TODO: Close publisher with error
-				// p.CloseWithError(uint64(moqtransport.PublishDoneStatusCodeSubscriptionEnded), "") //nolint:errcheck
+				p.Close(moqtransport.PublishDoneStatusCodeInternal, err.Error()) //nolint:errcheck
 				delete(e.publishers, p)
 				continue
 			}

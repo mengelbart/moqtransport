@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
 
-var errRedirectURIFromClient = errors.New("only servers may redirect to another connect URI")
+var (
+	errRedirectURIFromClient   = errors.New("only servers may redirect to another connect URI")
+	errSubscriptionClosed      = errors.New("subscription is closed")
+	errSubscriptionNotAccepted = errors.New("subscription was not accepted")
+	errSubgroupsOpen           = errors.New("subscription has open subgroups")
+)
 
 type IncomingSubscribeRequest struct {
 	logger  *slog.Logger
@@ -20,7 +26,12 @@ type IncomingSubscribeRequest struct {
 	namespace [][]byte
 	name      []byte
 
-	trackAlias uint64
+	lock        sync.Mutex
+	trackAlias  uint64
+	accepted    bool
+	closed      bool
+	streamCount uint64
+	openStreams int
 }
 
 func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, stream *requestStream) *IncomingSubscribeRequest {
@@ -43,7 +54,7 @@ func (r *IncomingSubscribeRequest) readMessages() {
 		msg, err := r.stream.Read()
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				r.session.handleReaderError(err)
+				r.session.closeOnError(err)
 			}
 			return
 		}
@@ -62,12 +73,15 @@ func (r *IncomingSubscribeRequest) readMessages() {
 
 func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	r.logger.Debug("accepting subscribe request")
+	r.lock.Lock()
 	r.trackAlias = trackAlias
+	r.accepted = true
+	r.lock.Unlock()
 	err := r.stream.Write(&wire.SubscribeOk{
 		TrackAlias: trackAlias,
 	})
 	if err != nil {
-		r.session.handleReaderError(err)
+		r.session.closeOnError(err)
 	}
 }
 
@@ -109,12 +123,15 @@ func (r *IncomingSubscribeRequest) Redirect(uri string, namespace [][]byte, name
 }
 
 func (r *IncomingSubscribeRequest) sendRequestError(msg *wire.RequestError) {
+	r.lock.Lock()
+	r.closed = true
+	r.lock.Unlock()
 	if err := r.stream.Write(msg); err != nil {
-		r.session.handleReaderError(err)
+		r.session.closeOnError(err)
 		return
 	}
 	if err := r.stream.Close(); err != nil {
-		r.session.handleReaderError(err)
+		r.session.closeOnError(err)
 	}
 }
 
@@ -123,16 +140,74 @@ func (r *IncomingSubscribeRequest) SendDatagram(o *Object) error {
 	return nil
 }
 
+// OpenSubgroup opens a data stream for a subgroup of the subscription. Every
+// subgroup must be closed or reset before the subscription can be closed.
 func (r *IncomingSubscribeRequest) OpenSubgroup(groupID, subgroupID uint64, priority uint8) (*Subgroup, error) {
+	r.lock.Lock()
+	if r.closed {
+		r.lock.Unlock()
+		return nil, errSubscriptionClosed
+	}
+	trackAlias := r.trackAlias
+	r.lock.Unlock()
+
 	stream, err := r.session.conn.OpenUniStream()
 	if err != nil {
 		return nil, err
 	}
-	return newSubgroup(stream, r.session.version, r.trackAlias, groupID, subgroupID, priority)
+	r.lock.Lock()
+	r.streamCount++
+	r.openStreams++
+	r.lock.Unlock()
+
+	subgroup, err := newSubgroup(stream, r.session.version, trackAlias, groupID, subgroupID, priority, r.subgroupDone)
+	if err != nil {
+		r.subgroupDone()
+		return nil, err
+	}
+	return subgroup, nil
 }
 
-func (r *IncomingSubscribeRequest) Close() error {
-	return r.stream.Close()
+func (r *IncomingSubscribeRequest) subgroupDone() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.openStreams--
+}
+
+// Close ends the subscription with PUBLISH_DONE and finishes the request
+// stream. It fails while a subgroup of the subscription is still open.
+func (r *IncomingSubscribeRequest) Close(status PublishDoneStatusCode, reason string) error {
+	r.lock.Lock()
+	if r.closed {
+		r.lock.Unlock()
+		return errSubscriptionClosed
+	}
+	if !r.accepted {
+		r.lock.Unlock()
+		return errSubscriptionNotAccepted
+	}
+	if r.openStreams > 0 {
+		r.lock.Unlock()
+		return errSubgroupsOpen
+	}
+	r.closed = true
+	streamCount := r.streamCount
+	r.lock.Unlock()
+
+	r.logger.Debug("closing subscription", "status", status, "streamCount", streamCount)
+	if err := r.stream.Write(&wire.PublishDone{
+		StatusCode:  uint64(status),
+		StreamCount: streamCount,
+		ErrorReason: reason,
+	}); err != nil {
+		r.session.closeOnError(err)
+		return err
+	}
+	if err := r.stream.Close(); err != nil {
+		r.session.closeOnError(err)
+		return err
+	}
+	return nil
 }
 
 func (r *IncomingSubscribeRequest) Namespace() [][]byte {
