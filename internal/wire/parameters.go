@@ -9,14 +9,6 @@ import (
 )
 
 const (
-	SetupOptionTypePath                  uint64 = 0x01
-	SetupOptionTypeAuthorizationToken    uint64 = 0x03
-	SetupOptionTypeMaxAuthTokenCacheSize uint64 = 0x04
-	SetupOptionTypeAuthority             uint64 = 0x05
-	SetupOptionTypeMoqtImplementation    uint64 = 0x07
-)
-
-const (
 	ParameterTypeObjectDeliveryTimeout   uint64 = 0x02
 	ParameterTypeAuthorizationToken      uint64 = 0x03
 	ParameterTypeRendezvousTimeout       uint64 = 0x04
@@ -42,23 +34,131 @@ const (
 	ParameterEncodingNamespace
 )
 
-var parameterEncodings = map[uint64]ParameterEncoding{
-	ParameterTypeObjectDeliveryTimeout:   ParameterEncodingVarint,
-	ParameterTypeAuthorizationToken:      ParameterEncodingBytes,
-	ParameterTypeRendezvousTimeout:       ParameterEncodingVarint,
-	ParameterTypeSubgroupDeliveryTimeout: ParameterEncodingVarint,
-	ParameterTypeExpires:                 ParameterEncodingVarint,
-	ParameterTypeLargestObject:           ParameterEncodingLocation,
-	ParameterTypeFillTimeout:             ParameterEncodingVarint,
-	ParameterTypeForward:                 ParameterEncodingUint8,
-	ParameterTypeSubscriberPriority:      ParameterEncodingUint8,
-	ParameterTypeSubscriptionFilter:      ParameterEncodingBytes,
-	ParameterTypeGroupOrder:              ParameterEncodingUint8,
-	ParameterTypeNewGroupRequest:         ParameterEncodingVarint,
-	ParameterTypeTrackNamespacePrefix:    ParameterEncodingNamespace,
+// ParameterScope identifies the message a parameter list belongs to. For
+// REQUEST_UPDATE and REQUEST_OK it names the request the message refers to.
+type ParameterScope uint32
+
+const (
+	ScopeSubscribe ParameterScope = 1 << iota
+	ScopeSubscribeOk
+	ScopePublish
+	ScopePublishOk
+	ScopeFetch
+	ScopeTrackStatus
+	ScopeTrackStatusOk
+	ScopePublishNamespace
+	ScopeSubscribeNamespace
+	ScopeSubscribeTracks
+	ScopeRequestUpdateSubscribe
+	ScopeRequestUpdateFetch
+	ScopeRequestUpdateNamespace
+	ScopeRequestUpdateOther
+	ScopeRequestUpdateOk
+)
+
+const scopeRequestUpdateAny = ScopeRequestUpdateSubscribe | ScopeRequestUpdateFetch | ScopeRequestUpdateNamespace | ScopeRequestUpdateOther
+
+const (
+	DefaultSubscriberPriority uint8  = 128
+	DefaultForward            uint8  = 1
+	DefaultRendezvousTimeout  uint64 = 0
+	DefaultExpires            uint64 = 0
+)
+
+const (
+	GroupOrderAscending  uint8 = 0x1
+	GroupOrderDescending uint8 = 0x2
+)
+
+type parameterDefinition struct {
+	name     string
+	encoding ParameterEncoding
+	scopes   ParameterScope
+	repeat   bool
+	// min and max bound uint8 values, max is unbounded when zero.
+	min, max uint8
 }
 
-var ErrUnknownParameter = errors.New("unknown parameter type")
+var parameterDefinitions = map[uint64]parameterDefinition{
+	ParameterTypeObjectDeliveryTimeout: {
+		name:     "OBJECT_DELIVERY_TIMEOUT",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopePublishOk | ScopeSubscribe | ScopeRequestUpdateSubscribe,
+	},
+	ParameterTypeAuthorizationToken: {
+		name:     "AUTHORIZATION_TOKEN",
+		encoding: ParameterEncodingBytes,
+		scopes: ScopePublish | ScopeSubscribe | scopeRequestUpdateAny | ScopeSubscribeNamespace |
+			ScopeSubscribeTracks | ScopePublishNamespace | ScopeTrackStatus | ScopeFetch,
+		repeat: true,
+	},
+	ParameterTypeRendezvousTimeout: {
+		name:     "RENDEZVOUS_TIMEOUT",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopeSubscribe,
+	},
+	ParameterTypeSubgroupDeliveryTimeout: {
+		name:     "SUBGROUP_DELIVERY_TIMEOUT",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopePublishOk | ScopeSubscribe | ScopeRequestUpdateSubscribe,
+	},
+	ParameterTypeExpires: {
+		name:     "EXPIRES",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopeSubscribeOk | ScopePublish | ScopePublishOk | ScopeRequestUpdateOk,
+	},
+	ParameterTypeLargestObject: {
+		name:     "LARGEST_OBJECT",
+		encoding: ParameterEncodingLocation,
+		scopes:   ScopeSubscribeOk | ScopePublish | ScopeRequestUpdateOk | ScopeTrackStatusOk,
+	},
+	ParameterTypeFillTimeout: {
+		name:     "FILL_TIMEOUT",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopeFetch,
+	},
+	ParameterTypeForward: {
+		name:     "FORWARD",
+		encoding: ParameterEncodingUint8,
+		scopes:   ScopeSubscribe | ScopeRequestUpdateSubscribe | ScopePublish | ScopePublishOk | ScopeSubscribeTracks,
+		max:      1,
+	},
+	ParameterTypeSubscriberPriority: {
+		name:     "SUBSCRIBER_PRIORITY",
+		encoding: ParameterEncodingUint8,
+		scopes:   ScopeSubscribe | ScopeFetch | ScopeRequestUpdateSubscribe | ScopeRequestUpdateFetch | ScopePublishOk,
+	},
+	ParameterTypeSubscriptionFilter: {
+		name:     "SUBSCRIPTION_FILTER",
+		encoding: ParameterEncodingBytes,
+		scopes:   ScopeSubscribe | ScopePublishOk | ScopeRequestUpdateSubscribe,
+	},
+	ParameterTypeGroupOrder: {
+		name:     "GROUP_ORDER",
+		encoding: ParameterEncodingUint8,
+		scopes:   ScopeSubscribe | ScopePublishOk | ScopeFetch,
+		min:      GroupOrderAscending,
+		max:      GroupOrderDescending,
+	},
+	ParameterTypeNewGroupRequest: {
+		name:     "NEW_GROUP_REQUEST",
+		encoding: ParameterEncodingVarint,
+		scopes:   ScopePublishOk | ScopeSubscribe | ScopeRequestUpdateSubscribe,
+	},
+	ParameterTypeTrackNamespacePrefix: {
+		name:     "TRACK_NAMESPACE_PREFIX",
+		encoding: ParameterEncodingNamespace,
+		scopes:   ScopeRequestUpdateNamespace,
+	},
+}
+
+// Parameter validation errors, all close the session with PROTOCOL_VIOLATION.
+var (
+	ErrUnknownParameter   = errors.New("unknown parameter type")
+	ErrParameterScope     = errors.New("parameter not allowed in message")
+	ErrDuplicateParameter = errors.New("duplicate parameter")
+	ErrParameterValue     = errors.New("invalid parameter value")
+)
 
 // Parameter is a Message Parameter. Only the value field matching the encoding
 // of Type is used.
@@ -72,7 +172,7 @@ type Parameter struct {
 }
 
 func (p *Parameter) Encoding() ParameterEncoding {
-	return parameterEncodings[p.Type]
+	return parameterDefinitions[p.Type].encoding
 }
 
 // append_v18 writes the value. An unknown type has no encoding and writes
@@ -186,4 +286,80 @@ func parseParameters_v18(r messageReader) ([]Parameter, error) {
 		params = append(params, p)
 	}
 	return params, nil
+}
+
+// ValidateParameters checks a parameter list against the definitions for
+// scope. The returned error wraps one of the Err* sentinels.
+func ValidateParameters(scope ParameterScope, params []Parameter) error {
+	seen := make(map[uint64]struct{}, len(params))
+	for i := range params {
+		p := &params[i]
+		def, ok := parameterDefinitions[p.Type]
+		if !ok {
+			return fmt.Errorf("%w: 0x%x", ErrUnknownParameter, p.Type)
+		}
+		if def.scopes&scope == 0 {
+			return fmt.Errorf("%w: %s", ErrParameterScope, def.name)
+		}
+		if _, dup := seen[p.Type]; dup && !def.repeat {
+			return fmt.Errorf("%w: %s", ErrDuplicateParameter, def.name)
+		}
+		seen[p.Type] = struct{}{}
+		if def.encoding == ParameterEncodingUint8 && (p.Uint8 < def.min || (def.max > 0 && p.Uint8 > def.max)) {
+			return fmt.Errorf("%w: %s %d", ErrParameterValue, def.name, p.Uint8)
+		}
+	}
+	return nil
+}
+
+func findParameter(params []Parameter, t uint64) (*Parameter, bool) {
+	for i := range params {
+		if params[i].Type == t {
+			return &params[i], true
+		}
+	}
+	return nil, false
+}
+
+// Uint8ParameterValue returns the first parameter of type t, or def when absent.
+func Uint8ParameterValue(params []Parameter, t uint64, def uint8) uint8 {
+	if p, ok := findParameter(params, t); ok {
+		return p.Uint8
+	}
+	return def
+}
+
+// VarintParameterValue returns the first parameter of type t, or def when absent.
+func VarintParameterValue(params []Parameter, t uint64, def uint64) uint64 {
+	if p, ok := findParameter(params, t); ok {
+		return p.Varint
+	}
+	return def
+}
+
+// BytesParameterValue returns the first parameter of type t and whether it was present.
+func BytesParameterValue(params []Parameter, t uint64) ([]byte, bool) {
+	if p, ok := findParameter(params, t); ok {
+		return p.Bytes, true
+	}
+	return nil, false
+}
+
+// AllBytesParameterValues returns the values of every parameter of type t in order.
+func AllBytesParameterValues(params []Parameter, t uint64) [][]byte {
+	var values [][]byte
+	for i := range params {
+		if params[i].Type == t {
+			values = append(values, params[i].Bytes)
+		}
+	}
+	return values
+}
+
+// LocationParameterValue returns the first parameter of type t and whether it was present.
+func LocationParameterValue(params []Parameter, t uint64) (Location, bool) {
+	if p, ok := findParameter(params, t); ok {
+		return p.Location, true
+	}
+	return Location{}, false
 }
