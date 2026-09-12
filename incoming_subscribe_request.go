@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
 )
+
+var errRedirectURIFromClient = errors.New("only servers may redirect to another connect URI")
 
 type IncomingSubscribeRequest struct {
 	logger  *slog.Logger
@@ -68,13 +71,49 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	}
 }
 
+// Reject answers the request with REQUEST_ERROR and asks the peer not to retry.
 func (r *IncomingSubscribeRequest) Reject(code RequestErrorCode, reason string) {
-	err := r.stream.Write(&wire.RequestError{
+	r.sendRequestError(&wire.RequestError{
+		ErrorCode:   uint64(code),
+		ErrorReason: reason,
+	})
+}
+
+// RejectRetry answers the request with REQUEST_ERROR and tells the peer it may
+// retry after retryAfter.
+func (r *IncomingSubscribeRequest) RejectRetry(code RequestErrorCode, reason string, retryAfter time.Duration) {
+	r.sendRequestError(&wire.RequestError{
 		ErrorCode:     uint64(code),
-		RetryInterval: 0, // TODO: Add retry interval if needed
+		RetryInterval: uint64(retryAfter.Milliseconds()) + 1,
 		ErrorReason:   reason,
 	})
-	if err != nil {
+}
+
+// Redirect answers the request with REQUEST_ERROR code REDIRECT pointing to
+// another track. An empty uri means the current session, an empty namespace
+// together with an empty name means the original track. Only servers may set
+// uri, a client passing one gets an error and nothing is sent.
+func (r *IncomingSubscribeRequest) Redirect(uri string, namespace [][]byte, name []byte) error {
+	if uri != "" && r.session.conn.Perspective() == PerspectiveClient {
+		return errRedirectURIFromClient
+	}
+	r.sendRequestError(&wire.RequestError{
+		ErrorCode: uint64(RequestErrorCodeRedirect),
+		Redirect: wire.Redirect{
+			ConnectURI:     uri,
+			TrackNamespace: namespace,
+			TrackName:      name,
+		},
+	})
+	return nil
+}
+
+func (r *IncomingSubscribeRequest) sendRequestError(msg *wire.RequestError) {
+	if err := r.stream.Write(msg); err != nil {
+		r.session.handleReaderError(err)
+		return
+	}
+	if err := r.stream.Close(); err != nil {
 		r.session.handleReaderError(err)
 	}
 }

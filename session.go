@@ -36,10 +36,29 @@ type messageWriter interface {
 	Write(wire.ControlMessage) error
 }
 
+type streamCanceller interface {
+	Reset(uint32)
+	Stop(uint32)
+}
+
 type requestStream struct {
 	messageReader
 	messageWriter
 	io.Closer
+	streamCanceller
+}
+
+func newRequestStream(stream Stream, version uint64) (*requestStream, error) {
+	parser, err := wire.NewParser(stream, version, wire.StreamTypeRequest)
+	if err != nil {
+		return nil, err
+	}
+	return &requestStream{parser, wire.NewAppender(stream, version), stream, stream}, nil
+}
+
+func (s *requestStream) cancel(code StreamResetErrorCode) {
+	s.Reset(uint32(code))
+	s.Stop(uint32(code))
 }
 
 type Option func(*Session) error
@@ -236,6 +255,38 @@ func (s *Session) closeWithError(closeErr error) bool {
 	_ = s.conn.CloseWithError(code, reason)
 
 	return true
+}
+
+// requestErrorFromWire converts a received REQUEST_ERROR and validates its
+// redirect. namespaceScoped is true for requests that carry no track name. A
+// non-nil SessionError is a PROTOCOL_VIOLATION the caller must close with.
+func (s *Session) requestErrorFromWire(msg *wire.RequestError, namespaceScoped bool) (*RequestError, *SessionError) {
+	err := &RequestError{
+		Code:          RequestErrorCode(msg.ErrorCode),
+		Reason:        msg.ErrorReason,
+		RetryInterval: msg.RetryInterval,
+	}
+	if err.Code != RequestErrorCodeRedirect {
+		return err, nil
+	}
+	if s.conn.Perspective() == PerspectiveServer && msg.Redirect.ConnectURI != "" {
+		return nil, &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "redirect with connect URI received by server",
+		}
+	}
+	if namespaceScoped && len(msg.Redirect.TrackName) > 0 {
+		return nil, &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "redirect with track name for namespace request",
+		}
+	}
+	err.Redirect = &Redirect{
+		ConnectURI: msg.Redirect.ConnectURI,
+		Namespace:  msg.Redirect.TrackNamespace,
+		Name:       msg.Redirect.TrackName,
+	}
+	return err, nil
 }
 
 // goTracked runs f in a goroutine tracked by the session WaitGroup. It reports
@@ -518,7 +569,7 @@ func (s *Session) handleBidiStream(stream Stream) {
 		if s.handler == nil {
 			return
 		}
-		request := newIncomingSubscribeRequest(m, s, &requestStream{parser, wire.NewAppender(stream, uint64(s.version)), stream})
+		request := newIncomingSubscribeRequest(m, s, &requestStream{parser, wire.NewAppender(stream, uint64(s.version)), stream, stream})
 		s.handler.HandleSubscribe(request)
 		request.readMessages()
 	case *wire.Publish:
@@ -686,13 +737,12 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 	s.logger.Debug("opened new stream for subscribe request", "requestID", requestID, "namespace", namespace, "name", name)
-	parser, err := wire.NewParser(stream, uint64(s.version), wire.StreamTypeRequest)
+	rs, err := newRequestStream(stream, uint64(s.version))
 	if err != nil {
 		return nil, err
 	}
-	appender := wire.NewAppender(stream, uint64(s.version))
 
-	request, err := newOutgoingSubscribeRequest(requestID, s, appender, parser, namespace, []byte(name))
+	request, err := newOutgoingSubscribeRequest(requestID, s, rs, namespace, []byte(name))
 	if err != nil {
 		return nil, err
 	}
@@ -700,7 +750,21 @@ func (s *Session) Subscribe(
 	if err := s.goTracked(request.readMessages); err != nil {
 		return nil, err
 	}
-	return request, nil
+
+	select {
+	case err := <-request.response:
+		if err != nil {
+			return nil, err
+		}
+		return request, nil
+	case <-ctx.Done():
+		_ = request.Close()
+		return nil, context.Cause(ctx)
+	case <-s.ctx.Done():
+		s.closeLock.Lock()
+		defer s.closeLock.Unlock()
+		return nil, s.closeErr
+	}
 }
 
 func (s *Session) onGoAway(msg *wire.GoAwayCtrl) {

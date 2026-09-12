@@ -1,5 +1,48 @@
 package moqtransport
 
+import (
+	"errors"
+	"fmt"
+	"time"
+)
+
+// ErrRequestClosed is returned when a request stream ends before the peer
+// answered the request.
+var ErrRequestClosed = errors.New("request stream closed without response")
+
+// Redirect carries the target of a REQUEST_ERROR with code REDIRECT.
+type Redirect struct {
+	ConnectURI string
+	Namespace  [][]byte
+	Name       []byte
+}
+
+// RequestError is a REQUEST_ERROR received from the peer.
+type RequestError struct {
+	Code          RequestErrorCode
+	Reason        string
+	RetryInterval uint64
+	Redirect      *Redirect
+}
+
+func (e *RequestError) Error() string {
+	return fmt.Sprintf("request error %#x: %s", uint64(e.Code), e.Reason)
+}
+
+func (e *RequestError) Is(target error) bool {
+	other, ok := target.(*RequestError)
+	return ok && e.Code == other.Code
+}
+
+// RetryAfter returns the interval after which the request may be retried.
+// The second return value is false when the peer asked not to retry.
+func (e *RequestError) RetryAfter() (time.Duration, bool) {
+	if e.RetryInterval == 0 {
+		return 0, false
+	}
+	return time.Duration(e.RetryInterval-1) * time.Millisecond, true
+}
+
 // ErrorCode is a session termination error code.
 type ErrorCode uint64
 
