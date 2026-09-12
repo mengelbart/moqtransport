@@ -609,6 +609,12 @@ func TestCloseRequestRemovesTrackAlias(t *testing.T) {
 
 func acceptSubscribe(t *testing.T, conn *testConnection, handler *MockHandler) (*IncomingSubscribeRequest, *capturingStream) {
 	t.Helper()
+	request, _, stream := acceptSubscribeReader(t, conn, handler)
+	return request, stream
+}
+
+func acceptSubscribeReader(t *testing.T, conn *testConnection, handler *MockHandler) (*IncomingSubscribeRequest, *blockingReader, *capturingStream) {
+	t.Helper()
 	requests := make(chan *IncomingSubscribeRequest, 1)
 	handler.EXPECT().HandleSubscribe(gomock.Any()).Do(func(r *IncomingSubscribeRequest) {
 		requests <- r
@@ -617,12 +623,12 @@ func acceptSubscribe(t *testing.T, conn *testConnection, handler *MockHandler) (
 	if conn.Perspective() == PerspectiveClient {
 		requestID = 1
 	}
-	_, requestStream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.Subscribe{
+	reader, requestStream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.Subscribe{
 		RequestID:      requestID,
 		TrackNamespace: [][]byte{[]byte("namespace")},
 		TrackName:      []byte("track"),
 	}))
-	return <-requests, requestStream
+	return <-requests, reader, requestStream
 }
 
 func TestSubgroupCloseFinishesStream(t *testing.T) {
