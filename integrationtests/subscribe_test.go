@@ -112,9 +112,7 @@ func TestSubscribeMultipleTracks(t *testing.T) {
 	})
 }
 
-// Once a typed RequestError exists, also assert its code.
 func TestSubscribeRejectReturnsError(t *testing.T) {
-	t.Skip("Subscribe returns before the response and drops REQUEST_ERROR")
 	forEachTransport(t, func(t *testing.T, tr transport) {
 		handler := &testHandler{
 			onSubscribe: func(r *moqtransport.IncomingSubscribeRequest) {
@@ -124,7 +122,7 @@ func TestSubscribeRejectReturnsError(t *testing.T) {
 		server, client := setup(t, tr, handler, nil)
 
 		sub, err := client.Subscribe(testContext(t), testNamespace, testTrack)
-		require.Error(t, err)
+		require.ErrorIs(t, err, &moqtransport.RequestError{Code: moqtransport.RequestErrorCodeDoesNotExist})
 		assert.ErrorContains(t, err, "unknown")
 		assert.Nil(t, sub)
 

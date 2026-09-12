@@ -56,13 +56,47 @@ func encodeSubgroupStream(t *testing.T, header *wire.SubgroupHeader, objects ...
 	return buf.Bytes()
 }
 
+type subscribeResult struct {
+	request *OutgoingSubscribeRequest
+	err     error
+}
+
+// subscribe starts a subscription in the background and returns the request
+// stream so the test can answer it while Subscribe is still blocked.
+func subscribe(t *testing.T, ctx context.Context, session *Session, conn *testConnection) (<-chan subscribeResult, *blockingReader) {
+	t.Helper()
+	result := make(chan subscribeResult, 1)
+	go func() {
+		request, err := session.Subscribe(ctx, [][]byte{[]byte("namespace")}, "track")
+		result <- subscribeResult{request, err}
+	}()
+	return result, <-conn.openedStreams
+}
+
+func awaitSubscribe(t *testing.T, result <-chan subscribeResult) (*OutgoingSubscribeRequest, error) {
+	t.Helper()
+	select {
+	case r := <-result:
+		return r.request, r.err
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for Subscribe to return")
+		return nil, nil
+	}
+}
+
+func subscribeBoundWithStream(t *testing.T, session *Session, conn *testConnection, trackAlias uint64) (*OutgoingSubscribeRequest, *blockingReader) {
+	t.Helper()
+	result, requestStream := subscribe(t, context.Background(), session, conn)
+	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: trackAlias}))
+	request, err := awaitSubscribe(t, result)
+	require.NoError(t, err)
+	require.True(t, hasTrackAlias(session, trackAlias))
+	return request, requestStream
+}
+
 func subscribeBound(t *testing.T, session *Session, conn *testConnection, trackAlias uint64) *OutgoingSubscribeRequest {
 	t.Helper()
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: trackAlias}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, trackAlias)
-	}, time.Second, time.Millisecond)
+	request, _ := subscribeBoundWithStream(t, session, conn, trackAlias)
 	return request
 }
 
@@ -132,15 +166,6 @@ func hasTrackAlias(s *Session, trackAlias uint64) bool {
 	return ok && entry.receiver != nil
 }
 
-// subscribe starts a subscription and returns it together with the reader of
-// the stream the session opened for it.
-func subscribe(t *testing.T, session *Session, conn *testConnection) (*OutgoingSubscribeRequest, *blockingReader) {
-	t.Helper()
-	request, err := session.Subscribe(context.Background(), [][]byte{[]byte("namespace")}, "track")
-	require.NoError(t, err)
-	return request, <-conn.openedStreams
-}
-
 // The track alias is assigned by the peer in SUBSCRIBE_OK, so a subgroup stream
 // can arrive first. Its objects must be delivered once the alias is known.
 func TestSubgroupBeforeSubscribeOk(t *testing.T) {
@@ -148,7 +173,7 @@ func TestSubgroupBeforeSubscribeOk(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
+	result, requestStream := subscribe(t, context.Background(), session, conn)
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
 	// The stream holds the object until the alias is bound, so the entry for it
@@ -158,6 +183,8 @@ func TestSubgroupBeforeSubscribeOk(t *testing.T) {
 	}, time.Second, time.Millisecond)
 
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	request, err := awaitSubscribe(t, result)
+	require.NoError(t, err)
 
 	o := readObject(t, request)
 	assert.Equal(t, []byte("hello"), readPayload(t, o))
@@ -175,11 +202,7 @@ func TestSubgroupAfterSubscribeOk(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	request := subscribeBound(t, session, conn, 17)
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5, testObject{0, "hello"}))
 
@@ -196,11 +219,7 @@ func TestSubgroupObjectIDDeltas(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	request := subscribeBound(t, session, conn, 17)
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
 		testObject{2, "first"},
@@ -381,7 +400,7 @@ func TestDatagramBeforeSubscribeOk(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
+	result, requestStream := subscribe(t, context.Background(), session, conn)
 
 	conn.sendDatagram(encodeDatagram(17, 3, 4, "hello"))
 	require.Eventually(t, func() bool {
@@ -389,6 +408,8 @@ func TestDatagramBeforeSubscribeOk(t *testing.T) {
 	}, time.Second, time.Millisecond)
 
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	request, err := awaitSubscribe(t, result)
+	require.NoError(t, err)
 
 	o := readObject(t, request)
 	assert.Equal(t, []byte("hello"), readPayload(t, o))
@@ -405,11 +426,7 @@ func TestDatagramAfterSubscribeOk(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	request := subscribeBound(t, session, conn, 17)
 
 	conn.sendDatagram(encodeDatagram(17, 3, 4, "hello"))
 
@@ -490,7 +507,7 @@ func TestSubgroupStreamWaitsForBind(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
+	result, requestStream := subscribe(t, context.Background(), session, conn)
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
 		testObject{0, "first"},
@@ -502,6 +519,8 @@ func TestSubgroupStreamWaitsForBind(t *testing.T) {
 	assert.Empty(t, pendingObjects(session, 17))
 
 	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
+	request, err := awaitSubscribe(t, result)
+	require.NoError(t, err)
 
 	assert.Equal(t, []byte("first"), readPayload(t, readObject(t, request)))
 	assert.Equal(t, []byte("second"), readPayload(t, readObject(t, request)))
@@ -515,11 +534,7 @@ func TestSubgroupObjectPayloadNotRead(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	request := subscribeBound(t, session, conn, 17)
 
 	conn.acceptUniStream(encodeDataStream(t, 17, 3, 5,
 		testObject{0, "first"},
@@ -554,18 +569,13 @@ func TestDuplicateTrackAliasInSubscribeOkClosesSession(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	_, firstStream := subscribe(t, session, conn)
-	firstStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	subscribeBound(t, session, conn, 17)
 
-	_, secondStream := subscribe(t, session, conn)
+	result, secondStream := subscribe(t, context.Background(), session, conn)
 	secondStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
 
-	require.Eventually(t, func() bool {
-		return sessionCloseError(session) != nil
-	}, time.Second, time.Millisecond)
+	_, err = awaitSubscribe(t, result)
+	assert.ErrorIs(t, err, &SessionError{Code: uint64(ErrorCodeDuplicateTrackAlias)})
 	assert.ErrorIs(t, sessionCloseError(session), &SessionError{Code: uint64(ErrorCodeDuplicateTrackAlias)})
 
 	session.CloseWithError(0, "closing")
@@ -578,11 +588,7 @@ func TestCloseRequestRemovesTrackAlias(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, requestStream := subscribe(t, session, conn)
-	requestStream.feed(encodeControlMessage(t, &wire.SubscribeOk{TrackAlias: 17}))
-	require.Eventually(t, func() bool {
-		return hasTrackAlias(session, 17)
-	}, time.Second, time.Millisecond)
+	request := subscribeBound(t, session, conn, 17)
 
 	require.NoError(t, request.Close())
 	assert.Equal(t, 0, trackCount(session))
@@ -597,8 +603,12 @@ func acceptSubscribe(t *testing.T, conn *testConnection, handler *MockHandler) (
 	handler.EXPECT().HandleSubscribe(gomock.Any()).Do(func(r *IncomingSubscribeRequest) {
 		requests <- r
 	})
+	requestID := uint64(0)
+	if conn.Perspective() == PerspectiveClient {
+		requestID = 1
+	}
 	_, requestStream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.Subscribe{
-		RequestID:      0,
+		RequestID:      requestID,
 		TrackNamespace: [][]byte{[]byte("namespace")},
 		TrackName:      []byte("track"),
 	}))

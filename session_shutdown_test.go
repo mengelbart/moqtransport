@@ -108,10 +108,16 @@ type testConnection struct {
 	openedUniCount int
 	closedUniCount int
 	uniResets      []uint32
+	bidiResets     []uint32
 	closeCount     int
 }
 
 func newTestConnection(t *testing.T) *testConnection {
+	t.Helper()
+	return newTestConnectionWithPerspective(t, PerspectiveServer)
+}
+
+func newTestConnectionWithPerspective(t *testing.T, perspective Perspective) *testConnection {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	c := &testConnection{
@@ -123,7 +129,7 @@ func newTestConnection(t *testing.T) *testConnection {
 		openedStreams:  make(chan *blockingReader, 8),
 	}
 	c.EXPECT().ApplicationProtocol().Return(MOQT18).AnyTimes()
-	c.EXPECT().Perspective().Return(PerspectiveServer).AnyTimes()
+	c.EXPECT().Perspective().Return(perspective).AnyTimes()
 	c.EXPECT().Protocol().Return(ProtocolQUIC).AnyTimes()
 	c.EXPECT().OpenUniStream().DoAndReturn(func() (SendStream, error) {
 		return c.newSendStream(), nil
@@ -188,6 +194,12 @@ func (c *testConnection) uniStreamResets() []uint32 {
 	return append([]uint32(nil), c.uniResets...)
 }
 
+func (c *testConnection) bidiStreamResets() []uint32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]uint32(nil), c.bidiResets...)
+}
+
 func (c *testConnection) closes() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -248,7 +260,11 @@ func (c *testConnection) newStream(data []byte) (*MockStream, *blockingReader) {
 	stream.EXPECT().Write(gomock.Any()).DoAndReturn(func(p []byte) (int, error) { return len(p), nil }).AnyTimes()
 	stream.EXPECT().Close().Return(nil).AnyTimes()
 	stream.EXPECT().Stop(gomock.Any()).Do(func(uint32) { r.close(errTestStreamStopped) }).AnyTimes()
-	stream.EXPECT().Reset(gomock.Any()).AnyTimes()
+	stream.EXPECT().Reset(gomock.Any()).Do(func(code uint32) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.bidiResets = append(c.bidiResets, code)
+	}).AnyTimes()
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
 	return stream, r
 }
@@ -347,8 +363,7 @@ func TestCloseSessionWithOutgoingSubscribeRequestReader(t *testing.T) {
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
-	request, err := session.Subscribe(context.Background(), [][]byte{[]byte("namespace")}, "track")
-	require.NoError(t, err)
+	request := subscribeBound(t, session, conn, 17)
 	require.NotNil(t, request)
 
 	session.CloseWithError(0, "closing")
