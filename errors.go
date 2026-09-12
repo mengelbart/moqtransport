@@ -43,6 +43,23 @@ func (e *RequestError) RetryAfter() (time.Duration, bool) {
 	return time.Duration(e.RetryInterval-1) * time.Millisecond, true
 }
 
+// PublishDone is returned by ReadObject once the publisher ended the
+// subscription with PUBLISH_DONE.
+type PublishDone struct {
+	StatusCode  PublishDoneStatusCode
+	Reason      string
+	StreamCount uint64
+}
+
+func (e *PublishDone) Error() string {
+	return fmt.Sprintf("publish done %#x: %s", uint64(e.StatusCode), e.Reason)
+}
+
+func (e *PublishDone) Is(target error) bool {
+	other, ok := target.(*PublishDone)
+	return ok && e.StatusCode == other.StatusCode
+}
+
 // ErrorCode is a session termination error code.
 type ErrorCode uint64
 

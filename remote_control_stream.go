@@ -38,7 +38,7 @@ func (s *remoteControlStream) readMessages() {
 				})
 				return
 			}
-			s.s.handleReaderError(err)
+			s.s.closeOnError(err)
 			return
 		}
 		switch msg := msg.(type) {

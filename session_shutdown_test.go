@@ -108,6 +108,7 @@ type testConnection struct {
 	openedUniCount int
 	closedUniCount int
 	uniResets      []uint32
+	uniStops       []uint32
 	bidiResets     []uint32
 	closeCount     int
 }
@@ -194,6 +195,12 @@ func (c *testConnection) uniStreamResets() []uint32 {
 	return append([]uint32(nil), c.uniResets...)
 }
 
+func (c *testConnection) uniStreamStops() []uint32 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]uint32(nil), c.uniStops...)
+}
+
 func (c *testConnection) bidiStreamResets() []uint32 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -248,7 +255,12 @@ func (c *testConnection) newReceiveStream(data []byte) (*MockReceiveStream, *blo
 	r, id := c.newReader(data)
 	stream := NewMockReceiveStream(c.ctrl)
 	stream.EXPECT().Read(gomock.Any()).DoAndReturn(r.Read).AnyTimes()
-	stream.EXPECT().Stop(gomock.Any()).Do(func(uint32) { r.close(errTestStreamStopped) }).AnyTimes()
+	stream.EXPECT().Stop(gomock.Any()).Do(func(code uint32) {
+		c.mu.Lock()
+		c.uniStops = append(c.uniStops, code)
+		c.mu.Unlock()
+		r.close(errTestStreamStopped)
+	}).AnyTimes()
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
 	return stream, r
 }

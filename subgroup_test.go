@@ -34,7 +34,7 @@ func (s *testSendStream) StreamID() uint64 {
 func newTestSubgroup(t *testing.T) (*Subgroup, *testSendStream) {
 	t.Helper()
 	stream := &testSendStream{}
-	subgroup, err := newSubgroup(stream, 18, 4, 7, 9, 200)
+	subgroup, err := newSubgroup(stream, 18, 4, 7, 9, 200, nil)
 	require.NoError(t, err)
 	return subgroup, stream
 }

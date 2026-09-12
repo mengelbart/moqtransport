@@ -159,3 +159,43 @@ func TestSubgroupResetDoesNotCloseSession(t *testing.T) {
 		assert.NoError(t, client.Context().Err())
 	})
 }
+
+func TestPublishDoneEndsSubscription(t *testing.T) {
+	forEachTransport(t, func(t *testing.T, tr transport) {
+		handler, requests := subscribeHandler(1)
+		server, client := setup(t, tr, handler, nil)
+
+		sub, err := client.Subscribe(testContext(t), testNamespace, testTrack)
+		require.NoError(t, err)
+		r := waitForRequest(t, requests)
+
+		sg, err := r.OpenSubgroup(0, 0, 0)
+		require.NoError(t, err)
+		writeObject(t, sg, 0, []byte("first"))
+		require.NoError(t, sg.Close())
+		sg, err = r.OpenSubgroup(1, 0, 0)
+		require.NoError(t, err)
+		writeObject(t, sg, 0, []byte("second"))
+		require.NoError(t, sg.Close())
+		require.NoError(t, r.Close(moqtransport.PublishDoneStatusCodeTrackEnded, "done"))
+
+		// The subgroups are on separate streams, so their order is not fixed.
+		var payloads []string
+		for range 2 {
+			o, err := sub.ReadObject(testContext(t))
+			require.NoError(t, err)
+			payloads = append(payloads, string(readPayload(t, o)))
+		}
+		assert.ElementsMatch(t, []string{"first", "second"}, payloads)
+
+		_, err = sub.ReadObject(testContext(t))
+		require.ErrorIs(t, err, &moqtransport.PublishDone{StatusCode: moqtransport.PublishDoneStatusCodeTrackEnded})
+		var done *moqtransport.PublishDone
+		require.ErrorAs(t, err, &done)
+		assert.Equal(t, uint64(2), done.StreamCount)
+		assert.Equal(t, "done", done.Reason)
+
+		assert.NoError(t, server.Context().Err())
+		assert.NoError(t, client.Context().Err())
+	})
+}

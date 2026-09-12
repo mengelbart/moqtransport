@@ -24,18 +24,30 @@ type Subgroup struct {
 	lastObjectID uint64
 	open         *ObjectWriter
 	err          error
+
+	done func()
 }
 
-func newSubgroup(stream SendStream, version, trackAlias, groupID, subgroupID uint64, publisherPriority uint8) (*Subgroup, error) {
+func newSubgroup(stream SendStream, version, trackAlias, groupID, subgroupID uint64, publisherPriority uint8, done func()) (*Subgroup, error) {
 	appender := wire.NewAppender(stream, version)
 	if err := appender.Write(wire.NewSubgroupHeader(trackAlias, groupID, subgroupID, publisherPriority)); err != nil {
+		stream.Reset(uint32(StreamResetErrorCodeInternal))
 		return nil, err
 	}
 	return &Subgroup{
 		stream:      stream,
 		appender:    appender,
 		firstObject: true,
+		done:        done,
 	}, nil
+}
+
+func (s *Subgroup) finish(err error) {
+	s.err = err
+	if s.done != nil {
+		s.done()
+		s.done = nil
+	}
 }
 
 // OpenObject starts an object whose payload length is known. The payload goes
@@ -97,7 +109,7 @@ func (s *Subgroup) nextObject(objectID uint64) (uint64, error) {
 }
 
 func (s *Subgroup) fail(err error) error {
-	s.err = err
+	s.finish(err)
 	s.stream.Reset(uint32(StreamResetErrorCodeInternal))
 	return err
 }
@@ -115,7 +127,7 @@ func (s *Subgroup) Close() error {
 	if s.open != nil {
 		return errObjectOpen
 	}
-	s.err = errSubgroupClosed
+	s.finish(errSubgroupClosed)
 	return s.stream.Close()
 }
 
@@ -125,7 +137,7 @@ func (s *Subgroup) Reset(code StreamResetErrorCode) {
 	if s.err != nil {
 		return
 	}
-	s.err = errSubgroupReset
+	s.finish(errSubgroupReset)
 	s.open = nil
 	s.stream.Reset(uint32(code))
 }
