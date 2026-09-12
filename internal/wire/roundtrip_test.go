@@ -120,6 +120,20 @@ func roundTripCases() []struct {
 		{"RequestUpdate", StreamTypeRequest, &RequestUpdate{RequestID: 7, Parameters: params()}},
 		{"RequestOk", StreamTypeRequest, &RequestOk{Parameters: params(), Properties: kvps()}},
 		{"RequestError", StreamTypeRequest, &RequestError{ErrorCode: 3, RetryInterval: 8, ErrorReason: "nope"}},
+		{"RequestErrorRedirect", StreamTypeRequest, &RequestError{
+			ErrorCode:     RequestErrorCodeRedirect,
+			RetryInterval: 8,
+			ErrorReason:   "elsewhere",
+			Redirect: Redirect{
+				ConnectURI:     "moqt://example",
+				TrackNamespace: [][]byte{[]byte("a"), []byte("b")},
+				TrackName:      []byte("track"),
+			},
+		}},
+		{"RequestErrorRedirectEmpty", StreamTypeRequest, &RequestError{
+			ErrorCode: RequestErrorCodeRedirect,
+			Redirect:  Redirect{TrackNamespace: [][]byte{}},
+		}},
 
 		{"FetchHeader", StreamTypeData, &FetchHeader{RequestID: 42}},
 		{"Padding", StreamTypeData, &Padding{}},
@@ -267,6 +281,24 @@ func TestParseBodyLongerThanMessage(t *testing.T) {
 	encoded = append(encoded, byte((len(body)+1)>>8), byte(len(body)+1))
 	encoded = append(encoded, body...)
 	encoded = append(encoded, 0xff)
+
+	_, err := mustParser(t, bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
+	assert.ErrorIs(t, err, errLengthMismatch)
+}
+
+func TestParseRequestErrorRedirectWithoutRedirectCode(t *testing.T) {
+	msg := &RequestError{
+		ErrorCode:   RequestErrorCodeRedirect,
+		ErrorReason: "nope",
+		Redirect:    Redirect{ConnectURI: "moqt://example", TrackName: []byte("t")},
+	}
+	body := msg.append_v18(nil)
+	require.Equal(t, byte(RequestErrorCodeRedirect), body[0])
+	body[0] = 0x03
+
+	encoded := varint.Append(nil, uint64(msg.Type()))
+	encoded = append(encoded, byte(len(body)>>8), byte(len(body)))
+	encoded = append(encoded, body...)
 
 	_, err := mustParser(t, bytes.NewReader(encoded), 18, StreamTypeRequest).Read()
 	assert.ErrorIs(t, err, errLengthMismatch)
