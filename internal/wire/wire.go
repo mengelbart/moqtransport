@@ -218,15 +218,27 @@ func (m *RequestOk) Type() ControlMessageType {
 	return ControlMessageTypeRequestOk
 }
 
+const RequestErrorCodeRedirect uint64 = 0x34
+
+type Redirect struct {
+	ConnectURI     string   `proto:"tlv_string"`
+	TrackNamespace [][]byte `proto:"ntlv_bytes"`
+	TrackName      []byte   `proto:"tlv_bytes"`
+}
+
 type RequestError struct {
-	ErrorCode     uint64 `proto:"varint"`
-	RetryInterval uint64 `proto:"varint"`
-	ErrorReason   string `proto:"tlv_string"`
-	// TODO: Implement Redirect
+	ErrorCode     uint64   `proto:"varint"`
+	RetryInterval uint64   `proto:"varint"`
+	ErrorReason   string   `proto:"tlv_string"`
+	Redirect      Redirect `proto:"message,if=isRedirect"`
 }
 
 func (m *RequestError) Type() ControlMessageType {
 	return ControlMessageTypeRequestError
+}
+
+func (m *RequestError) isRedirect() bool {
+	return m.ErrorCode == RequestErrorCodeRedirect
 }
 
 type FetchHeader struct {

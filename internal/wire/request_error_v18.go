@@ -9,6 +9,9 @@ func (m *RequestError) append_v18(buf []byte) []byte {
 	buf = varint.Append(buf, uint64(m.RetryInterval))
 	buf = varint.Append(buf, uint64(len(m.ErrorReason)))
 	buf = append(buf, []byte(m.ErrorReason)...)
+	if m.isRedirect() {
+		buf = m.Redirect.append_v18(buf)
+	}
 	return buf
 }
 
@@ -37,6 +40,12 @@ func (m *RequestError) parse_v18(r messageReader) error {
 		return err
 	}
 	m.ErrorReason = string(ErrorReasonBytes)
+
+	if m.isRedirect() {
+		if err = m.Redirect.parse_v18(r); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
