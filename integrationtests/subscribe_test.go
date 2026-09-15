@@ -69,6 +69,40 @@ func TestSubscribeReceiveObjects(t *testing.T) {
 	})
 }
 
+func TestSubscribeReceiveDatagrams(t *testing.T) {
+	forEachTransport(t, func(t *testing.T, tr transport) {
+		handler, requests := subscribeHandler(1)
+		_, client := setup(t, tr, handler, nil)
+
+		sub, err := client.Subscribe(testContext(t), testNamespace, testTrack)
+		require.NoError(t, err)
+		r := waitForRequest(t, requests)
+
+		require.NoError(t, r.SendDatagram(7, 0, 42, true, []byte("hello")))
+		require.NoError(t, r.SendDatagramStatus(7, 1, 42, moqtransport.ObjectStatusEndOfTrack))
+
+		o, err := sub.ReadObject(testContext(t))
+		require.NoError(t, err)
+		assert.Equal(t, moqtransport.ObjectForwardingPreferenceDatagram, o.ForwardingPreference)
+		assert.Equal(t, uint64(7), o.GroupID)
+		assert.Equal(t, uint64(0), o.ObjectID)
+		assert.Equal(t, uint8(42), o.PublisherPriority)
+		assert.True(t, o.EndOfGroup)
+		assert.Equal(t, moqtransport.ObjectStatusNormal, o.Status)
+		assert.Equal(t, []byte("hello"), readPayload(t, o))
+
+		o, err = sub.ReadObject(testContext(t))
+		require.NoError(t, err)
+		assert.Equal(t, moqtransport.ObjectForwardingPreferenceDatagram, o.ForwardingPreference)
+		assert.Equal(t, uint64(7), o.GroupID)
+		assert.Equal(t, uint64(1), o.ObjectID)
+		assert.Equal(t, uint8(42), o.PublisherPriority)
+		assert.False(t, o.EndOfGroup)
+		assert.Equal(t, moqtransport.ObjectStatusEndOfTrack, o.Status)
+		assert.Empty(t, readPayload(t, o))
+	})
+}
+
 func TestSubscribeMultipleTracks(t *testing.T) {
 	forEachTransport(t, func(t *testing.T, tr transport) {
 		requests := make(chan *moqtransport.IncomingSubscribeRequest, 2)

@@ -167,14 +167,6 @@ func (e *endpoint) setupDateTrack() {
 				log.Printf("failed to close object: %v", err)
 			}
 			sg.Close() //nolint:errcheck
-			// if err := p.SendDatagram(moqtransport.Object{
-			// 	GroupID:    uint64(groupID),
-			// 	SubGroupID: 0,
-			// 	ObjectID:   0,
-			// 	Payload:    []byte(fmt.Sprintf("%v", ts)),
-			// }); err != nil {
-			// 	log.Printf("failed to write time to publisher: %v", err)
-			// }
 		}
 		e.lock.Unlock()
 		e.largestGroup.Store(uint64(groupID))

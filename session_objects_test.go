@@ -3,6 +3,7 @@ package moqtransport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -441,6 +442,152 @@ func TestDatagramAfterSubscribeOk(t *testing.T) {
 	conn.sendDatagram(encodeDatagram(17, 3, 4, "hello"))
 
 	assert.Equal(t, []byte("hello"), readPayload(t, readObject(t, request)))
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func parseSentDatagram(t *testing.T, data []byte) *wire.DatagramObject {
+	t.Helper()
+	msg := &wire.DatagramObject{}
+	require.NoError(t, msg.Parse(data))
+	return msg
+}
+
+func TestSendDatagram(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	require.NoError(t, request.SendDatagram(3, 0, 42, false, []byte("first")))
+	require.NoError(t, request.SendDatagram(3, 4, 7, true, []byte("last")))
+
+	sent := conn.datagramsSent()
+	require.Len(t, sent, 2)
+
+	first := parseSentDatagram(t, sent[0])
+	assert.True(t, first.ZeroObjectID())
+	assert.False(t, first.DefaultPriority())
+	assert.False(t, first.EndOfGroup())
+	assert.False(t, first.Status())
+	assert.False(t, first.HasProperties())
+	assert.Equal(t, uint64(17), first.TrackAlias)
+	assert.Equal(t, uint64(3), first.GroupID)
+	assert.Equal(t, uint64(0), first.ObjectID)
+	assert.Equal(t, uint8(42), first.PublisherPriority)
+	assert.Equal(t, []byte("first"), first.ObjectPayload)
+
+	last := parseSentDatagram(t, sent[1])
+	assert.False(t, last.ZeroObjectID())
+	assert.False(t, last.DefaultPriority())
+	assert.True(t, last.EndOfGroup())
+	assert.False(t, last.Status())
+	assert.Equal(t, uint64(17), last.TrackAlias)
+	assert.Equal(t, uint64(3), last.GroupID)
+	assert.Equal(t, uint64(4), last.ObjectID)
+	assert.Equal(t, uint8(7), last.PublisherPriority)
+	assert.Equal(t, []byte("last"), last.ObjectPayload)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSendDatagramStatus(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	assert.ErrorIs(t, request.SendDatagramStatus(3, 5, 42, ObjectStatus(0x2)), errInvalidObjectStatus)
+	assert.Empty(t, conn.datagramsSent())
+
+	require.NoError(t, request.SendDatagramStatus(3, 5, 42, ObjectStatusEndOfGroup))
+	require.NoError(t, request.SendDatagramStatus(4, 0, 42, ObjectStatusEndOfTrack))
+
+	sent := conn.datagramsSent()
+	require.Len(t, sent, 2)
+
+	endOfGroup := parseSentDatagram(t, sent[0])
+	assert.True(t, endOfGroup.Status())
+	assert.False(t, endOfGroup.EndOfGroup())
+	assert.False(t, endOfGroup.ZeroObjectID())
+	assert.False(t, endOfGroup.DefaultPriority())
+	assert.Equal(t, uint64(17), endOfGroup.TrackAlias)
+	assert.Equal(t, uint64(3), endOfGroup.GroupID)
+	assert.Equal(t, uint64(5), endOfGroup.ObjectID)
+	assert.Equal(t, uint8(42), endOfGroup.PublisherPriority)
+	assert.Equal(t, uint64(ObjectStatusEndOfGroup), endOfGroup.ObjectStatus)
+	assert.Empty(t, endOfGroup.ObjectPayload)
+
+	endOfTrack := parseSentDatagram(t, sent[1])
+	assert.True(t, endOfTrack.Status())
+	assert.True(t, endOfTrack.ZeroObjectID())
+	assert.Equal(t, uint64(4), endOfTrack.GroupID)
+	assert.Equal(t, uint64(0), endOfTrack.ObjectID)
+	assert.Equal(t, uint64(ObjectStatusEndOfTrack), endOfTrack.ObjectStatus)
+	assert.Empty(t, endOfTrack.ObjectPayload)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSendDatagramAfterClose(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+	require.NoError(t, request.Close(PublishDoneStatusCodeTrackEnded, ""))
+
+	assert.ErrorIs(t, request.SendDatagram(0, 0, 0, false, []byte("payload")), errSubscriptionClosed)
+	assert.ErrorIs(t, request.SendDatagramStatus(0, 0, 0, ObjectStatusEndOfTrack), errSubscriptionClosed)
+	assert.Empty(t, conn.datagramsSent())
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSendDatagramAfterReject(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Reject(RequestErrorCodeDoesNotExist, "no such track")
+
+	assert.ErrorIs(t, request.SendDatagram(0, 0, 0, false, []byte("payload")), errSubscriptionClosed)
+	assert.ErrorIs(t, request.SendDatagramStatus(0, 0, 0, ObjectStatusEndOfTrack), errSubscriptionClosed)
+	assert.Empty(t, conn.datagramsSent())
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
+func TestSendDatagramConnectionError(t *testing.T) {
+	conn := newTestConnection(t)
+	conn.sendDatagramErr = errors.New("datagram too large")
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, _ := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+
+	assert.ErrorIs(t, request.SendDatagram(0, 0, 0, false, []byte("payload")), conn.sendDatagramErr)
+	assert.Empty(t, conn.datagramsSent())
+	assert.Equal(t, 0, conn.closes())
+
+	require.NoError(t, request.Close(PublishDoneStatusCodeTrackEnded, ""))
 
 	session.CloseWithError(0, "closing")
 	goleak.VerifyNone(t)
