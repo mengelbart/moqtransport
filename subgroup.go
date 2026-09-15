@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 )
 
 var (
@@ -17,7 +18,7 @@ var (
 )
 
 type Subgroup struct {
-	stream   SendStream
+	stream   quic.SendStream
 	appender *wire.Appender
 
 	firstObject  bool
@@ -28,7 +29,7 @@ type Subgroup struct {
 	done func()
 }
 
-func newSubgroup(stream SendStream, version, trackAlias, groupID, subgroupID uint64, publisherPriority uint8, done func()) (*Subgroup, error) {
+func newSubgroup(stream quic.SendStream, version, trackAlias, groupID, subgroupID uint64, publisherPriority uint8, done func()) (*Subgroup, error) {
 	appender := wire.NewAppender(stream, version)
 	if err := appender.Write(wire.NewSubgroupHeader(trackAlias, groupID, subgroupID, publisherPriority)); err != nil {
 		stream.Reset(uint32(StreamResetErrorCodeInternal))

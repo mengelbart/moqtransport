@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/mengelbart/moqtransport/varint"
 )
 
@@ -49,7 +50,7 @@ type requestStream struct {
 	streamCanceller
 }
 
-func newRequestStream(stream Stream, version uint64) (*requestStream, error) {
+func newRequestStream(stream quic.Stream, version uint64) (*requestStream, error) {
 	parser, err := wire.NewParser(stream, version, wire.StreamTypeRequest)
 	if err != nil {
 		return nil, err
@@ -133,7 +134,7 @@ type Session struct {
 	closeLock sync.Mutex
 	closeErr  error
 
-	conn       Connection
+	conn       quic.Connection
 	requestIDs *requestIDGenerator
 
 	peerRequestIDsLock   sync.Mutex
@@ -165,8 +166,8 @@ type Session struct {
 // conn. Once a session exists, only the session closes conn. Errors that occur
 // after NewSession returned, including a failed SETUP write, are reported
 // through Context.
-func NewSession(conn Connection, path string, options ...Option) (*Session, error) {
-	version := conn.ApplicationProtocol().versionNumber()
+func NewSession(conn quic.Connection, path string, options ...Option) (*Session, error) {
+	version := conn.ApplicationProtocol().VersionNumber()
 	if version == 0 {
 		return nil, fmt.Errorf("unsupported application protocol: %q", conn.ApplicationProtocol())
 	}
@@ -241,7 +242,7 @@ func (s *Session) Context() context.Context {
 
 func (s *Session) sendSetup() {
 	setup := &wire.Setup{}
-	if s.conn.Protocol() == ProtocolQUIC {
+	if s.conn.Protocol() == quic.ProtocolQUIC {
 		setup.Options = []wire.KeyValuePair{
 			{Type: wire.SetupOptionTypePath, Bytes: []byte(s.path)},
 		}
@@ -285,7 +286,7 @@ func (s *Session) requestErrorFromWire(msg *wire.RequestError, namespaceScoped b
 	if err.Code != RequestErrorCodeRedirect {
 		return err, nil
 	}
-	if s.conn.Perspective() == PerspectiveServer && msg.Redirect.ConnectURI != "" {
+	if s.conn.Perspective() == quic.PerspectiveServer && msg.Redirect.ConnectURI != "" {
 		return nil, &SessionError{
 			Code:   uint64(ErrorCodeProtocolViolation),
 			Reason: "redirect with connect URI received by server",
@@ -380,7 +381,7 @@ func (s *Session) readDatagrams() {
 	}
 }
 
-func (s *Session) handleUniStream(stream ReceiveStream) {
+func (s *Session) handleUniStream(stream quic.ReceiveStream) {
 	s.logger.Debug("accepted new uni stream", "streamID", stream.StreamID())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -436,7 +437,7 @@ func (s *Session) handleUniStream(stream ReceiveStream) {
 	}
 	switch m := msg.(type) {
 	case *wire.Setup:
-		path, err := validatePathParameter(m.Options, s.conn.Protocol() == ProtocolQUIC)
+		path, err := validatePathParameter(m.Options, s.conn.Protocol() == quic.ProtocolQUIC)
 		if err != nil {
 			s.closeWithError(&SessionError{Code: uint64(ErrorCodeInvalidPath), Reason: err.Error(), Remote: false})
 			return
@@ -546,7 +547,7 @@ func (s *Session) validatePeerRequestID(id uint64) error {
 	return nil
 }
 
-func (s *Session) handleBidiStream(stream Stream) {
+func (s *Session) handleBidiStream(stream quic.Stream) {
 	s.logger.Debug("accepted new bidi stream", "streamID", stream.StreamID())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -611,7 +612,7 @@ func (s *Session) handleBidiStream(stream Stream) {
 	}
 }
 
-func (s *Session) rejectUnsupportedRequest(stream Stream, requestID uint64) {
+func (s *Session) rejectUnsupportedRequest(stream quic.Stream, requestID uint64) {
 	s.logger.Debug("rejecting unsupported request", "streamID", stream.StreamID(), "requestID", requestID)
 	appender := wire.NewAppender(stream, uint64(s.version))
 	if err := appender.Write(&wire.RequestError{

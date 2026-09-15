@@ -1,4 +1,4 @@
-package moqtransport
+package quic
 
 import (
 	"context"
@@ -46,6 +46,25 @@ func (p Perspective) String() string {
 	}
 }
 
+type ApplicationProtocol string
+
+const (
+	MOQT18 ApplicationProtocol = "moqt-18"
+)
+
+func (ap ApplicationProtocol) String() string {
+	return string(ap)
+}
+
+func (ap ApplicationProtocol) VersionNumber() uint64 {
+	switch ap {
+	case MOQT18:
+		return 18
+	default:
+		return 0
+	}
+}
+
 // A Stream is the interface implemented by bidirectional streams.
 type Stream interface {
 	ReceiveStream
@@ -85,8 +104,8 @@ var ErrDatagramSupportDisabled = errors.New("datagram support disabled")
 
 // Connection is the interface of a QUIC/WebTransport connection. New Transports
 // expect an implementation of this interface as the underlying connection.
-// Implementations based on quic-go and webtransport-go are provided in quicmoq
-// and webTransportmoq.
+// Implementations based on quic-go and webtransport-go are provided in quicgo
+// and webtransportgo.
 type Connection interface {
 	// AcceptStream returns the next stream opened by the peer, blocking until
 	// one is available.

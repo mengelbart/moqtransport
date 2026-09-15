@@ -1,11 +1,11 @@
-package webtransportmoq
+package webtransportgo
 
 import (
-	"github.com/mengelbart/moqtransport"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/quic-go/webtransport-go"
 )
 
-var _ moqtransport.SendStream = (*SendStream)(nil)
+var _ quic.SendStream = (*SendStream)(nil)
 
 type SendStream struct {
 	stream *webtransport.SendStream

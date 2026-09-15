@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -767,7 +768,7 @@ func acceptSubscribeReader(t *testing.T, conn *testConnection, handler *MockHand
 		requests <- r
 	})
 	requestID := uint64(0)
-	if conn.Perspective() == PerspectiveClient {
+	if conn.Perspective() == quic.PerspectiveClient {
 		requestID = 1
 	}
 	reader, requestStream := conn.acceptStreamCapturing(encodeControlMessage(t, &wire.Subscribe{
