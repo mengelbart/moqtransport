@@ -88,6 +88,26 @@ func TestIncomingCloseWithoutStreams(t *testing.T) {
 	goleak.VerifyNone(t)
 }
 
+func TestIncomingCloseAfterDatagrams(t *testing.T) {
+	conn := newTestConnection(t)
+	handler := NewMockHandler(conn.ctrl)
+	session, err := NewSession(conn, "", WithHandler(handler))
+	require.NoError(t, err)
+
+	request, requestStream := acceptSubscribe(t, conn, handler)
+	request.Accept(17)
+	require.NoError(t, request.SendDatagram(0, 0, 0, false, []byte("payload")))
+	require.NoError(t, request.SendDatagramStatus(1, 0, 0, ObjectStatusEndOfTrack))
+	require.Len(t, conn.datagramsSent(), 2)
+
+	require.NoError(t, request.Close(PublishDoneStatusCodeTrackEnded, ""))
+	requireStreamClosed(t, requestStream)
+	assert.Equal(t, uint64(0), readPublishDone(t, requestStream).StreamCount)
+
+	session.CloseWithError(0, "closing")
+	goleak.VerifyNone(t)
+}
+
 func TestIncomingCloseWithOpenSubgroup(t *testing.T) {
 	conn := newTestConnection(t)
 	handler := NewMockHandler(conn.ctrl)

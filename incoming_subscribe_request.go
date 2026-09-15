@@ -18,6 +18,7 @@ var (
 	errSubscriptionNotAccepted = errors.New("subscription was not accepted")
 	errSubgroupsOpen           = errors.New("subscription has open subgroups")
 	errSubscriptionCancelled   = errors.New("subscription was cancelled by the subscriber")
+	errInvalidObjectStatus     = errors.New("invalid object status")
 )
 
 type IncomingSubscribeRequest struct {
@@ -174,9 +175,48 @@ func (r *IncomingSubscribeRequest) sendRequestError(msg *wire.RequestError) {
 	}
 }
 
-func (r *IncomingSubscribeRequest) SendDatagram(o *Object) error {
-	// TODO
-	return nil
+// SendDatagram sends one object with a payload as a datagram. Errors from the
+// connection, e.g. a datagram exceeding the maximum size, are returned to the
+// caller so it can fall back to a subgroup.
+func (r *IncomingSubscribeRequest) SendDatagram(groupID, objectID uint64, priority uint8, endOfGroup bool, payload []byte) error {
+	msg := &wire.DatagramObject{
+		GroupID:           groupID,
+		ObjectID:          objectID,
+		PublisherPriority: priority,
+		ObjectPayload:     payload,
+	}
+	msg.SetEndOfGroup(endOfGroup)
+	return r.sendDatagram(msg)
+}
+
+// SendDatagramStatus sends a status-only object, e.g. end of group or end of
+// track, as a datagram.
+func (r *IncomingSubscribeRequest) SendDatagramStatus(groupID, objectID uint64, priority uint8, status ObjectStatus) error {
+	if !status.valid() {
+		return errInvalidObjectStatus
+	}
+	msg := &wire.DatagramObject{
+		GroupID:           groupID,
+		ObjectID:          objectID,
+		PublisherPriority: priority,
+		ObjectStatus:      uint64(status),
+	}
+	msg.SetStatus(true)
+	return r.sendDatagram(msg)
+}
+
+func (r *IncomingSubscribeRequest) sendDatagram(msg *wire.DatagramObject) error {
+	r.lock.Lock()
+	if r.closed {
+		r.lock.Unlock()
+		return errSubscriptionClosed
+	}
+	msg.TrackAlias = r.trackAlias
+	r.lock.Unlock()
+
+	msg.SetZeroObjectID(msg.ObjectID == 0)
+	r.logger.Debug("sending datagram", "trackAlias", msg.TrackAlias, "groupID", msg.GroupID, "objectID", msg.ObjectID, "status", msg.Status())
+	return r.session.conn.SendDatagram(msg.AppendDatagram(nil))
 }
 
 // OpenSubgroup opens a data stream for a subgroup of the subscription. Every

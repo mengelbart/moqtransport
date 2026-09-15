@@ -103,8 +103,13 @@ type testConnection struct {
 	// before the session is created and is read-only afterwards.
 	sendStreamWriteErr error
 
+	// sendDatagramErr, when set, is returned by every SendDatagram call. It
+	// must be set before the session is created and is read-only afterwards.
+	sendDatagramErr error
+
 	mu             sync.Mutex
 	readers        []*blockingReader
+	sentDatagrams  [][]byte
 	lastID         uint64
 	openedUniCount int
 	closedUniCount int
@@ -165,6 +170,15 @@ func newTestConnectionWithPerspective(t *testing.T, perspective Perspective) *te
 			return dgram, nil
 		}
 	}).AnyTimes()
+	c.EXPECT().SendDatagram(gomock.Any()).DoAndReturn(func(data []byte) error {
+		if c.sendDatagramErr != nil {
+			return c.sendDatagramErr
+		}
+		c.mu.Lock()
+		c.sentDatagrams = append(c.sentDatagrams, append([]byte(nil), data...))
+		c.mu.Unlock()
+		return nil
+	}).AnyTimes()
 	c.EXPECT().CloseWithError(gomock.Any(), gomock.Any()).DoAndReturn(func(uint64, string) error {
 		c.mu.Lock()
 		c.closeCount++
@@ -206,6 +220,12 @@ func (c *testConnection) bidiStreamResets() []uint32 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]uint32(nil), c.bidiResets...)
+}
+
+func (c *testConnection) datagramsSent() [][]byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([][]byte(nil), c.sentDatagrams...)
 }
 
 func (c *testConnection) closes() int {
