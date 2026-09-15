@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 )
 
 var (
@@ -147,7 +148,7 @@ func (r *IncomingSubscribeRequest) RejectRetry(code RequestErrorCode, reason str
 // together with an empty name means the original track. Only servers may set
 // uri, a client passing one gets an error and nothing is sent.
 func (r *IncomingSubscribeRequest) Redirect(uri string, namespace [][]byte, name []byte) error {
-	if uri != "" && r.session.conn.Perspective() == PerspectiveClient {
+	if uri != "" && r.session.conn.Perspective() == quic.PerspectiveClient {
 		return errRedirectURIFromClient
 	}
 	r.sendRequestError(&wire.RequestError{

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -43,7 +44,7 @@ func TestSubscribeRequestError(t *testing.T) {
 }
 
 func TestSubscribeRequestErrorRedirect(t *testing.T) {
-	conn := newTestConnectionWithPerspective(t, PerspectiveClient)
+	conn := newTestConnectionWithPerspective(t, quic.PerspectiveClient)
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
@@ -117,7 +118,7 @@ func TestSubscribeRequestErrorRedirectWithURIOnServerClosesSession(t *testing.T)
 }
 
 func TestRequestErrorFromWireNamespaceScoped(t *testing.T) {
-	conn := newTestConnectionWithPerspective(t, PerspectiveClient)
+	conn := newTestConnectionWithPerspective(t, quic.PerspectiveClient)
 	session, err := NewSession(conn, "")
 	require.NoError(t, err)
 
@@ -323,7 +324,7 @@ func TestIncomingRedirect(t *testing.T) {
 }
 
 func TestIncomingRedirectFromClient(t *testing.T) {
-	conn := newTestConnectionWithPerspective(t, PerspectiveClient)
+	conn := newTestConnectionWithPerspective(t, quic.PerspectiveClient)
 	handler := NewMockHandler(conn.ctrl)
 	session, err := NewSession(conn, "", WithHandler(handler))
 	require.NoError(t, err)

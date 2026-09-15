@@ -1,30 +1,30 @@
-package webtransportmoq
+package webtransportgo
 
 import (
 	"context"
 
-	"github.com/mengelbart/moqtransport"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/quic-go/webtransport-go"
 )
 
 type webTransportConn struct {
 	session     *webtransport.Session
-	perspective moqtransport.Perspective
+	perspective quic.Perspective
 }
 
-func NewServer(conn *webtransport.Session) moqtransport.Connection {
-	return New(conn, moqtransport.PerspectiveServer)
+func NewServer(conn *webtransport.Session) quic.Connection {
+	return New(conn, quic.PerspectiveServer)
 }
 
-func NewClient(conn *webtransport.Session) moqtransport.Connection {
-	return New(conn, moqtransport.PerspectiveClient)
+func NewClient(conn *webtransport.Session) quic.Connection {
+	return New(conn, quic.PerspectiveClient)
 }
 
-func New(session *webtransport.Session, perspective moqtransport.Perspective) moqtransport.Connection {
+func New(session *webtransport.Session, perspective quic.Perspective) quic.Connection {
 	return &webTransportConn{session, perspective}
 }
 
-func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Stream, error) {
+func (c *webTransportConn) AcceptStream(ctx context.Context) (quic.Stream, error) {
 	s, err := c.session.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func (c *webTransportConn) AcceptStream(ctx context.Context) (moqtransport.Strea
 	}, nil
 }
 
-func (c *webTransportConn) AcceptUniStream(ctx context.Context) (moqtransport.ReceiveStream, error) {
+func (c *webTransportConn) AcceptUniStream(ctx context.Context) (quic.ReceiveStream, error) {
 	s, err := c.session.AcceptUniStream(ctx)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (c *webTransportConn) AcceptUniStream(ctx context.Context) (moqtransport.Re
 	}, nil
 }
 
-func (c *webTransportConn) OpenStream() (moqtransport.Stream, error) {
+func (c *webTransportConn) OpenStream() (quic.Stream, error) {
 	s, err := c.session.OpenStream()
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (c *webTransportConn) OpenStream() (moqtransport.Stream, error) {
 	}, nil
 }
 
-func (c *webTransportConn) OpenStreamSync(ctx context.Context) (moqtransport.Stream, error) {
+func (c *webTransportConn) OpenStreamSync(ctx context.Context) (quic.Stream, error) {
 	s, err := c.session.OpenStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func (c *webTransportConn) OpenStreamSync(ctx context.Context) (moqtransport.Str
 	}, nil
 }
 
-func (c *webTransportConn) OpenUniStream() (moqtransport.SendStream, error) {
+func (c *webTransportConn) OpenUniStream() (quic.SendStream, error) {
 	s, err := c.session.OpenUniStream()
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (c *webTransportConn) OpenUniStream() (moqtransport.SendStream, error) {
 	}, nil
 }
 
-func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (moqtransport.SendStream, error) {
+func (c *webTransportConn) OpenUniStreamSync(ctx context.Context) (quic.SendStream, error) {
 	s, err := c.session.OpenUniStreamSync(ctx)
 	if err != nil {
 		return nil, err
@@ -100,14 +100,14 @@ func (c *webTransportConn) Context() context.Context {
 	return c.session.Context()
 }
 
-func (c *webTransportConn) Protocol() moqtransport.Protocol {
-	return moqtransport.ProtocolWebTransport
+func (c *webTransportConn) Protocol() quic.Protocol {
+	return quic.ProtocolWebTransport
 }
 
-func (c *webTransportConn) ApplicationProtocol() moqtransport.ApplicationProtocol {
-	return moqtransport.ApplicationProtocol(c.session.SessionState().ApplicationProtocol)
+func (c *webTransportConn) ApplicationProtocol() quic.ApplicationProtocol {
+	return quic.ApplicationProtocol(c.session.SessionState().ApplicationProtocol)
 }
 
-func (c *webTransportConn) Perspective() moqtransport.Perspective {
+func (c *webTransportConn) Perspective() quic.Perspective {
 	return c.perspective
 }

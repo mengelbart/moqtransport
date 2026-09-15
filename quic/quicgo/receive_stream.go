@@ -1,14 +1,14 @@
-package quicmoq
+package quicgo
 
 import (
-	"github.com/mengelbart/moqtransport"
-	"github.com/quic-go/quic-go"
+	"github.com/mengelbart/moqtransport/quic"
+	quicgo "github.com/quic-go/quic-go"
 )
 
-var _ moqtransport.ReceiveStream = (*ReceiveStream)(nil)
+var _ quic.ReceiveStream = (*ReceiveStream)(nil)
 
 type ReceiveStream struct {
-	stream *quic.ReceiveStream
+	stream *quicgo.ReceiveStream
 }
 
 // Read implements moqtransport.ReceiveStream.
@@ -18,7 +18,7 @@ func (r *ReceiveStream) Read(p []byte) (n int, err error) {
 
 // Stop implements moqtransport.ReceiveStream.
 func (r *ReceiveStream) Stop(code uint32) {
-	r.stream.CancelRead(quic.StreamErrorCode(code))
+	r.stream.CancelRead(quicgo.StreamErrorCode(code))
 }
 
 // StreamID implements moqtransport.ReceiveStream

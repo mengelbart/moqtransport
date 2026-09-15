@@ -7,16 +7,17 @@ import (
 	"math"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 )
 
 type subgroupStream struct {
-	stream   ReceiveStream
+	stream   quic.ReceiveStream
 	receiver objectReceiver
 	session  *Session
 	stopped  chan struct{}
 }
 
-func newSubgroupStream(stream ReceiveStream, receiver objectReceiver, session *Session) *subgroupStream {
+func newSubgroupStream(stream quic.ReceiveStream, receiver objectReceiver, session *Session) *subgroupStream {
 	return &subgroupStream{
 		stream:   stream,
 		receiver: receiver,

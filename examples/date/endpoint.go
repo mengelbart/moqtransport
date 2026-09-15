@@ -12,9 +12,10 @@ import (
 	"time"
 
 	"github.com/mengelbart/moqtransport"
-	"github.com/mengelbart/moqtransport/quicmoq"
-	"github.com/mengelbart/moqtransport/webtransportmoq"
-	"github.com/quic-go/quic-go"
+	"github.com/mengelbart/moqtransport/quic"
+	"github.com/mengelbart/moqtransport/quic/quicgo"
+	"github.com/mengelbart/moqtransport/quic/webtransportgo"
+	quicgoquic "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 )
@@ -35,7 +36,7 @@ type endpoint struct {
 }
 
 func (e *endpoint) runClient(ctx context.Context, wt bool) error {
-	var conn moqtransport.Connection
+	var conn quic.Connection
 	var err error
 	if wt {
 		conn, err = dialWebTransport(ctx, e.addr)
@@ -55,7 +56,7 @@ func (e *endpoint) runClient(ctx context.Context, wt bool) error {
 }
 
 func (e *endpoint) runServer(ctx context.Context) error {
-	listener, err := quic.ListenAddr(e.addr, e.tlsConfig, &quic.Config{
+	listener, err := quicgoquic.ListenAddr(e.addr, e.tlsConfig, &quicgoquic.Config{
 		EnableDatagrams:                  true,
 		EnableStreamResetPartialDelivery: true,
 	})
@@ -67,7 +68,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 			Addr:      e.addr,
 			TLSConfig: e.tlsConfig,
 		},
-		ApplicationProtocols: []string{moqtransport.MOQT18.String()},
+		ApplicationProtocols: []string{quic.MOQT18.String()},
 	}
 	if e.publish {
 		go e.setupDateTrack()
@@ -79,7 +80,7 @@ func (e *endpoint) runServer(ctx context.Context) error {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		e.handle(webtransportmoq.NewServer(session)) //nolint:errcheck
+		e.handle(webtransportgo.NewServer(session)) //nolint:errcheck
 	})
 	for {
 		conn, err := listener.Accept(ctx)
@@ -89,13 +90,13 @@ func (e *endpoint) runServer(ctx context.Context) error {
 		if conn.ConnectionState().TLS.NegotiatedProtocol == "h3" {
 			go wt.ServeQUICConn(conn) //nolint:errcheck
 		}
-		if conn.ConnectionState().TLS.NegotiatedProtocol == moqtransport.MOQT18.String() {
-			go e.handle(quicmoq.NewServer(conn)) //nolint:errcheck
+		if conn.ConnectionState().TLS.NegotiatedProtocol == quic.MOQT18.String() {
+			go e.handle(quicgo.NewServer(conn)) //nolint:errcheck
 		}
 	}
 }
 
-func (e *endpoint) handle(conn moqtransport.Connection) error {
+func (e *endpoint) handle(conn quic.Connection) error {
 	id := e.nextSessionID.Add(1)
 	session, err := moqtransport.NewSession(conn, "", moqtransport.WithHandler(&handler{endpoint: e, sessionID: id}))
 	if err != nil {
