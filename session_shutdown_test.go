@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
@@ -90,8 +91,8 @@ type testConnection struct {
 	*MockConnection
 
 	ctrl        *gomock.Controller
-	uniStreams  chan ReceiveStream
-	bidiStreams chan Stream
+	uniStreams  chan quic.ReceiveStream
+	bidiStreams chan quic.Stream
 	datagrams   chan []byte
 
 	// openedStreams carries the readers of the bidirectional streams the
@@ -121,32 +122,32 @@ type testConnection struct {
 
 func newTestConnection(t *testing.T) *testConnection {
 	t.Helper()
-	return newTestConnectionWithPerspective(t, PerspectiveServer)
+	return newTestConnectionWithPerspective(t, quic.PerspectiveServer)
 }
 
-func newTestConnectionWithPerspective(t *testing.T, perspective Perspective) *testConnection {
+func newTestConnectionWithPerspective(t *testing.T, perspective quic.Perspective) *testConnection {
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	c := &testConnection{
 		MockConnection: NewMockConnection(ctrl),
 		ctrl:           ctrl,
-		uniStreams:     make(chan ReceiveStream, 1),
-		bidiStreams:    make(chan Stream, 1),
+		uniStreams:     make(chan quic.ReceiveStream, 1),
+		bidiStreams:    make(chan quic.Stream, 1),
 		datagrams:      make(chan []byte, 1),
 		openedStreams:  make(chan *blockingReader, 8),
 	}
-	c.EXPECT().ApplicationProtocol().Return(MOQT18).AnyTimes()
+	c.EXPECT().ApplicationProtocol().Return(quic.MOQT18).AnyTimes()
 	c.EXPECT().Perspective().Return(perspective).AnyTimes()
-	c.EXPECT().Protocol().Return(ProtocolQUIC).AnyTimes()
-	c.EXPECT().OpenUniStream().DoAndReturn(func() (SendStream, error) {
+	c.EXPECT().Protocol().Return(quic.ProtocolQUIC).AnyTimes()
+	c.EXPECT().OpenUniStream().DoAndReturn(func() (quic.SendStream, error) {
 		return c.newSendStream(), nil
 	}).AnyTimes()
-	c.EXPECT().OpenStreamSync(gomock.Any()).DoAndReturn(func(context.Context) (Stream, error) {
+	c.EXPECT().OpenStreamSync(gomock.Any()).DoAndReturn(func(context.Context) (quic.Stream, error) {
 		stream, reader := c.newStream(nil)
 		c.openedStreams <- reader
 		return stream, nil
 	}).AnyTimes()
-	c.EXPECT().AcceptUniStream(gomock.Any()).DoAndReturn(func(ctx context.Context) (ReceiveStream, error) {
+	c.EXPECT().AcceptUniStream(gomock.Any()).DoAndReturn(func(ctx context.Context) (quic.ReceiveStream, error) {
 		select {
 		case <-ctx.Done():
 			return nil, context.Cause(ctx)
@@ -154,7 +155,7 @@ func newTestConnectionWithPerspective(t *testing.T, perspective Perspective) *te
 			return stream, nil
 		}
 	}).AnyTimes()
-	c.EXPECT().AcceptStream(gomock.Any()).DoAndReturn(func(ctx context.Context) (Stream, error) {
+	c.EXPECT().AcceptStream(gomock.Any()).DoAndReturn(func(ctx context.Context) (quic.Stream, error) {
 		select {
 		case <-ctx.Done():
 			return nil, context.Cause(ctx)

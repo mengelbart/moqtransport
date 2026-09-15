@@ -39,8 +39,9 @@ Basic usage involves:
 
 ## Project Structure
 
-- `quicmoq/`: QUIC-specific implementation
-- `webtransportmoq/`: WebTransport-specific implementation
+- `quic/`: Transport connection and stream interfaces
+- `quic/quicgo/`: QUIC implementation based on quic-go
+- `quic/webtransportgo/`: WebTransport implementation based on webtransport-go
 - `internal/`: Internal implementation details
 - `examples/`: Example applications demonstrating usage
 - `integrationtests/`: Integration tests

@@ -1,16 +1,14 @@
-package webtransportmoq
+package quicgo
 
 import (
-	"time"
-
-	"github.com/mengelbart/moqtransport"
-	"github.com/quic-go/webtransport-go"
+	"github.com/mengelbart/moqtransport/quic"
+	quicgo "github.com/quic-go/quic-go"
 )
 
-var _ moqtransport.Stream = (*Stream)(nil)
+var _ quic.Stream = (*Stream)(nil)
 
 type Stream struct {
-	stream *webtransport.Stream
+	stream *quicgo.Stream
 }
 
 // Read implements moqtransport.Stream.
@@ -30,15 +28,12 @@ func (s *Stream) Close() error {
 
 // Reset implements moqtransport.Stream.
 func (s *Stream) Reset(code uint32) {
-	s.stream.CancelWrite(webtransport.StreamErrorCode(code))
+	s.stream.CancelWrite(quicgo.StreamErrorCode(code))
 }
 
-// Stop implements moqtransport.Stream. The deadline unblocks a Read that waits
-// for the session to close after the peer reset the stream with
-// WTSessionGoneErrorCode, which CancelRead alone does not.
+// Stop implements moqtransport.Stream.
 func (s *Stream) Stop(code uint32) {
-	s.stream.CancelRead(webtransport.StreamErrorCode(code))
-	_ = s.stream.SetReadDeadline(time.Now())
+	s.stream.CancelRead(quicgo.StreamErrorCode(code))
 }
 
 // StreamID implements moqtransport.Stream.

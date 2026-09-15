@@ -1,14 +1,14 @@
-package quicmoq
+package quicgo
 
 import (
-	"github.com/mengelbart/moqtransport"
-	"github.com/quic-go/quic-go"
+	"github.com/mengelbart/moqtransport/quic"
+	quicgo "github.com/quic-go/quic-go"
 )
 
-var _ moqtransport.SendStream = (*SendStream)(nil)
+var _ quic.SendStream = (*SendStream)(nil)
 
 type SendStream struct {
-	stream *quic.SendStream
+	stream *quicgo.SendStream
 }
 
 // Write implements moqtransport.SendStream.
@@ -18,7 +18,7 @@ func (s *SendStream) Write(p []byte) (n int, err error) {
 
 // Reset implements moqtransport.SendStream
 func (s *SendStream) Reset(code uint32) {
-	s.stream.CancelWrite(quic.StreamErrorCode(code))
+	s.stream.CancelWrite(quicgo.StreamErrorCode(code))
 }
 
 // Close implements moqtransport.SendStream.
