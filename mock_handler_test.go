@@ -10,6 +10,7 @@ package moqtransport
 
 import (
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -39,15 +40,15 @@ func (m *MockHandler) EXPECT() *MockHandlerMockRecorder {
 }
 
 // HandleGoAway mocks base method.
-func (m *MockHandler) HandleGoAway(arg0 string) {
+func (m *MockHandler) HandleGoAway(uri string, timeout time.Duration) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "HandleGoAway", arg0)
+	m.ctrl.Call(m, "HandleGoAway", uri, timeout)
 }
 
 // HandleGoAway indicates an expected call of HandleGoAway.
-func (mr *MockHandlerMockRecorder) HandleGoAway(arg0 any) *MockHandlerHandleGoAwayCall {
+func (mr *MockHandlerMockRecorder) HandleGoAway(uri, timeout any) *MockHandlerHandleGoAwayCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGoAway", reflect.TypeOf((*MockHandler)(nil).HandleGoAway), arg0)
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HandleGoAway", reflect.TypeOf((*MockHandler)(nil).HandleGoAway), uri, timeout)
 	return &MockHandlerHandleGoAwayCall{Call: call}
 }
 
@@ -63,13 +64,13 @@ func (c *MockHandlerHandleGoAwayCall) Return() *MockHandlerHandleGoAwayCall {
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockHandlerHandleGoAwayCall) Do(f func(string)) *MockHandlerHandleGoAwayCall {
+func (c *MockHandlerHandleGoAwayCall) Do(f func(string, time.Duration)) *MockHandlerHandleGoAwayCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockHandlerHandleGoAwayCall) DoAndReturn(f func(string)) *MockHandlerHandleGoAwayCall {
+func (c *MockHandlerHandleGoAwayCall) DoAndReturn(f func(string, time.Duration)) *MockHandlerHandleGoAwayCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

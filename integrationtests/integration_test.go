@@ -135,13 +135,13 @@ func connectWebTransport(t *testing.T) (server, client quic.Connection) {
 }
 
 type testHandler struct {
-	onGoAway    func(string)
+	onGoAway    func(string, time.Duration)
 	onSubscribe func(*moqtransport.IncomingSubscribeRequest)
 }
 
-func (h *testHandler) HandleGoAway(uri string) {
+func (h *testHandler) HandleGoAway(uri string, timeout time.Duration) {
 	if h.onGoAway != nil {
-		h.onGoAway(uri)
+		h.onGoAway(uri, timeout)
 	}
 }
 

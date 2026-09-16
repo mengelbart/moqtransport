@@ -68,11 +68,11 @@ type subscribeResult struct {
 
 // subscribe starts a subscription in the background and returns the request
 // stream so the test can answer it while Subscribe is still blocked.
-func subscribe(t *testing.T, ctx context.Context, session *Session, conn *testConnection) (<-chan subscribeResult, *blockingReader) {
+func subscribe(t *testing.T, ctx context.Context, session *Session, conn *testConnection, options ...OutgoingSubscribeRequestOption) (<-chan subscribeResult, *blockingReader) {
 	t.Helper()
 	result := make(chan subscribeResult, 1)
 	go func() {
-		request, err := session.Subscribe(ctx, [][]byte{[]byte("namespace")}, "track")
+		request, err := session.Subscribe(ctx, [][]byte{[]byte("namespace")}, "track", options...)
 		result <- subscribeResult{request, err}
 	}()
 	return result, <-conn.openedStreams

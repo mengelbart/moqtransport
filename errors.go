@@ -10,6 +10,13 @@ import (
 // answered the request.
 var ErrRequestClosed = errors.New("request stream closed without response")
 
+// ErrGoAwaySent is returned when GOAWAY was already sent on the same stream.
+var ErrGoAwaySent = errors.New("GOAWAY already sent")
+
+// ErrGoAwayURIFromClient is returned when a client tries to send a GOAWAY
+// with a new session URI.
+var ErrGoAwayURIFromClient = errors.New("only servers may send a new session URI")
+
 // Redirect carries the target of a REQUEST_ERROR with code REDIRECT.
 type Redirect struct {
 	ConnectURI string

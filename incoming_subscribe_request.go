@@ -32,12 +32,17 @@ type IncomingSubscribeRequest struct {
 	namespace [][]byte
 	name      []byte
 
-	lock        sync.Mutex
-	trackAlias  uint64
-	accepted    bool
-	closed      bool
-	streamCount uint64
-	subgroups   map[*Subgroup]struct{}
+	lock          sync.Mutex
+	trackAlias    uint64
+	accepted      bool
+	closed        bool
+	goAwaySent    bool
+	streamCount   uint64
+	subgroups     map[*Subgroup]struct{}
+	goAwayHandler func(uri string, timeout time.Duration)
+
+	// goAwayReceived is only touched from readMessages.
+	goAwayReceived bool
 }
 
 func newIncomingSubscribeRequest(msg *wire.Subscribe, session *Session, stream *requestStream) *IncomingSubscribeRequest {
@@ -72,6 +77,25 @@ func (r *IncomingSubscribeRequest) readMessages() {
 		switch msg := msg.(type) {
 		case *wire.RequestUpdate:
 			// TODO
+		case *wire.GoAwayReq:
+			if r.goAwayReceived {
+				r.session.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "duplicate GOAWAY on request stream",
+				})
+				return
+			}
+			r.goAwayReceived = true
+			if err := r.session.validateGoAwayURI(msg.NewSessionURI); err != nil {
+				r.session.closeWithError(err)
+				return
+			}
+			r.lock.Lock()
+			handler := r.goAwayHandler
+			r.lock.Unlock()
+			if handler != nil {
+				handler(msg.NewSessionURI, time.Duration(msg.Timeout)*time.Millisecond)
+			}
 		default:
 			r.session.closeWithError(&SessionError{
 				Code:   uint64(ErrorCodeProtocolViolation),
@@ -94,6 +118,16 @@ func (r *IncomingSubscribeRequest) Accept(trackAlias uint64) {
 	if err != nil {
 		r.cancelled(err)
 	}
+}
+
+// OnGoAway registers f to be called when the subscriber sends GOAWAY on the
+// request stream, announcing that it is migrating the request elsewhere. f is
+// called from the goroutine reading the request stream. A GOAWAY received
+// before OnGoAway was called is not delivered.
+func (r *IncomingSubscribeRequest) OnGoAway(f func(uri string, timeout time.Duration)) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.goAwayHandler = f
 }
 
 // Context is cancelled once the subscription ended, either by Close, Reject or
@@ -160,6 +194,39 @@ func (r *IncomingSubscribeRequest) Redirect(uri string, namespace [][]byte, name
 		},
 	})
 	return nil
+}
+
+// GoAway sends GOAWAY on the request stream, asking the subscriber to re-issue
+// the request on the session at uri, or the current session if uri is empty.
+// Only servers may pass a non-empty uri. timeout is announced to the peer as
+// the time the request stays open, zero means no specific timeout. No timer
+// runs, the caller is expected to end the request itself once the timeout
+// expired, e.g. with Close and PublishDoneStatusCodeGoingAway.
+func (r *IncomingSubscribeRequest) GoAway(uri string, timeout time.Duration) error {
+	if uri != "" && r.session.conn.Perspective() == quic.PerspectiveClient {
+		return ErrGoAwayURIFromClient
+	}
+	r.lock.Lock()
+	if r.closed {
+		r.lock.Unlock()
+		return errSubscriptionClosed
+	}
+	if r.goAwaySent {
+		r.lock.Unlock()
+		return ErrGoAwaySent
+	}
+	r.goAwaySent = true
+	r.lock.Unlock()
+
+	r.logger.Debug("sending GOAWAY on request stream", "uri", uri, "timeout", timeout)
+	err := r.stream.Write(&wire.GoAwayReq{
+		NewSessionURI: uri,
+		Timeout:       uint64(timeout.Milliseconds()),
+	})
+	if err != nil {
+		r.cancelled(err)
+	}
+	return err
 }
 
 func (r *IncomingSubscribeRequest) sendRequestError(msg *wire.RequestError) {

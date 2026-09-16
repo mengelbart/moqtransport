@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/mengelbart/moqtransport"
 )
@@ -12,8 +13,8 @@ type handler struct {
 	sessionID uint64
 }
 
-func (h *handler) HandleGoAway(newSessionURI string) {
-	log.Printf("sessionNr: %d got goaway, new session URI: %s", h.sessionID, newSessionURI)
+func (h *handler) HandleGoAway(newSessionURI string, timeout time.Duration) {
+	log.Printf("sessionNr: %d got goaway, new session URI: %s, timeout: %v", h.sessionID, newSessionURI, timeout)
 }
 
 func (h *handler) HandleSubscribe(r *moqtransport.IncomingSubscribeRequest) {
