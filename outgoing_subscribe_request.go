@@ -7,12 +7,26 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
+	"github.com/mengelbart/moqtransport/quic"
 )
 
 type OutgoingSubscribeRequestOption func(*OutgoingSubscribeRequest) error
+
+// WithGoAwayHandler registers f to be called when the publisher sends GOAWAY
+// on the request stream, asking the subscriber to re-issue the request on the
+// session at uri, or the current session if uri is empty. timeout is how long
+// the publisher intends to keep the request open, zero means no specific
+// timeout. f is called from the goroutine reading the request stream.
+func WithGoAwayHandler(f func(uri string, timeout time.Duration)) OutgoingSubscribeRequestOption {
+	return func(r *OutgoingSubscribeRequest) error {
+		r.goAwayHandler = f
+		return nil
+	}
+}
 
 type OutgoingSubscribeRequest struct {
 	logger    *slog.Logger
@@ -26,9 +40,14 @@ type OutgoingSubscribeRequest struct {
 	// otherwise the error that ended the request.
 	response chan error
 
-	// established and responded are only touched from readMessages.
-	established bool
-	responded   bool
+	goAwayHandler func(uri string, timeout time.Duration)
+	goAwaySent    atomic.Bool
+
+	// established, responded and goAwayReceived are only touched from
+	// readMessages.
+	established    bool
+	responded      bool
+	goAwayReceived bool
 
 	// requestErr is the first error seen, returned by ReadObject once closed is done.
 	errLock    sync.Mutex
@@ -163,6 +182,22 @@ func (r *OutgoingSubscribeRequest) readMessages() {
 			})
 			if err := r.session.goTracked(r.awaitTeardown); err != nil {
 				return
+			}
+		case *wire.GoAwayReq:
+			if r.goAwayReceived {
+				r.session.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "duplicate GOAWAY on request stream",
+				})
+				return
+			}
+			r.goAwayReceived = true
+			if err := r.session.validateGoAwayURI(msg.NewSessionURI); err != nil {
+				r.session.closeWithError(err)
+				return
+			}
+			if r.goAwayHandler != nil {
+				r.goAwayHandler(msg.NewSessionURI, time.Duration(msg.Timeout)*time.Millisecond)
 			}
 		default:
 			r.session.closeWithError(&SessionError{
@@ -304,6 +339,29 @@ func (t *OutgoingSubscribeRequest) push(o *Object) {
 	case t.buffer <- o:
 	case <-t.session.ctx.Done():
 	}
+}
+
+// GoAway sends GOAWAY on the request stream, telling the publisher that the
+// request is being migrated to the session at uri, or to the current session
+// if uri is empty. Only servers may pass a non-empty uri. timeout is announced
+// to the peer as the time the request stays open, zero means no specific
+// timeout. No timer runs, the caller is expected to end the request itself
+// with Close once it migrated.
+func (r *OutgoingSubscribeRequest) GoAway(uri string, timeout time.Duration) error {
+	if uri != "" && r.session.conn.Perspective() == quic.PerspectiveClient {
+		return ErrGoAwayURIFromClient
+	}
+	if r.isClosed() {
+		return r.closeError()
+	}
+	if !r.goAwaySent.CompareAndSwap(false, true) {
+		return ErrGoAwaySent
+	}
+	r.logger.Debug("sending GOAWAY on request stream", "uri", uri, "timeout", timeout)
+	return r.stream.Write(&wire.GoAwayReq{
+		NewSessionURI: uri,
+		Timeout:       uint64(timeout.Milliseconds()),
+	})
 }
 
 func (r *OutgoingSubscribeRequest) Close() error {

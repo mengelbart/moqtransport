@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mengelbart/moqtransport/internal/wire"
@@ -28,6 +29,8 @@ const (
 	defaultPublishDoneTimeout  = 5 * time.Second
 
 	defaultPublisherPriority uint8 = 128
+
+	maxGoAwayURILength = 8192
 )
 
 type messageReader interface {
@@ -141,6 +144,8 @@ type Session struct {
 	peerRequestIDs       map[uint64]struct{}
 	largestPeerRequestID uint64
 
+	goAwaySent atomic.Bool
+
 	controlStreamLock   sync.Mutex
 	remoteControlStream *remoteControlStream
 	localControlStream  *localControlStream
@@ -247,7 +252,7 @@ func (s *Session) sendSetup() {
 			{Type: wire.SetupOptionTypePath, Bytes: []byte(s.path)},
 		}
 	}
-	if err := s.localControlStream.write(setup); err != nil {
+	if err := s.localControlStream.writeSetup(setup); err != nil {
 		s.closeOnError(err)
 		return
 	}
@@ -529,9 +534,16 @@ func requestIDOfMessage(msg wire.ControlMessage) (uint64, bool) {
 	return 0, false
 }
 
+func (s *Session) localRequestIDParity() uint64 {
+	return uint64(s.conn.Perspective()) % 2
+}
+
+func (s *Session) peerRequestIDParity() uint64 {
+	return (uint64(s.conn.Perspective()) + 1) % 2
+}
+
 func (s *Session) validatePeerRequestID(id uint64) error {
-	expectedLSB := (uint64(s.conn.Perspective()) + 1) % 2
-	if id%2 != expectedLSB {
+	if id%2 != s.peerRequestIDParity() {
 		return &SessionError{Code: uint64(ErrorCodeInvalidRequestID), Reason: "invalid request ID parity", Remote: false}
 	}
 
@@ -583,11 +595,15 @@ func (s *Session) handleBidiStream(stream quic.Stream) {
 			stream.Reset(uint32(StreamResetErrorCodeInternal))
 			return
 		}
+		if s.goAwaySent.Load() {
+			s.rejectRequest(stream, requestID, RequestErrorCodeGoingAway, "going away")
+			return
+		}
 	}
 
 	switch m := msg.(type) {
 	case *wire.TrackStatus:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	case *wire.Subscribe:
 		// TODO: Handle incoming request
 		if s.handler == nil {
@@ -597,27 +613,28 @@ func (s *Session) handleBidiStream(stream quic.Stream) {
 		s.handler.HandleSubscribe(request)
 		request.readMessages()
 	case *wire.Publish:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	case *wire.Fetch:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	case *wire.PublishNamespace:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	case *wire.SubscribeNamespace:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	case *wire.SubscribeTracks:
-		s.rejectUnsupportedRequest(stream, m.RequestID)
+		s.rejectRequest(stream, m.RequestID, RequestErrorCodeNotSupported, "not supported")
 	default:
 		s.closeWithError(&SessionError{Code: uint64(ErrorCodeProtocolViolation), Reason: fmt.Sprintf("unexpected message type: %T", m), Remote: false})
 		return
 	}
 }
 
-func (s *Session) rejectUnsupportedRequest(stream quic.Stream, requestID uint64) {
-	s.logger.Debug("rejecting unsupported request", "streamID", stream.StreamID(), "requestID", requestID)
+// rejectRequest answers a request with REQUEST_ERROR and finishes the stream.
+func (s *Session) rejectRequest(stream quic.Stream, requestID uint64, code RequestErrorCode, reason string) {
+	s.logger.Debug("rejecting request", "streamID", stream.StreamID(), "requestID", requestID, "code", code, "reason", reason)
 	appender := wire.NewAppender(stream, uint64(s.version))
 	if err := appender.Write(&wire.RequestError{
-		ErrorCode:   uint64(RequestErrorCodeNotSupported),
-		ErrorReason: "not supported",
+		ErrorCode:   uint64(code),
+		ErrorReason: reason,
 	}); err != nil {
 		stream.Reset(uint32(StreamResetErrorCodeInternal))
 		return
@@ -741,6 +758,7 @@ func (s *Session) Subscribe(
 	ctx context.Context,
 	namespace [][]byte,
 	name string,
+	options ...OutgoingSubscribeRequestOption,
 ) (*OutgoingSubscribeRequest, error) {
 	s.closeLock.Lock()
 	if s.closeErr != nil {
@@ -760,7 +778,7 @@ func (s *Session) Subscribe(
 		return nil, err
 	}
 
-	request, err := newOutgoingSubscribeRequest(requestID, s, rs, namespace, []byte(name))
+	request, err := newOutgoingSubscribeRequest(requestID, s, rs, namespace, []byte(name), options...)
 	if err != nil {
 		return nil, err
 	}
@@ -785,9 +803,78 @@ func (s *Session) Subscribe(
 	}
 }
 
-func (s *Session) onGoAway(msg *wire.GoAwayCtrl) {
-	if s.handler == nil {
-		return
+// validateGoAwayURI checks the new session URI of a received GOAWAY. A
+// non-nil result is the error the session must be closed with.
+func (s *Session) validateGoAwayURI(uri string) *SessionError {
+	if len(uri) > maxGoAwayURILength {
+		return &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "GOAWAY new session URI too long",
+		}
 	}
-	s.handler.HandleGoAway(msg.NewSessionURI)
+	if uri != "" && s.conn.Perspective() == quic.PerspectiveServer {
+		return &SessionError{
+			Code:   uint64(ErrorCodeProtocolViolation),
+			Reason: "GOAWAY with new session URI received by server",
+		}
+	}
+	return nil
+}
+
+// onGoAway validates a GOAWAY received on the control stream and hands it to
+// the handler. A non-nil result is the error the session must be closed with.
+func (s *Session) onGoAway(msg *wire.GoAwayCtrl) *SessionError {
+	if err := s.validateGoAwayURI(msg.NewSessionURI); err != nil {
+		return err
+	}
+	if msg.RequestID%2 != s.localRequestIDParity() {
+		return &SessionError{
+			Code:   uint64(ErrorCodeInvalidRequestID),
+			Reason: "invalid GOAWAY request ID parity",
+		}
+	}
+	if s.handler != nil {
+		s.handler.HandleGoAway(msg.NewSessionURI, time.Duration(msg.Timeout)*time.Millisecond)
+	}
+	return nil
+}
+
+// GoAway sends GOAWAY on the control stream to tell the peer that the session
+// is going to be closed. Only servers may pass a non-empty uri, it names the
+// session the peer should migrate to. timeout is announced to the peer as the
+// time the session will stay open, zero means no specific timeout. No timer
+// runs, the caller is expected to close the session with
+// ErrorCodeGoAwayTimeout itself once the timeout expired. Requests arriving
+// after GoAway are rejected with REQUEST_ERROR GOING_AWAY.
+func (s *Session) GoAway(uri string, timeout time.Duration) error {
+	if uri != "" && s.conn.Perspective() == quic.PerspectiveClient {
+		return ErrGoAwayURIFromClient
+	}
+	s.closeLock.Lock()
+	if s.closeErr != nil {
+		s.closeLock.Unlock()
+		return s.closeErr
+	}
+	s.closeLock.Unlock()
+
+	if !s.goAwaySent.CompareAndSwap(false, true) {
+		return ErrGoAwaySent
+	}
+	s.peerRequestIDsLock.Lock()
+	requestID := s.peerRequestIDParity()
+	if len(s.peerRequestIDs) > 0 {
+		requestID = s.largestPeerRequestID + 2
+	}
+	s.peerRequestIDsLock.Unlock()
+
+	s.logger.Debug("sending GOAWAY", "uri", uri, "timeout", timeout, "requestID", requestID)
+	err := s.localControlStream.write(s.ctx, &wire.GoAwayCtrl{
+		NewSessionURI: uri,
+		Timeout:       uint64(timeout.Milliseconds()),
+		RequestID:     requestID,
+	})
+	if err != nil {
+		s.closeOnError(err)
+	}
+	return err
 }

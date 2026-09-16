@@ -13,6 +13,9 @@ type remoteControlStream struct {
 	logger *slog.Logger
 	r      messageReader
 	s      *Session
+
+	// goAwayReceived is only touched from readMessages.
+	goAwayReceived bool
 }
 
 func newRemoteControlStream(msg *wire.Setup, r messageReader, s *Session) *remoteControlStream {
@@ -43,7 +46,18 @@ func (s *remoteControlStream) readMessages() {
 		}
 		switch msg := msg.(type) {
 		case *wire.GoAwayCtrl:
-			s.s.onGoAway(msg)
+			if s.goAwayReceived {
+				s.s.closeWithError(&SessionError{
+					Code:   uint64(ErrorCodeProtocolViolation),
+					Reason: "duplicate GOAWAY on control stream",
+				})
+				return
+			}
+			s.goAwayReceived = true
+			if err := s.s.onGoAway(msg); err != nil {
+				s.s.closeWithError(err)
+				return
+			}
 		default:
 			s.s.closeWithError(&SessionError{
 				Code:   uint64(ErrorCodeProtocolViolation),

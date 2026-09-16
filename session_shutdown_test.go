@@ -104,12 +104,18 @@ type testConnection struct {
 	// before the session is created and is read-only afterwards.
 	sendStreamWriteErr error
 
+	// sendStreamWriteBlock, when set, blocks every write on a stream opened
+	// by the session until it is closed. It must be set before the session is
+	// created and is read-only afterwards.
+	sendStreamWriteBlock chan struct{}
+
 	// sendDatagramErr, when set, is returned by every SendDatagram call. It
 	// must be set before the session is created and is read-only afterwards.
 	sendDatagramErr error
 
 	mu             sync.Mutex
 	readers        []*blockingReader
+	controlStream  *capturingStream
 	sentDatagrams  [][]byte
 	lastID         uint64
 	openedUniCount int
@@ -249,12 +255,23 @@ func (c *testConnection) newSendStream() *MockSendStream {
 	c.lastID += 4
 	id := c.lastID
 	c.openedUniCount++
+	// The first send stream a session opens is its control stream.
+	if c.controlStream == nil {
+		c.controlStream = &capturingStream{id: id, closed: make(chan struct{})}
+	}
+	cs := c.controlStream
 	c.mu.Unlock()
 
 	stream := NewMockSendStream(c.ctrl)
 	stream.EXPECT().Write(gomock.Any()).DoAndReturn(func(p []byte) (int, error) {
+		if c.sendStreamWriteBlock != nil {
+			<-c.sendStreamWriteBlock
+		}
 		if c.sendStreamWriteErr != nil {
 			return 0, c.sendStreamWriteErr
+		}
+		if id == cs.id {
+			return cs.write(p)
 		}
 		return len(p), nil
 	}).AnyTimes()
@@ -322,6 +339,7 @@ func (c *testConnection) acceptStream(data []byte) *blockingReader {
 // capturingStream records everything written to it and signals closed once
 // Close is called.
 type capturingStream struct {
+	id     uint64
 	mu     sync.Mutex
 	buf    bytes.Buffer
 	closed chan struct{}
@@ -358,6 +376,16 @@ func (c *testConnection) acceptStreamCapturing(data []byte) (*blockingReader, *c
 	stream.EXPECT().StreamID().Return(id).AnyTimes()
 	c.bidiStreams <- stream
 	return r, cs
+}
+
+func (c *testConnection) controlStreamWritten() []byte {
+	c.mu.Lock()
+	cs := c.controlStream
+	c.mu.Unlock()
+	if cs == nil {
+		return nil
+	}
+	return cs.written()
 }
 
 // sendDatagram delivers a datagram as if the peer had sent it.
